@@ -22,6 +22,11 @@ exactly one [[record]]; an id reference resolves against record `id:` fields.
 - `E003` ambiguous reference — an unqualified reference to a [[term]] defined in more than
   one [[namespace]]; qualify it.
 - `E004` unresolved id — an id-pattern match with no record carrying that id.
+- `E005` invalid record — a [[record]] file exists but its frontmatter cannot be parsed
+  (strict mode; `frontmatter: lenient` opts into line-based parsing for non-YAML dialects).
+- `E006` unresolved field ref — a value in a configured `ref_fields` frontmatter field with
+  no defining [[record]] by id or name; `external_id_patterns` whitelists ids defined
+  outside records.
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 

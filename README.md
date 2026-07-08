@@ -31,8 +31,9 @@ Exit code 0 = vocabulary resolves. Exit code 1 = broken — gate your merges on 
    (e.g. requirement IDs like `R3`) must also resolve. Plain mentions of defined terms are
    indexed too, so `ubiq refs` finds everything.
 3. **Checks** — `E001` duplicate definition, `E002` unresolved reference, `E003` ambiguous
-   reference (needs a namespace qualifier), `E004` unresolved ID, `W001` orphan term
-   (defined, never used).
+   reference (needs a namespace qualifier), `E004` unresolved ID, `E005` invalid record,
+   `E006` unresolved frontmatter field ref (`ref_fields`), `W001` orphan term (defined,
+   never used).
 
 Full spec: `docs/spec.md`. ubiq lints its own docs — this repo passes `ubiq check`.
 

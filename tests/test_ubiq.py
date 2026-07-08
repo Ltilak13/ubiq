@@ -23,12 +23,13 @@ def make_repo(tmp_path: Path, records: dict[str, str], docs: dict[str, str],
     return tmp_path
 
 
-def diags_for(tmp_path, records, docs, id_patterns=()):
+def diags_for(tmp_path, records, docs, id_patterns=(), ref_fields=(), external=()):
     root = make_repo(tmp_path, records, docs)
     glossary = load_glossary(list((root / "glossary").glob("*.md")))
     doc_files = [p for p in root.rglob("*.md")]
-    refs = scan_docs(doc_files, glossary, list(id_patterns))
-    return run_checks(glossary, refs)
+    refs = scan_docs(doc_files, glossary, list(id_patterns),
+                     ref_fields=list(ref_fields))
+    return run_checks(glossary, refs, list(external))
 
 
 REC_SESSION = "---\nterm: session\n---\n\nA period of play.\n"
@@ -121,6 +122,24 @@ def test_code_blocks_ignored(tmp_path):
     doc = "A [[session]].\n\n```\n[[not-a-term]] T99\n```\nAnd `[[also-not]]` inline.\n"
     d = diags_for(tmp_path, {"s.md": REC_SESSION}, {"doc.md": doc},
                   id_patterns=[r"\bT\d+\b"])
+    assert codes(d) == []
+
+
+def test_field_refs_resolve_and_credit_orphans(tmp_path):
+    recs = {"t1.md": "---\nterm: initiation deficit\nid: T1\n---\n\nStarting.\n"}
+    doc = "---\nid: widget-x\nsolves: [T1]\nserves: [R2]\n---\n\nBody.\n"
+    # T1 resolves by id (and clears T1's orphan warning); R2 is E006 without allowlist
+    d = diags_for(tmp_path, recs, {"w.md": doc}, ref_fields=["solves", "serves"])
+    assert codes(d) == ["E006"] and "R2" in d[0].message
+    d = diags_for(tmp_path, recs, {"w.md": doc}, ref_fields=["solves", "serves"],
+                  external=[r"R\d"])
+    assert codes(d) == []
+
+
+def test_field_ref_placeholders_skipped(tmp_path):
+    recs = {"t1.md": "---\nterm: thing\nid: T1\n---\n\nX.\n"}
+    doc = "---\nsolves: [T1, na, —]\nbranch: none\n---\n\nBody.\n"
+    d = diags_for(tmp_path, recs, {"w.md": doc}, ref_fields=["solves", "branch"])
     assert codes(d) == []
 
 

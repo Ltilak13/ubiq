@@ -6,6 +6,8 @@ Errors (fail the build):
   E003 ambiguous-reference    unqualified [[term]] defined in >1 namespace
   E004 unresolved-id          id-pattern match with no record carrying that id
   E005 invalid-record         a record file exists but its frontmatter cannot be parsed
+  E006 unresolved-field-ref   a frontmatter ref_fields value with no defining record
+                              (external_id_patterns whitelists ids defined outside records)
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
@@ -13,13 +15,14 @@ Warnings (reported, exit 0):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from .records import Glossary
 from .scan import Ref
 
-ERROR_CODES = {"E001", "E002", "E003", "E004", "E005"}
+ERROR_CODES = {"E001", "E002", "E003", "E004", "E005", "E006"}
 
 
 @dataclass
@@ -38,8 +41,10 @@ class Diagnostic:
         return f"{loc}: {self.code} {self.message}"
 
 
-def run_checks(glossary: Glossary, refs: list[Ref]) -> list[Diagnostic]:
+def run_checks(glossary: Glossary, refs: list[Ref],
+               external_id_patterns: list[str] | None = None) -> list[Diagnostic]:
     diags: list[Diagnostic] = []
+    external = [re.compile(p) for p in (external_id_patterns or [])]
 
     # E005 — records that exist but cannot be parsed
     for path, msg in glossary.invalid:
@@ -85,14 +90,23 @@ def run_checks(glossary: Glossary, refs: list[Ref]) -> list[Diagnostic]:
                 diags.append(Diagnostic(
                     "E004", f"unresolved id '{r.name}' — no record carries id: {r.name}",
                     r.file, r.line))
+        elif r.kind == "field":
+            # ids first (field values are usually ids), then names, then external allowlist
+            if r.target in glossary.by_id or glossary.resolve(r.name):
+                continue
+            if any(p.fullmatch(r.target) for p in external):
+                continue
+            diags.append(Diagnostic(
+                "E006", f"unresolved field ref '{r.raw}' — no record with that id or name",
+                r.file, r.line))
 
     # W001 — orphan terms (no reference or mention outside the defining record)
     for t in glossary.terms:
         used = any(
             r.file != t.file and (
-                (r.kind in ("explicit", "mention") and r.name in t.names())
+                (r.kind in ("explicit", "mention", "field") and r.name in t.names())
                 or (r.kind == "id" and t.id and r.name == t.id)
-                or (r.kind == "explicit" and t.id and r.target == t.id)
+                or (r.kind in ("explicit", "field") and t.id and r.target == t.id)
             )
             for r in refs
         )

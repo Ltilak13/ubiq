@@ -32,6 +32,12 @@ DEFAULT_CONFIG = {
     # "strict" = invalid YAML frontmatter is an error (E005).
     # "lenient" = fall back to line-based key: value parsing for non-YAML dialects.
     "frontmatter": "strict",
+    # Frontmatter fields in scanned docs whose values are references that must
+    # resolve by record id or name (e.g. solves: [T1]) — E006 otherwise.
+    "ref_fields": [],
+    # Regexes for ids that are defined outside records (e.g. requirement ids that
+    # live as headings in a research doc); matching field refs are accepted.
+    "external_id_patterns": [],
 }
 
 
@@ -63,18 +69,19 @@ def build(root: Path):
     term_fields = cfg["term_field"]
     if isinstance(term_fields, str):
         term_fields = [term_fields]
+    lenient = cfg["frontmatter"] == "lenient"
     glossary_files = _expand(root, cfg["glossary"], cfg["ignore"])
-    glossary = load_glossary(glossary_files, tuple(term_fields),
-                             lenient=cfg["frontmatter"] == "lenient")
+    glossary = load_glossary(glossary_files, tuple(term_fields), lenient=lenient)
     doc_files = _expand(root, cfg["docs"], cfg["ignore"])
-    refs = scan_docs(doc_files, glossary, cfg["id_patterns"])
-    return glossary, refs
+    refs = scan_docs(doc_files, glossary, cfg["id_patterns"],
+                     ref_fields=cfg["ref_fields"], lenient=lenient)
+    return glossary, refs, cfg
 
 
 def cmd_check(args) -> int:
     root = Path(args.root).resolve()
-    glossary, refs = build(root)
-    diags = run_checks(glossary, refs)
+    glossary, refs, cfg = build(root)
+    diags = run_checks(glossary, refs, cfg["external_id_patterns"])
     errors = [d for d in diags if d.is_error]
     if args.json:
         print(json.dumps({
@@ -99,7 +106,7 @@ def cmd_check(args) -> int:
 
 
 def cmd_terms(args) -> int:
-    glossary, _ = build(Path(args.root).resolve())
+    glossary, _, _ = build(Path(args.root).resolve())
     for t in sorted(glossary.terms, key=lambda t: t.qualified):
         id_ = f" [{t.id}]" if t.id else ""
         aliases = f" (aliases: {', '.join(t.aliases)})" if t.aliases else ""
@@ -109,7 +116,7 @@ def cmd_terms(args) -> int:
 
 def cmd_refs(args) -> int:
     root = Path(args.root).resolve()
-    glossary, refs = build(root)
+    glossary, refs, _ = build(root)
     wanted = glossary.resolve(args.term) or [
         t for t in glossary.terms if t.id == args.term]
     if not wanted:
