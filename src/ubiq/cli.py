@@ -1,5 +1,6 @@
 """ubiq CLI.
 
+  ubiq init  [--root DIR]            scaffold ubiq.yaml + glossary/ with an example record
   ubiq check [--root DIR] [--json]   lint the vocabulary; exit 1 on errors
   ubiq terms [--root DIR]            list the glossary
   ubiq refs TERM [--root DIR]        every place a term is used (traceability = search)
@@ -78,6 +79,51 @@ def build(root: Path):
     return glossary, refs, cfg
 
 
+INIT_CONFIG = """\
+# ubiq — a linker for prose. Docs: https://github.com/<you>/ubiq
+glossary:
+  - "glossary/**/*.md"
+docs:
+  - "**/*.md"
+ignore:
+  - ".git/**"
+  - "node_modules/**"
+# Regexes whose matches must resolve to a record `id:` (e.g. "\\\\bREQ-\\\\d+\\\\b").
+id_patterns: []
+# Frontmatter fields whose values must resolve to a record (by id or name).
+ref_fields: []
+"""
+
+INIT_RECORD = """\
+---
+term: glossary record
+aliases: [record]
+---
+
+A markdown file that defines exactly one term. The frontmatter carries `term`,
+optional `aliases`, `ns` (namespace), and `id`; the body is the definition.
+Reference it anywhere as [[glossary record]] — unresolved references fail
+`ubiq check`. Delete this example once you have real terms.
+"""
+
+
+def cmd_init(args) -> int:
+    root = Path(args.root).resolve()
+    cfg = root / "ubiq.yaml"
+    gdir = root / "glossary"
+    if cfg.exists():
+        print(f"{cfg} already exists — not touching it", file=sys.stderr)
+        return 1
+    cfg.write_text(INIT_CONFIG, encoding="utf-8")
+    gdir.mkdir(exist_ok=True)
+    example = gdir / "glossary-record.md"
+    if not example.exists():
+        example.write_text(INIT_RECORD, encoding="utf-8")
+    print(f"wrote {cfg.relative_to(root)} and {example.relative_to(root)}")
+    print("next: `ubiq check` — then add one record per term your docs rely on")
+    return 0
+
+
 def cmd_check(args) -> int:
     root = Path(args.root).resolve()
     glossary, refs, cfg = build(root)
@@ -136,6 +182,10 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ubiq", description="A linker for prose.")
     p.add_argument("--version", action="version", version=f"ubiq {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    i = sub.add_parser("init", help="scaffold ubiq.yaml + glossary/")
+    i.add_argument("--root", default=".")
+    i.set_defaults(fn=cmd_init)
 
     c = sub.add_parser("check", help="lint the vocabulary")
     c.add_argument("--root", default=".")

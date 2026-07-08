@@ -1,0 +1,17 @@
+name: "ubiq check"
+description: "A linker for prose — fail the build when doc terms don't resolve to a defining record."
+branding:
+  icon: "book-open"
+  color: "purple"
+inputs:
+  root:
+    description: "Directory containing ubiq.yaml"
+    required: false
+    default: "."
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: pip install --quiet "${{ github.action_path }}"
+    - shell: bash
+      run: ubiq check --root "${{ inputs.root }}"

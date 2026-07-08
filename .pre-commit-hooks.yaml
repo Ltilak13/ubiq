@@ -1,0 +1,14 @@
+# Use ubiq via the pre-commit framework (https://pre-commit.com):
+#
+#   repos:
+#     - repo: https://github.com/<you>/ubiq
+#       rev: v0.2.0
+#       hooks:
+#         - id: ubiq-check
+- id: ubiq-check
+  name: ubiq vocabulary check
+  description: Fail the commit when doc terms don't resolve to a defining record.
+  entry: ubiq check
+  language: python
+  pass_filenames: false
+  types_or: [markdown, yaml]

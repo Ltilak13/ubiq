@@ -161,5 +161,14 @@ def test_cli_refs(tmp_path, capsys):
     assert "explicit" in out and "mention" in out
 
 
+def test_init_scaffolds_and_passes_check(tmp_path, capsys):
+    assert main(["init", "--root", str(tmp_path)]) == 0
+    capsys.readouterr()
+    (tmp_path / "doc.md").write_text("Every term needs a [[glossary record]].\n")
+    assert main(["check", "--root", str(tmp_path)]) == 0
+    # refuses to clobber an existing config
+    assert main(["init", "--root", str(tmp_path)]) == 1
+
+
 def test_dogfood_ubiq_repo_is_clean():
     assert main(["check", "--root", str(ROOT)]) == 0

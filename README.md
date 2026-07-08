@@ -15,6 +15,7 @@ consolidating once; ubiq keeps it clean forever after.
 
 ```bash
 pip install -e .
+ubiq init           # scaffold ubiq.yaml + glossary/ with an example record
 ubiq check          # lint the current repo (reads ubiq.yaml)
 ubiq terms          # list the glossary
 ubiq refs "term"    # every place a term is used — traceability is just search
@@ -22,6 +23,9 @@ ubiq check --json   # machine-readable, for CI and agents
 ```
 
 Exit code 0 = vocabulary resolves. Exit code 1 = broken — gate your merges on it.
+
+In CI, use the bundled GitHub Action (`uses: <you>/ubiq@main`) or the
+[pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`.
 
 ## How it works
 
