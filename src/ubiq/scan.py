@@ -17,7 +17,8 @@ from pathlib import Path
 
 from .records import Glossary, normalize
 
-EXPLICIT_RE = re.compile(r"\[\[([^\[\]|]+?)(?:\|[^\[\]]*)?\]\]")
+# (?<!!) skips ![[...]] embeds/transclusions (Obsidian-style includes, not term refs)
+EXPLICIT_RE = re.compile(r"(?<!!)\[\[([^\[\]|]+?)(?:\|[^\[\]]*)?\]\]")
 FENCE_RE = re.compile(r"^(```|~~~).*?^\1\s*$", re.DOTALL | re.MULTILINE)
 INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 
@@ -30,6 +31,7 @@ class Ref:
     ns: str | None
     file: Path
     line: int
+    target: str = ""  # explicit refs: the target as written (for id fallback, e.g. [[T5]])
 
 
 def _blank_out(text: str) -> str:
@@ -58,9 +60,12 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
 
     for m in EXPLICIT_RE.finditer(clean):
         target = m.group(1).strip()
+        if "/" in target:
+            continue  # path-style link (file ref/transclusion), not a term reference
         ns, _, name = target.rpartition(":")
         refs.append(Ref("explicit", m.group(0), normalize(name),
-                        normalize(ns) if ns else None, path, _line_of(clean, m.start())))
+                        normalize(ns) if ns else None, path, _line_of(clean, m.start()),
+                        target=name.strip()))
 
     for pat in id_patterns:
         for m in re.finditer(pat, clean):

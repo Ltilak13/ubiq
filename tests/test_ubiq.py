@@ -88,6 +88,21 @@ def test_e004_unresolved_id(tmp_path):
     assert codes(d).count("E004") == 1
 
 
+def test_e005_invalid_record(tmp_path):
+    d = diags_for(tmp_path,
+                  {"s.md": REC_SESSION,
+                   "bad.md": "---\nterm: x\nnote: (meta: broken yaml)\n---\n\nOops.\n"},
+                  {"doc.md": "A [[session]].\n"})
+    assert "E005" in codes(d)
+
+
+def test_explicit_ref_resolves_by_id(tmp_path):
+    d = diags_for(tmp_path,
+                  {"s.md": "---\nterm: initiation deficit\nid: T1\n---\n\nStarting costs.\n"},
+                  {"doc.md": "See [[T1]] for why.\n"})
+    assert codes(d) == []  # resolves by id, and the id ref satisfies the orphan check
+
+
 def test_w001_orphan(tmp_path):
     d = diags_for(tmp_path,
                   {"s.md": REC_SESSION, "o.md": "---\nterm: dugout\n---\n\nUnused.\n"},

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import glob as globlib
 import json
 import sys
 from pathlib import Path
@@ -25,6 +26,12 @@ DEFAULT_CONFIG = {
     "docs": ["**/*.md"],
     "ignore": [".git/**", "node_modules/**", ".venv/**"],
     "id_patterns": [],
+    # Frontmatter field(s) holding the term, tried in order. Lets existing repos
+    # keep their schema (e.g. [name, title]) instead of renaming to `term:`.
+    "term_field": ["term"],
+    # "strict" = invalid YAML frontmatter is an error (E005).
+    # "lenient" = fall back to line-based key: value parsing for non-YAML dialects.
+    "frontmatter": "strict",
 }
 
 
@@ -40,18 +47,25 @@ def load_config(root: Path) -> dict:
 def _expand(root: Path, patterns: list[str], ignore: list[str]) -> list[Path]:
     out: set[Path] = set()
     for pat in patterns:
-        for p in root.glob(pat):
-            if p.is_file() and not any(
-                fnmatch.fnmatch(str(p.relative_to(root)), ig) for ig in ignore
-            ):
+        full = pat if Path(pat).is_absolute() else str(root / pat)
+        for hit in globlib.glob(full, recursive=True):
+            p = Path(hit)
+            if not p.is_file():
+                continue
+            rel = str(p.relative_to(root)) if p.is_relative_to(root) else p.name
+            if not any(fnmatch.fnmatch(rel, ig) for ig in ignore):
                 out.add(p)
     return sorted(out)
 
 
 def build(root: Path):
     cfg = load_config(root)
+    term_fields = cfg["term_field"]
+    if isinstance(term_fields, str):
+        term_fields = [term_fields]
     glossary_files = _expand(root, cfg["glossary"], cfg["ignore"])
-    glossary = load_glossary(glossary_files)
+    glossary = load_glossary(glossary_files, tuple(term_fields),
+                             lenient=cfg["frontmatter"] == "lenient")
     doc_files = _expand(root, cfg["docs"], cfg["ignore"])
     refs = scan_docs(doc_files, glossary, cfg["id_patterns"])
     return glossary, refs
