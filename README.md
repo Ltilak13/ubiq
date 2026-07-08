@@ -24,7 +24,7 @@ ubiq check --json   # machine-readable, for CI and agents
 
 Exit code 0 = vocabulary resolves. Exit code 1 = broken — gate your merges on it.
 
-In CI, use the bundled GitHub Action (`uses: <you>/ubiq@main`) or the
+In CI, use the bundled GitHub Action (`uses: Ltilak13/ubiq@main`) or the
 [pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`.
 
 ## How it works
@@ -47,7 +47,7 @@ Full spec: `docs/spec.md`. ubiq lints its own docs — this repo passes `ubiq ch
   and produces useful findings on a real docs-heavy repo.
 - **Stage 2 — code walk.** AST pass verifying code identifiers are built from glossary terms;
   ref map (record ↔ symbol) emitted as a build artifact.
-- **Stage 3 — LLM judge.** Semantic check per diff: flags term *misuse*, not just undefined
+- **Stage 3 — LLM judge.** Semantic check per diff: flags term _misuse_, not just undefined
   terms. Advisory first, gating when precision earns it.
 - **Stage 4 — adapters & editor.** Confluence/Notion pull-and-lint adapters; LSP hover =
   jump from any term to its defining record.

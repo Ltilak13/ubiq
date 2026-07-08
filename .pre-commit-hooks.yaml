@@ -1,7 +1,7 @@
 # Use ubiq via the pre-commit framework (https://pre-commit.com):
 #
 #   repos:
-#     - repo: https://github.com/<you>/ubiq
+#     - repo: https://github.com/Ltilak13/ubiq
 #       rev: v0.2.0
 #       hooks:
 #         - id: ubiq-check

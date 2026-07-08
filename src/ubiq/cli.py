@@ -80,7 +80,7 @@ def build(root: Path):
 
 
 INIT_CONFIG = """\
-# ubiq — a linker for prose. Docs: https://github.com/<you>/ubiq
+# ubiq — a linker for prose. Docs: https://github.com/Ltilak13/ubiq
 glossary:
   - "glossary/**/*.md"
 docs:
