@@ -1,0 +1,5 @@
+interface:
+  display_name: "Apply ubiq"
+  short_description: "Wire ubiq into a repo without editing owned files"
+policy:
+  allow_implicit_invocation: false
