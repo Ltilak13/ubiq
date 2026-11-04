@@ -164,7 +164,7 @@ def test_cli_refs(tmp_path, capsys):
 def test_init_scaffolds_and_passes_check(tmp_path, capsys):
     assert main(["init", "--root", str(tmp_path)]) == 0
     capsys.readouterr()
-    (tmp_path / "doc.md").write_text("Every term needs a [[glossary record]].\n")
+    (tmp_path / "README.md").write_text("Every term needs a [[glossary record]].\n")
     assert main(["check", "--root", str(tmp_path)]) == 0
     # refuses to clobber an existing config
     assert main(["init", "--root", str(tmp_path)]) == 1
@@ -172,3 +172,265 @@ def test_init_scaffolds_and_passes_check(tmp_path, capsys):
 
 def test_dogfood_ubiq_repo_is_clean():
     assert main(["check", "--root", str(ROOT)]) == 0
+
+
+def test_delimiter_slash_resolves_including_inline_code(tmp_path, capsys):
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"doc.md": "Run `/session` then /session again.\n"},
+              config='glossary: ["glossary/**/*.md"]\ndocs: ["**/*.md"]\ndelimiters: ["/"]\n')
+    assert main(["check", "--root", str(tmp_path)]) == 0
+    capsys.readouterr()
+    assert main(["refs", "session", "--root", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "explicit" in out
+
+
+def test_delimiter_unresolved_is_e002(tmp_path):
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"doc.md": "Run /ghost now.\n"},
+              config='glossary: ["glossary/**/*.md"]\ndocs: ["**/*.md"]\ndelimiters: ["/"]\n')
+    assert main(["check", "--root", str(tmp_path)]) == 1
+
+
+def test_delimiter_skips_html_relative_paths_and_urls(tmp_path):
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"doc.md": "</picture> [x](./MISSION-FORMAT.md) https://aihero.dev/x\n"
+                         "`src/packages/<name>/index.ts`\n"
+                         "Real ref: /session\n"},
+              config='glossary: ["glossary/**/*.md"]\ndocs: ["**/*.md"]\ndelimiters: ["/"]\n')
+    assert main(["check", "--root", str(tmp_path)]) == 0
+    cfg = """
+glossary: ["glossary/**/*.md"]
+docs: ["**/*.md"]
+delimiters:
+  - pattern: "/"
+    except: [clear]
+"""
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"doc.md": "See [x](/skills/engineering/tdd) and /clear and /session.\n"
+                         "Also mattpocock/skills is not a ref.\n"},
+              config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 0
+
+
+def test_glob_ns_without_editing_the_file(tmp_path, capsys):
+    rec = "---\nname: tdd\n---\n\nThe loop.\n"
+    cfg = """
+glossary:
+  - glob: "glossary/**/*.md"
+    term_field: name
+    ns: skill
+docs: ["**/*.md"]
+"""
+    make_repo(tmp_path, {"t.md": rec}, {"doc.md": "Use [[tdd]] here.\n"}, config=cfg)
+    assert main(["terms", "--root", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "skill:tdd" in out
+    capsys.readouterr()
+    assert main(["check", "--root", str(tmp_path)]) == 0
+
+
+def test_overlay_on_key_yaml_boolean(tmp_path, capsys):
+    """`on:` is True in YAML 1.1; the loader must still treat it as the source path."""
+    rec = "---\nname: tdd\n---\n\nLoop.\n"
+    overlay = "---\non: glossary/t.md\naliases: [tests]\n---\n\nSidecar.\n"
+    cfg = """
+glossary:
+  - glob: "glossary/**/*.md"
+    term_field: name
+docs: ["**/*.md"]
+overlays: [".ubiq/overlays/**/*.md"]
+"""
+    make_repo(tmp_path, {"t.md": rec}, {"doc.md": "See [[tdd]].\n"}, config=cfg)
+    ov = tmp_path / ".ubiq" / "overlays"
+    ov.mkdir(parents=True, exist_ok=True)
+    (ov / "t.md").write_text(overlay)
+    assert main(["terms", "--root", str(tmp_path)]) == 0
+    assert "tests" in capsys.readouterr().out
+
+
+def test_overlay_merges_uses_and_aliases(tmp_path, capsys):
+    rec = "---\nname: implement\n---\n\nBuild it.\n"
+    overlay = "---\nsource: glossary/i.md\nuses: [tdd]\naliases: [impl]\n---\n\nSidecar.\n"
+    tdd = "---\nname: tdd\n---\n\nThe loop.\n"
+    cfg = """
+glossary:
+  - glob: "glossary/**/*.md"
+    term_field: name
+    ns: skill
+docs: ["**/*.md"]
+overlays: [".ubiq/overlays/**/*.md"]
+ref_fields: [uses]
+"""
+    make_repo(tmp_path, {"i.md": rec, "t.md": tdd}, {"doc.md": "See [[implement]].\n"},
+              config=cfg)
+    ov = tmp_path / ".ubiq" / "overlays"
+    ov.mkdir(parents=True, exist_ok=True)
+    (ov / "implement.md").write_text(overlay)
+    assert main(["check", "--root", str(tmp_path)]) == 0
+    capsys.readouterr()
+    assert main(["terms", "--root", str(tmp_path)]) == 0
+    assert "impl" in capsys.readouterr().out
+    capsys.readouterr()
+    assert main(["refs", "tdd", "--root", str(tmp_path)]) == 0
+    assert "field" in capsys.readouterr().out
+
+
+def test_only_known_delimiter_skips_unknown(tmp_path):
+    cfg = """
+glossary: ["glossary/**/*.md"]
+docs: ["**/*.md"]
+delimiters:
+  - pattern: "/"
+    only_known: true
+"""
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"doc.md": "Run /session and /ghost and /tmp.\n"}, config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 0
+
+
+def test_only_known_false_still_errors_on_unknown(tmp_path):
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"doc.md": "Run /ghost now.\n"},
+              config='glossary: ["glossary/**/*.md"]\ndocs: ["**/*.md"]\ndelimiters: ["/"]\n')
+    assert main(["check", "--root", str(tmp_path)]) == 1
+
+
+def test_historical_unresolved_does_not_fail(tmp_path, capsys):
+    cfg = """
+glossary: ["glossary/**/*.md"]
+docs: ["README.md"]
+historical: ["CHANGELOG.md"]
+"""
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"README.md": "A [[session]].\n",
+               "CHANGELOG.md": "Removed [[ghost]] and renamed /old-name.\n"},
+              config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 0
+    capsys.readouterr()
+    assert main(["refs", "session", "--root", str(tmp_path)]) == 0
+
+
+def test_historical_does_not_hide_live_docs(tmp_path):
+    cfg = """
+glossary: ["glossary/**/*.md"]
+docs: ["README.md"]
+historical: ["CHANGELOG.md"]
+"""
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"README.md": "See [[ghost]].\n",
+               "CHANGELOG.md": "Removed [[ghost]].\n"},
+              config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 1
+
+
+def test_catalog_resolves_and_cover(tmp_path):
+    rec = "---\nname: tdd\n---\n\nThe loop.\n"
+    cfg = """
+glossary:
+  - glob: "glossary/**/*.md"
+    term_field: name
+docs: ["**/*.md"]
+catalogs:
+  - file: "plugin.json"
+    items: skills
+    term: basename
+    cover: ["glossary/**/*.md"]
+"""
+    make_repo(tmp_path, {"tdd.md": rec}, {"doc.md": "See [[tdd]].\n"}, config=cfg)
+    (tmp_path / "plugin.json").write_text(json.dumps({
+        "skills": ["./skills/engineering/tdd"]
+    }))
+    assert main(["check", "--root", str(tmp_path)]) == 0
+
+
+def test_catalog_unknown_entry_is_e006(tmp_path, capsys):
+    rec = "---\nname: tdd\n---\n\nThe loop.\n"
+    cfg = """
+glossary:
+  - glob: "glossary/**/*.md"
+    term_field: name
+docs: ["**/*.md"]
+catalogs:
+  - file: "plugin.json"
+    items: skills
+    term: basename
+"""
+    make_repo(tmp_path, {"tdd.md": rec}, {"doc.md": "See [[tdd]].\n"}, config=cfg)
+    (tmp_path / "plugin.json").write_text(json.dumps({
+        "skills": ["./skills/engineering/ghost"]
+    }))
+    assert main(["check", "--root", str(tmp_path), "--json"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert any(d["code"] == "E006" for d in out["diagnostics"])
+
+
+def test_catalog_cover_gap_is_e007(tmp_path, capsys):
+    rec = "---\nname: tdd\n---\n\nThe loop.\n"
+    extra = "---\nname: grilling\n---\n\nGrill.\n"
+    cfg = """
+glossary:
+  - glob: "glossary/**/*.md"
+    term_field: name
+docs: ["**/*.md"]
+catalogs:
+  - file: "plugin.json"
+    items: skills
+    term: basename
+    cover: ["glossary/**/*.md"]
+"""
+    make_repo(tmp_path, {"tdd.md": rec, "g.md": extra},
+              {"doc.md": "See [[tdd]] and [[grilling]].\n"}, config=cfg)
+    (tmp_path / "plugin.json").write_text(json.dumps({
+        "skills": ["./skills/engineering/tdd"]
+    }))
+    assert main(["check", "--root", str(tmp_path), "--json"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert any(d["code"] == "E007" for d in out["diagnostics"])
+
+
+def test_terms_format_context(tmp_path, capsys):
+    make_repo(tmp_path, {"s.md": REC_SESSION}, {"doc.md": "A [[session]].\n"})
+    assert main(["terms", "--format", "context", "--root", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "## Language" in out and "**[[session]]**:" in out and "A period of play." in out
+
+
+def test_wiki_link_filenames_are_not_unresolved_terms(tmp_path):
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"doc.md": "See [[GLOSSARY.md]] and [[./MISSION.md]] and [[dir/x.md]].\n"
+                         "A [[session]].\n"})
+    assert main(["check", "--root", str(tmp_path)]) == 0
+
+
+def test_wiki_link_filename_that_is_a_term_still_resolves(tmp_path):
+    rec = "---\nterm: SKILL.md\n---\n\nThe file.\n"
+    make_repo(tmp_path, {"s.md": rec}, {"doc.md": "See [[SKILL.md]].\n"})
+    assert main(["check", "--root", str(tmp_path)]) == 0
+
+
+def test_path_wiki_link_follows_existing_file_into_scan(tmp_path):
+    cfg = 'glossary: ["glossary/**/*.md"]\ndocs: ["README.md"]\n'
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"README.md": "See [[extra.md]].\nA [[session]].\n",
+               "extra.md": "See [[ghost]].\n"},
+              config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 1
+
+
+def test_markdown_relative_link_is_followed(tmp_path):
+    cfg = 'glossary: ["glossary/**/*.md"]\ndocs: ["README.md"]\n'
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"README.md": "See [x](./extra.md).\nA [[session]].\n",
+               "extra.md": "See [[ghost]].\n"},
+              config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 1
+
+
+def test_dangling_path_wiki_link_is_not_an_error(tmp_path):
+    cfg = 'glossary: ["glossary/**/*.md"]\ndocs: ["README.md"]\n'
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"README.md": "See [[MISSION.md]] and a [[session]].\n"},
+              config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 0
+

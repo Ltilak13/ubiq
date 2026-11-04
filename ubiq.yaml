@@ -5,6 +5,7 @@ docs:
   - "README.md"
   - "docs/**/*.md"
   - "glossary/**/*.md"
+  - "skills/**/*.md"
 ignore:
   - ".git/**"
 # Regex patterns whose matches must resolve to a record `id:` (e.g. requirement IDs like R3, T8).

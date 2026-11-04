@@ -6,8 +6,10 @@ Errors (fail the build):
   E003 ambiguous-reference    unqualified [[term]] defined in >1 namespace
   E004 unresolved-id          id-pattern match with no record carrying that id
   E005 invalid-record         a record file exists but its frontmatter cannot be parsed
-  E006 unresolved-field-ref   a frontmatter ref_fields value with no defining record
-                              (external_id_patterns whitelists ids defined outside records)
+  E006 unresolved-field-ref   a frontmatter ref_fields value or catalog entry with no
+                              defining record (external_id_patterns whitelists ids
+                              defined outside records)
+  E007 catalog-cover-gap      a record matching a catalog's `cover` globs is not listed
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
@@ -22,7 +24,7 @@ from pathlib import Path
 from .records import Glossary
 from .scan import Ref
 
-ERROR_CODES = {"E001", "E002", "E003", "E004", "E005", "E006"}
+ERROR_CODES = {"E001", "E002", "E003", "E004", "E005", "E006", "E007"}
 
 
 @dataclass
@@ -69,44 +71,53 @@ def run_checks(glossary: Glossary, refs: list[Ref],
             diags.append(Diagnostic(
                 "E001", f"id '{id_}' claimed by {len(terms)} records ({files})", terms[0].file))
 
-    # E002/E003/E004 — reference resolution
+    # E002/E003/E004/E006 — reference resolution
     for r in refs:
         if r.kind == "explicit":
             matches = glossary.resolve(r.name, r.ns)
             if not matches and r.ns is None and r.target:
                 matches = glossary.by_id.get(r.target, [])  # [[T5]] resolves by record id
             if not matches:
+                if r.historical:
+                    continue
                 scope = f" in namespace '{r.ns}'" if r.ns else ""
                 diags.append(Diagnostic(
                     "E002", f"unresolved reference {r.raw}{scope} — no defining record",
                     r.file, r.line))
             elif len(matches) > 1:
+                if r.historical:
+                    continue
                 options = ", ".join(f"[[{t.qualified}]]" for t in matches)
                 diags.append(Diagnostic(
                     "E003", f"ambiguous reference {r.raw} — qualify as one of: {options}",
                     r.file, r.line))
         elif r.kind == "id":
             if r.name not in glossary.by_id:
+                if r.historical:
+                    continue
                 diags.append(Diagnostic(
                     "E004", f"unresolved id '{r.name}' — no record carries id: {r.name}",
                     r.file, r.line))
-        elif r.kind == "field":
+        elif r.kind in ("field", "catalog"):
             # ids first (field values are usually ids), then names, then external allowlist
             if r.target in glossary.by_id or glossary.resolve(r.name):
                 continue
             if any(p.fullmatch(r.target) for p in external):
                 continue
+            if r.historical:
+                continue
+            label = "catalog entry" if r.kind == "catalog" else "field ref"
             diags.append(Diagnostic(
-                "E006", f"unresolved field ref '{r.raw}' — no record with that id or name",
+                "E006", f"unresolved {label} '{r.raw}' — no record with that id or name",
                 r.file, r.line))
 
     # W001 — orphan terms (no reference or mention outside the defining record)
     for t in glossary.terms:
         used = any(
             r.file != t.file and (
-                (r.kind in ("explicit", "mention", "field") and r.name in t.names())
+                (r.kind in ("explicit", "mention", "field", "catalog") and r.name in t.names())
                 or (r.kind == "id" and t.id and r.name == t.id)
-                or (r.kind in ("explicit", "field") and t.id and r.target == t.id)
+                or (r.kind in ("explicit", "field", "catalog") and t.id and r.target == t.id)
             )
             for r in refs
         )

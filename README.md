@@ -15,9 +15,10 @@ consolidating once; ubiq keeps it clean forever after.
 
 ```bash
 pip install -e .
-ubiq init           # scaffold ubiq.yaml + glossary/ with an example record
+ubiq init           # scaffold ubiq.yaml + .ubiq/glossary/ with an example record
 ubiq check          # lint the current repo (reads ubiq.yaml)
 ubiq terms          # list the glossary
+ubiq terms --format context --ns repo   # dump a CONTEXT.md Language section
 ubiq refs "term"    # every place a term is used — traceability is just search
 ubiq check --json   # machine-readable, for CI and agents
 ```
@@ -27,17 +28,24 @@ Exit code 0 = vocabulary resolves. Exit code 1 = broken — gate your merges on 
 In CI, use the bundled GitHub Action (`uses: Ltilak13/ubiq@main`) or the
 [pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`.
 
+To wire ubiq into another repo without editing files it already owns, follow
+[`skills/apply-ubiq/SKILL.md`](skills/apply-ubiq/SKILL.md).
+
 ## How it works
 
 1. **Glossary records** — one markdown file per term, YAML frontmatter (`term`, `ns`,
    `aliases`, optional `id`), definition in the body. See `glossary/`.
-2. **References** — write `[[term]]` or `[[ns:term]]` in any doc. Configured `id_patterns`
+2. **References** — write `[[term]]` or `[[ns:term]]` in any doc, or a configured
+   delimiter (`/` → `/term` for slash-commands). Configured `id_patterns`
    (e.g. requirement IDs like `R3`) must also resolve. Plain mentions of defined terms are
-   indexed too, so `ubiq refs` finds everything.
+   indexed too, so `ubiq refs` finds everything. Overlays (`.ubiq/overlays/`) attach
+   frontmatter to files the linter does not own — glob-level `ns` / `term_field` and
+   sidecar `source:` records, so existing `name:` files become terms without being edited.
 3. **Checks** — `E001` duplicate definition, `E002` unresolved reference, `E003` ambiguous
    reference (needs a namespace qualifier), `E004` unresolved ID, `E005` invalid record,
-   `E006` unresolved frontmatter field ref (`ref_fields`), `W001` orphan term (defined,
-   never used).
+   `E006` unresolved frontmatter field ref or catalog entry (`ref_fields` / `catalogs`),
+   `E007` catalog cover gap, `W001` orphan term (defined, never used). Historical docs
+   (`CHANGELOG.md`) are scanned but unresolved refs there do not fail.
 
 Full spec: `docs/spec.md`. ubiq lints its own docs — this repo passes `ubiq check`.
 

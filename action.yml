@@ -1,4 +1,4 @@
-name: "ubiq check"
+name: "ubiq"
 description: "A linker for prose — fail the build when doc terms don't resolve to a defining record."
 branding:
   icon: "book-open"

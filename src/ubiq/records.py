@@ -70,17 +70,12 @@ def _parse_lenient(raw: str) -> dict:
     return data
 
 
-def parse_record(path: Path, term_fields: tuple[str, ...] = ("term",),
-                 lenient: bool = False) -> Term | None:
-    """Parse a glossary record. Returns None if no term field is present.
-
-    `term_fields` lets existing repos keep their schema: e.g. ("name", "title")
-    treats `name:` (falling back to `title:`) as the term.
-    """
+def parse_frontmatter(path: Path, lenient: bool = False) -> tuple[dict, str]:
+    """Return (frontmatter dict, body). Empty dict if the file has no frontmatter."""
     text = path.read_text(encoding="utf-8")
     m = FRONTMATTER_RE.match(text)
     if not m:
-        return None
+        return {}, text
     try:
         meta = yaml.safe_load(m.group(1)) or {}
     except yaml.YAMLError as e:
@@ -89,21 +84,52 @@ def parse_record(path: Path, term_fields: tuple[str, ...] = ("term",),
         else:
             raise InvalidRecord(
                 f"invalid YAML frontmatter: {str(e).splitlines()[0]}") from e
-    field_name = next((f for f in term_fields
-                       if isinstance(meta, dict) and meta.get(f)), None)
+    if not isinstance(meta, dict):
+        meta = {}
+    return meta, text[m.end():]
+
+
+def parse_record(path: Path, term_fields: tuple[str, ...] = ("term",),
+                 lenient: bool = False, default_ns: str | None = None) -> Term | None:
+    """Parse a glossary record. Returns None if no term field is present.
+
+    `term_fields` lets existing repos keep their schema: e.g. ("name", "title")
+    treats `name:` (falling back to `title:`) as the term.
+    `default_ns` is used when the file itself has no `ns:` (glob-level overlay).
+    """
+    meta, body = parse_frontmatter(path, lenient)
+    field_name = next((f for f in term_fields if meta.get(f)), None)
     if field_name is None:
         return None
     aliases = meta.get("aliases") or []
     if isinstance(aliases, str):
         aliases = [aliases]
+    ns = meta.get("ns", default_ns or DEFAULT_NS)
     return Term(
         term=normalize(str(meta[field_name])),
-        ns=normalize(str(meta.get("ns", DEFAULT_NS))),
+        ns=normalize(str(ns)),
         file=path,
         aliases=[normalize(str(a)) for a in aliases],
         id=str(meta["id"]) if meta.get("id") is not None else None,
-        definition=text[m.end():].strip(),
+        definition=body.strip(),
     )
+
+
+def overlay_onto(term: Term, meta: dict) -> Term:
+    """Merge sidecar frontmatter onto a record. Overlay wins for ns/id; aliases union."""
+    extra = meta.get("aliases") or []
+    if isinstance(extra, str):
+        extra = [extra]
+    aliases = list(dict.fromkeys(
+        [*term.aliases, *[normalize(str(a)) for a in extra]]))
+    ns = normalize(str(meta["ns"])) if meta.get("ns") else term.ns
+    id_ = str(meta["id"]) if meta.get("id") is not None else term.id
+    if meta.get("term"):
+        term_name = normalize(str(meta["term"]))
+    else:
+        term_name = term.term
+    return Term(term=term_name, ns=ns, file=term.file, aliases=aliases,
+                id=id_, definition=term.definition)
 
 
 @dataclass
