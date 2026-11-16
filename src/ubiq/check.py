@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from difflib import get_close_matches
 from pathlib import Path
 
 from .records import Glossary
@@ -73,38 +74,37 @@ def run_checks(glossary: Glossary, refs: list[Ref],
 
     # E002/E003/E004/E006 — reference resolution
     for r in refs:
-        if r.kind == "explicit":
-            matches = glossary.resolve(r.name, r.ns)
-            if not matches and r.ns is None and r.target:
-                matches = glossary.by_id.get(r.target, [])  # [[T5]] resolves by record id
-            if not matches:
-                if r.historical:
-                    continue
-                scope = f" in namespace '{r.ns}'" if r.ns else ""
-                diags.append(Diagnostic(
-                    "E002", f"unresolved reference {r.raw}{scope} — no defining record",
-                    r.file, r.line))
-            elif len(matches) > 1:
-                if r.historical:
-                    continue
+        if r.kind == "mention":
+            continue
+        matches = r.resolve(glossary)
+        if matches:
+            if len(matches) > 1 and not r.historical:
                 options = ", ".join(f"[[{t.qualified}]]" for t in matches)
                 diags.append(Diagnostic(
                     "E003", f"ambiguous reference {r.raw} — qualify as one of: {options}",
                     r.file, r.line))
+            continue
+        if r.historical:
+            continue
+        if r.kind in ("explicit", "markdown"):
+            scope = f" in namespace '{r.ns}'" if r.ns else ""
+            hint = ""
+            if r.kind == "explicit":
+                candidates = sorted(n for n in glossary.by_name
+                                    if glossary.resolve(n, r.ns))
+                near = get_close_matches(r.name, candidates, n=1)
+                if near:
+                    target = f"{r.ns}:{near[0]}" if r.ns else near[0]
+                    hint = f". Did you mean [[{target}]]?"
+            diags.append(Diagnostic(
+                "E002", f"unresolved reference {r.raw}{scope} — no defining record{hint}",
+                r.file, r.line))
         elif r.kind == "id":
-            if r.name not in glossary.by_id:
-                if r.historical:
-                    continue
-                diags.append(Diagnostic(
-                    "E004", f"unresolved id '{r.name}' — no record carries id: {r.name}",
-                    r.file, r.line))
+            diags.append(Diagnostic(
+                "E004", f"unresolved id '{r.name}' — no record carries id: {r.name}",
+                r.file, r.line))
         elif r.kind in ("field", "catalog"):
-            # ids first (field values are usually ids), then names, then external allowlist
-            if r.target in glossary.by_id or glossary.resolve(r.name):
-                continue
             if any(p.fullmatch(r.target) for p in external):
-                continue
-            if r.historical:
                 continue
             label = "catalog entry" if r.kind == "catalog" else "field ref"
             diags.append(Diagnostic(
@@ -112,16 +112,13 @@ def run_checks(glossary: Glossary, refs: list[Ref],
                 r.file, r.line))
 
     # W001 — orphan terms (no reference or mention outside the defining record)
+    used: set[int] = set()
+    for r in refs:
+        matches = r.resolve(glossary)
+        if len(matches) == 1 or r.kind == "mention":
+            used.update(id(t) for t in matches if r.file.resolve() != t.file.resolve())
     for t in glossary.terms:
-        used = any(
-            r.file != t.file and (
-                (r.kind in ("explicit", "mention", "field", "catalog") and r.name in t.names())
-                or (r.kind == "id" and t.id and r.name == t.id)
-                or (r.kind in ("explicit", "field", "catalog") and t.id and r.target == t.id)
-            )
-            for r in refs
-        )
-        if not used:
+        if id(t) not in used:
             diags.append(Diagnostic(
                 "W001", f"orphan term '{t.qualified}' — defined but never used", t.file))
 

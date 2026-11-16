@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from ubiq.check import run_checks
-from ubiq.cli import main
+from ubiq.cli import build, main
 from ubiq.records import load_glossary, parse_record
 from ubiq.scan import scan_docs
 
@@ -433,4 +433,139 @@ def test_dangling_path_wiki_link_is_not_an_error(tmp_path):
               {"README.md": "See [[MISSION.md]] and a [[session]].\n"},
               config=cfg)
     assert main(["check", "--root", str(tmp_path)]) == 0
+
+
+def test_markdown_reference_resolves_by_destination_once(tmp_path, capsys):
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"doc.md": "Start [playing](glossary/s.md#definition).\n"})
+    assert main(["check", "--root", str(tmp_path)]) == 0
+    capsys.readouterr()
+    assert main(["refs", "session", "--root", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "markdown '[playing](glossary/s.md#definition)'" in out
+    assert "1 references" in out
+
+
+def test_markdown_reference_remains_checked_after_deletion(tmp_path, capsys):
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"doc.md": "Start [playing](glossary/s.md).\n"})
+    (tmp_path / "glossary/s.md").unlink()
+    assert main(["check", "--root", str(tmp_path), "--json"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["diagnostics"][0]["code"] == "E002"
+    assert out["diagnostics"][0]["line"] == 1
+
+
+def test_markdown_globs_match_zero_or_multiple_directories(tmp_path, capsys):
+    cfg = 'glossary: ["glossary/**/*.md"]\ndocs: ["README.md"]\n'
+    make_repo(tmp_path, {},
+              {"README.md": "[a](glossary/missing.md)\n"
+                            "[b](glossary/nested/missing.md)\n"
+                            "[c](other/glossary/missing.md)\n"}, config=cfg)
+    assert main(["check", "--root", str(tmp_path), "--json"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert [d["line"] for d in out["diagnostics"]] == [1, 2]
+
+
+def test_markdown_paths_titles_and_code_exclusions(tmp_path):
+    doc = ('[a](<glossary/play (one).md> "Title")\n'
+           '[b](glossary/play%20%28one%29.md#definition)\n'
+           '[c](glossary/play%20(one).md)\n'
+           r'[d](glossary/play%20\(one\).md)' '\n'
+           '`[example](glossary/missing.md)`\n'
+           '```md\n[fenced](glossary/missing.md)\n```\n'
+           '![image](glossary/missing.md)\n'
+           '[web](https://example.com/glossary/missing.md)\n'
+           '[other](missing.md)\n[anchor](#missing.md)\n')
+    make_repo(tmp_path, {"play (one).md": REC_SESSION}, {"doc.md": doc})
+    glossary, refs, _, extra = build(tmp_path)
+    assert extra == []
+    assert [r.line for r in refs if r.kind == "markdown"] == [1, 2, 3, 4]
+    assert run_checks(glossary, refs) == []
+
+
+def test_markdown_reference_requires_a_record_at_destination(tmp_path, capsys):
+    make_repo(tmp_path, {"s.md": REC_SESSION, "empty.md": "No definition.\n"},
+              {"doc.md": "[details](glossary/empty.md)\n"})
+    assert main(["check", "--root", str(tmp_path), "--json"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert any(d["code"] == "E002" for d in out["diagnostics"])
+
+
+def test_markdown_symlink_to_registered_external_record(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside.md"
+    outside.write_text(REC_SESSION)
+    make_repo(root, {}, {"doc.md": "[details](glossary/s.md)\n"})
+    (root / "glossary/s.md").symlink_to(outside)
+    assert main(["check", "--root", str(root)]) == 0
+
+
+def test_markdown_historical_missing_record_does_not_fail(tmp_path):
+    cfg = ('glossary: ["glossary/**/*.md"]\ndocs: ["README.md"]\n'
+           'historical: ["CHANGELOG.md"]\n')
+    make_repo(tmp_path, {},
+              {"README.md": "Current docs.\n",
+               "CHANGELOG.md": "Removed [old](glossary/old.md).\n"}, config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 0
+
+
+def test_qualified_reference_does_not_credit_other_namespace(tmp_path, capsys):
+    recs = {"game.md": "---\nterm: session\nns: game\n---\n\nPlay.\n",
+            "auth.md": "---\nterm: session\nns: auth\n---\n\nLogin.\n"}
+    make_repo(tmp_path, recs, {"doc.md": "[[game:session]]\n[[auth:session]]\n"})
+    assert main(["refs", "game:session", "--root", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "[[game:session]]" in out and "[[auth:session]]" not in out
+    assert "1 references" in out
+    (tmp_path / "doc.md").write_text("[[game:session]]\n")
+    assert main(["check", "--root", str(tmp_path), "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [(d["code"], d["message"]) for d in out["diagnostics"]] == [
+        ("W001", "orphan term 'auth:session' — defined but never used")]
+
+
+def test_markdown_destination_selects_namespace(tmp_path, capsys):
+    recs = {"game.md": "---\nterm: session\nns: game\n---\n\nPlay.\n",
+            "auth.md": "---\nterm: session\nns: auth\n---\n\nLogin.\n"}
+    make_repo(tmp_path, recs, {"doc.md": "[session](glossary/game.md)\n"})
+    assert main(["check", "--root", str(tmp_path), "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["errors"] == 0
+    assert [d["message"] for d in out["diagnostics"]] == [
+        "orphan term 'auth:session' — defined but never used"]
+
+
+def test_field_and_catalog_refs_require_unique_names(tmp_path, capsys):
+    recs = {"game.md": "---\nterm: session\nns: game\n---\n\nPlay.\n",
+            "auth.md": "---\nterm: session\nns: auth\n---\n\nLogin.\n"}
+    cfg = ('glossary: ["glossary/**/*.md"]\ndocs: ["doc.md"]\n'
+           'ref_fields: [uses]\ncatalogs:\n'
+           '  - file: plugin.json\n    term: name\n    cover: ["glossary/**/*.md"]\n')
+    make_repo(tmp_path, recs, {"doc.md": "---\nuses: [session]\n---\n"}, config=cfg)
+    (tmp_path / "plugin.json").write_text('{"skills": ["session"]}')
+    assert main(["check", "--root", str(tmp_path), "--json"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert [d["code"] for d in out["diagnostics"] if d["severity"] == "error"] == [
+        "E003", "E003"]
+    (tmp_path / "doc.md").write_text("---\nuses: ['game:session']\n---\n")
+    (tmp_path / "plugin.json").write_text('{"skills": ["auth:session", "game:session"]}')
+    assert main(["check", "--root", str(tmp_path)]) == 0
+
+
+def test_context_qualifies_ambiguous_terms(tmp_path, capsys):
+    recs = {"game.md": "---\nterm: session\nns: game\n---\n\nPlay.\n",
+            "auth.md": "---\nterm: session\nns: auth\n---\n\nLogin.\n"}
+    make_repo(tmp_path, recs, {})
+    assert main(["terms", "--format", "context", "--root", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "[[auth:session]]" in out and "[[game:session]]" in out
+
+
+def test_unresolved_reference_suggests_within_namespace(tmp_path):
+    recs = {"game.md": "---\nterm: session\nns: game\n---\n\nPlay.\n",
+            "auth.md": "---\nterm: sessions\nns: auth\n---\n\nLogins.\n"}
+    d = diags_for(tmp_path, recs, {"doc.md": "[[game:sesion]]\n"})
+    assert "Did you mean [[game:session]]?" in next(x.message for x in d if x.code == "E002")
 

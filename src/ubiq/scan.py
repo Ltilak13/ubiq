@@ -1,6 +1,6 @@
 """Doc scanning: find references in markdown files.
 
-Five kinds of reference:
+Six kinds of reference:
   explicit  — [[term]] / [[ns:term]], plus configured delimiters (e.g. /term)
               (must resolve, else E002/E003)
   id        — matches of configured id_patterns  (must resolve to a record id, else E004)
@@ -9,6 +9,8 @@ Five kinds of reference:
   catalog   — values from a configured JSON/YAML inventory (must resolve, else E006)
   mention   — plain-prose occurrence of a defined term or alias (indexed for
               `ubiq refs` and orphan detection; never an error)
+  markdown  — inline Markdown link to a record or configured glossary location
+              (must resolve by destination, else E002/E003)
 
 Refs from `historical` files still index mentions and resolved refs, but
 unresolved explicit/id/field refs do not fail the build.
@@ -20,13 +22,17 @@ backticks, because that is how slash-commands are written (`/tdd`).
 
 from __future__ import annotations
 
+import fnmatch
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from string import punctuation
+from urllib.parse import unquote, urlsplit
 
 import yaml
 
-from .records import FRONTMATTER_RE, Glossary, _parse_lenient, normalize
+from .records import FRONTMATTER_RE, Glossary, Term, _parse_lenient, normalize
 
 # field values that are placeholders, not references
 SKIP_FIELD_VALUES = {"", "-", "—", "na", "n/a", "none", "no", "yes"}
@@ -38,8 +44,41 @@ INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 # GLOSSARY.md, SKILL.md, foo.json — wiki-link targets that are filenames, not terms
 FILE_EXT_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,7}$")
 # [label](./file.md) — skip images ![alt](x)
-MD_LINK_RE = re.compile(r"(?<!!)\[(?:[^\]]*)\]\(([^)]+)\)")
+MD_LINK_RE = re.compile(
+    r"(?<!!)\[[^\]\n]*\]\(\s*(<[^>\n]*>|(?:\\.|[^()\s]|\([^()\n]*\))+)"
+    r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?\s*\)"
+)
+MD_ESCAPE_RE = re.compile(r"\\([" + re.escape(punctuation) + r"])")
 DOC_SUFFIXES = {".md", ".markdown"}
+
+
+def _matches_glob(parts: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
+    """Match path segments. ** consumes zero or more directories."""
+    if not pattern:
+        return not parts
+    if pattern[0] == "**":
+        return (_matches_glob(parts, pattern[1:])
+                or bool(parts) and _matches_glob(parts[1:], pattern))
+    return (bool(parts) and fnmatch.fnmatchcase(parts[0], pattern[0])
+            and _matches_glob(parts[1:], pattern[1:]))
+
+
+def _doc_link_path(source: Path, spec: str, root: Path | None = None) -> Path | None:
+    """Return a local Markdown destination, including missing files."""
+    try:
+        destination = spec.strip().removeprefix("<").removesuffix(">")
+        url = urlsplit(MD_ESCAPE_RE.sub(r"\1", destination))
+        if url.scheme or url.netloc or not url.path:
+            return None
+        candidate = Path(os.path.abspath(source.parent / unquote(url.path)))
+        if candidate.suffix.lower() not in DOC_SUFFIXES:
+            return None
+        if root is not None and not candidate.is_relative_to(root.absolute()):
+            return None
+        return candidate
+    except ValueError:
+        return None
+
 
 def _looks_like_path(target: str) -> bool:
     """Obsidian-style file link, not a term: `[[GLOSSARY.md]]`, `[[./x]]`, `[[dir/x]]`."""
@@ -56,13 +95,9 @@ def resolve_doc_link(source: Path, spec: str, root: Path) -> Path | None:
 
     Missing files (a teaching-workspace `[[MISSION.md]]`) return None — not an error.
     """
-    spec = spec.strip().split()[0].strip("'\"")
-    spec = spec.split("#")[0]
-    if not spec or "://" in spec or spec.startswith(("mailto:", "#")):
+    cand = _doc_link_path(source, spec, root)
+    if cand is None:
         return None
-    if not (_looks_like_path(spec) or FILE_EXT_RE.search(spec)):
-        return None
-    cand = Path(spec) if Path(spec).is_absolute() else (source.parent / spec)
     try:
         resolved = cand.resolve()
         if not resolved.is_file() or resolved.suffix.lower() not in DOC_SUFFIXES:
@@ -119,6 +154,7 @@ def compile_delimiter(spec: str | dict) -> Delimiter:
     `/tmp` and `/clear` are silent; typos of unknown names are also invisible.
     Default is strict: every `/slug` is an explicit ref (typos fail the build).
     """
+    except_raw: list[str]
     if isinstance(spec, str):
         pattern, except_raw, only_known = spec, [], False
     else:
@@ -149,7 +185,7 @@ def compile_delimiter(spec: str | dict) -> Delimiter:
 
 @dataclass
 class Ref:
-    kind: str  # "explicit" | "id" | "field" | "mention" | "catalog"
+    kind: str  # "explicit" | "id" | "field" | "mention" | "catalog" | "markdown"
     raw: str   # text as written
     name: str  # normalized term (explicit/mention) or the id string
     ns: str | None
@@ -157,6 +193,21 @@ class Ref:
     line: int
     target: str = ""  # explicit refs: the target as written (for id fallback, e.g. [[T5]])
     historical: bool = False  # historical docs: unresolved explicit/id/field do not fail
+    destination: Path | None = None  # Markdown links resolve by file, not label
+
+    def resolve(self, glossary: Glossary) -> list[Term]:
+        """Resolve consistently for checks, usage tracking, and refs queries."""
+        if self.kind == "markdown":
+            return [t for t in glossary.terms if t.file.resolve() == self.destination]
+        if self.kind == "id":
+            return glossary.by_id.get(self.name, [])
+        if self.kind in ("field", "catalog"):
+            return (glossary.by_id.get(self.target, [])
+                    or glossary.resolve(self.name, self.ns))
+        matches = glossary.resolve(self.name, self.ns)
+        if not matches and self.kind == "explicit" and self.ns is None:
+            matches = glossary.by_id.get(self.target, [])
+        return matches
 
 
 def _blank_out(text: str) -> str:
@@ -213,7 +264,9 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
               skip_frontmatter: bool = True,
               ref_fields: list[str] | None = None,
               lenient: bool = False,
-              delimiters: list[Delimiter] | None = None) -> list[Ref]:
+              delimiters: list[Delimiter] | None = None,
+              root: Path | None = None,
+              glossary_patterns: list[str] | None = None) -> list[Ref]:
     text = path.read_text(encoding="utf-8")
     refs: list[Ref] = []
     fm = FRONTMATTER_RE.match(text)
@@ -224,6 +277,24 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
         text = pad + text[fm.end():]
     clean = _blank_out(text)
     for_delim = _blank_fences(text)
+
+    link_spans: list[tuple[int, int]] = []
+    record_files = {t.file.resolve() for t in glossary.terms}
+    for m in MD_LINK_RE.finditer(clean):
+        destination = _doc_link_path(path, m.group(1), root)
+        if destination is None:
+            continue
+        registered = destination.resolve() in record_files
+        configured = root is not None and any(
+            _matches_glob(destination.parts, (root / pattern).parts)
+            for pattern in glossary_patterns or []
+        )
+        if not (registered or configured):
+            continue
+        refs.append(Ref("markdown", text[m.start():m.end()], "", None, path,
+                        _line_of(clean, m.start()), target=m.group(1),
+                        destination=destination.resolve()))
+        link_spans.append(m.span())
 
     for m in EXPLICIT_RE.finditer(clean):
         target = m.group(1).strip()
@@ -263,7 +334,7 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
             re.IGNORECASE,
         )
         explicit_spans = [(m.start(), m.end()) for m in EXPLICIT_RE.finditer(clean)]
-        skip_spans = explicit_spans + delim_spans
+        skip_spans = explicit_spans + delim_spans + link_spans
         for m in mention_re.finditer(clean):
             if any(a <= m.start() < b for a, b in skip_spans):
                 continue  # already counted as explicit
@@ -276,13 +347,16 @@ def scan_docs(paths: list[Path], glossary: Glossary, id_patterns: list[str],
               ref_fields: list[str] | None = None,
               lenient: bool = False,
               delimiters: list[Delimiter] | None = None,
-              historical: set[Path] | None = None) -> list[Ref]:
+              historical: set[Path] | None = None,
+              root: Path | None = None,
+              glossary_patterns: list[str] | None = None) -> list[Ref]:
     hist = {p.resolve() for p in (historical or [])}
     refs: list[Ref] = []
     for p in sorted(paths):
         found = scan_file(p, glossary, id_patterns,
                           ref_fields=ref_fields, lenient=lenient,
-                          delimiters=delimiters)
+                          delimiters=delimiters, root=root,
+                          glossary_patterns=glossary_patterns)
         if p.resolve() in hist:
             for r in found:
                 r.historical = True

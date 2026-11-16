@@ -149,6 +149,8 @@ class Glossary:
 
     def resolve(self, name: str, ns: str | None = None) -> list[Term]:
         """All terms matching `name` (optionally restricted to namespace `ns`)."""
+        if ns is None and ":" in name:
+            ns, _, name = name.rpartition(":")
         candidates = self.by_name.get(normalize(name), [])
         if ns is not None:
             ns = normalize(ns)

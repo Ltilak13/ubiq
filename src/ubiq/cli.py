@@ -154,6 +154,7 @@ def _load_overlays(root: Path, paths: list[Path], lenient: bool) -> dict[Path, d
 
 
 def build(root: Path):
+    root = root.resolve()
     cfg = load_config(root)
     term_fields = tuple(_as_list(cfg["term_field"]))
     lenient = cfg["frontmatter"] == "lenient"
@@ -163,7 +164,8 @@ def build(root: Path):
 
     glossary = Glossary()
     seen: set[Path] = set()
-    for entry in _glossary_entries(cfg):
+    entries = _glossary_entries(cfg)
+    for entry in entries:
         tf = tuple(entry["term_field"])
         for path in _expand(root, [entry["glob"]], cfg["ignore"]):
             seen.add(path.resolve())
@@ -221,7 +223,8 @@ def build(root: Path):
     doc_files = _close_docs(root, doc_files, cfg["ignore"])
     refs = scan_docs(doc_files, glossary, cfg["id_patterns"],
                      ref_fields=cfg["ref_fields"], lenient=lenient,
-                     delimiters=delimiters, historical=hist_set)
+                     delimiters=delimiters, historical=hist_set, root=root,
+                     glossary_patterns=[entry["glob"] for entry in entries])
 
     extra: list[Diagnostic] = []
     for spec in cfg.get("catalogs") or []:
@@ -283,7 +286,9 @@ aliases: [record]
 
 A markdown file that defines exactly one term. The frontmatter carries `term`,
 optional `aliases`, `ns` (namespace), and `id`; the body is the definition.
-Reference it anywhere as [[glossary record]] — unresolved references fail
+Link to this file from your docs, for example
+`[glossary record](.ubiq/glossary/glossary-record.md)` from the repo root.
+Wiki-links such as `[[glossary record]]` also work. Missing references fail
 `ubiq check`. Delete this example once you have real terms.
 """
 
@@ -341,7 +346,8 @@ def cmd_terms(args) -> int:
     if args.format == "context":
         print("## Language\n")
         for t in terms:
-            print(f"**[[{t.term}]]**:")
+            label = t.qualified if len(glossary.resolve(t.term)) > 1 else t.term
+            print(f"**[[{label}]]**:")
             para = (t.definition.split("\n\n")[0] if t.definition else "").strip()
             print(para or "_No definition._")
             print()
@@ -361,8 +367,8 @@ def cmd_refs(args) -> int:
     if not wanted:
         print(f"no record defines '{args.term}'", file=sys.stderr)
         return 1
-    names = {n for t in wanted for n in t.names()} | {t.id for t in wanted if t.id}
-    hits = [r for r in refs if r.name in names or normalize(r.raw) in names]
+    wanted_ids = {id(t) for t in wanted}
+    hits = [r for r in refs if any(id(t) in wanted_ids for t in r.resolve(glossary))]
     for t in wanted:
         print(f"defined: {t.qualified} — {t.file}")
     for r in sorted(hits, key=lambda r: (str(r.file), r.line)):

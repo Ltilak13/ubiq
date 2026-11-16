@@ -1,61 +1,98 @@
 # ubiq
 
-**A linker for prose.** Every domain term used in your docs must resolve to exactly one
-defining record — or the build fails. Unresolved-import semantics for markdown.
+A linker for prose. Explicit vocabulary references must resolve to exactly one
+defining record, or the check fails.
 
-Docs rot because nothing depends on them. ubiq makes your vocabulary load-bearing: terms are
-defined once in glossary records, referenced everywhere else, and checked in CI like any other
-build artifact. Think `eslint` for your ubiquitous language.
-
-ubiq is a **linter, not a migrator**. It never moves, merges, or rewrites your docs. It reports
-duplicate definitions, unresolved references, and ambiguous terms — you (or your agent) do the
-consolidating once; ubiq keeps it clean forever after.
+Define a term once, link to its definition from your docs, and check those links
+in CI. Ubiq reports missing references, duplicate definitions, and ambiguous names.
+It also indexes ordinary mentions for search. It doesn't rewrite your docs or
+check whether every word belongs in the glossary.
 
 ## Quick start
 
+Install from a Ubiq checkout:
+
 ```bash
 pip install -e .
-ubiq init           # scaffold ubiq.yaml + .ubiq/glossary/ with an example record
-ubiq check          # lint the current repo (reads ubiq.yaml)
-ubiq terms          # list the glossary
-ubiq terms --format context --ns repo   # dump a CONTEXT.md Language section
-ubiq refs "term"    # every place a term is used — traceability is just search
-ubiq check --json   # machine-readable, for CI and agents
 ```
 
-Exit code 0 = vocabulary resolves. Exit code 1 = broken — gate your merges on it.
+Then initialize the repository you want to check:
 
-In CI, use the bundled GitHub Action (`uses: Ltilak13/ubiq@main`) or the
+```bash
+cd /path/to/your/repo
+ubiq init
+ubiq check
+```
+
+Add a record at `.ubiq/glossary/session.md`:
+
+```markdown
+---
+term: session
+---
+
+A period of play.
+```
+
+Reference it from your README with an ordinary Markdown link:
+
+```markdown
+Start a [session](.ubiq/glossary/session.md).
+```
+
+That link is a checked vocabulary reference. If the file disappears or no longer
+defines a record, `ubiq check` fails with `E002` and the source location.
+Link the first useful mention in a section and leave repeated mentions plain.
+Those plain mentions still appear in `ubiq refs session`.
+
+Wiki-links remain available. A typo such as `[[sesion]]` reports:
+
+```text
+E002 unresolved reference [[sesion]] — no defining record. Did you mean [[session]]?
+```
+
+## References
+
+- Inline Markdown links to registered records or paths matching configured
+  glossary globs must resolve. The destination selects the record, so the label
+  can be natural prose. Fragments and link titles are allowed. Other local links
+  keep their existing traversal behavior. Reference-style links are not checked
+  vocabulary references yet.
+- Wiki-links such as `[[session]]` and `[[game:session]]` resolve by name, alias,
+  or record ID. Qualify a name when multiple namespaces define it.
+- Configured delimiters support slash-commands such as `/tdd`. With
+  `only_known: true`, unknown names, including typos, are ignored.
+- Configured ID patterns and frontmatter reference fields must resolve too.
+  Plain mentions are indexed for search and never fail the check.
+
+Records use YAML frontmatter with `term`, optional `ns`, `aliases`, and `id`.
+The body contains the definition. Existing schemas can use another term field,
+including skill `name:` fields. Sidecar overlays attach metadata and dependencies
+without editing the source files.
+
+## Commands and CI
+
+```bash
+ubiq check                             # exit 1 on errors, 0 otherwise
+ubiq check --json                      # diagnostics for CI and agents
+ubiq terms                             # list the glossary
+ubiq terms --format context --ns repo   # emit a CONTEXT.md Language section
+ubiq refs session                      # find links and ordinary mentions
+ubiq refs game:session                 # restrict the query to a namespace
+```
+
+Use the bundled GitHub Action (`uses: Ltilak13/ubiq@main`) or the
 [pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`.
+The [integration skill](skills/apply-ubiq/SKILL.md) covers setup in another repo.
 
-To wire ubiq into another repo without editing files it already owns, follow
-[`skills/apply-ubiq/SKILL.md`](skills/apply-ubiq/SKILL.md).
+The [spec](docs/spec.md) defines the resolution rules and diagnostics, including
+catalog checks and historical-document exceptions. Ubiq checks its own docs.
 
-## How it works
+## Roadmap
 
-1. **Glossary records** — one markdown file per term, YAML frontmatter (`term`, `ns`,
-   `aliases`, optional `id`), definition in the body. See `glossary/`.
-2. **References** — write `[[term]]` or `[[ns:term]]` in any doc, or a configured
-   delimiter (`/` → `/term` for slash-commands). Configured `id_patterns`
-   (e.g. requirement IDs like `R3`) must also resolve. Plain mentions of defined terms are
-   indexed too, so `ubiq refs` finds everything. Overlays (`.ubiq/overlays/`) attach
-   frontmatter to files the linter does not own — glob-level `ns` / `term_field` and
-   sidecar `source:` records, so existing `name:` files become terms without being edited.
-3. **Checks** — `E001` duplicate definition, `E002` unresolved reference, `E003` ambiguous
-   reference (needs a namespace qualifier), `E004` unresolved ID, `E005` invalid record,
-   `E006` unresolved frontmatter field ref or catalog entry (`ref_fields` / `catalogs`),
-   `E007` catalog cover gap, `W001` orphan term (defined, never used). Historical docs
-   (`CHANGELOG.md`) are scanned but unresolved refs there do not fail.
+The current focus is deterministic checks: readable Markdown, consistent
+resolution, and errors that explain how to fix a broken reference.
 
-Full spec: `docs/spec.md`. ubiq lints its own docs — this repo passes `ubiq check`.
-
-## Roadmap (staged; a stage must earn its keep before the next starts)
-
-- **Stage 1 — deterministic linker** (this repo). Success metric: runs clean on its own docs
-  and produces useful findings on a real docs-heavy repo.
-- **Stage 2 — code walk.** AST pass verifying code identifiers are built from glossary terms;
-  ref map (record ↔ symbol) emitted as a build artifact.
-- **Stage 3 — LLM judge.** Semantic check per diff: flags term _misuse_, not just undefined
-  terms. Advisory first, gating when precision earns it.
-- **Stage 4 — adapters & editor.** Confluence/Notion pull-and-lint adapters; LSP hover =
-  jump from any term to its defining record.
+Later options include a code-symbol map, advisory semantic checks, external-doc
+adapters, and editor navigation. Each needs useful results on real repositories
+before it becomes a required check.

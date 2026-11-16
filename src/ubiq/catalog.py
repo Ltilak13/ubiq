@@ -81,7 +81,7 @@ def catalog_cover_gaps(spec: dict, file: Path, glossary: Glossary,
     for t in glossary.terms:
         if t.file.resolve() not in cover_res:
             continue
-        if t.term not in listed and not any(a in listed for a in t.aliases):
+        if not any(n in listed or f"{t.ns}:{n}" in listed for n in t.names()):
             diags.append(Diagnostic(
                 "E007",
                 f"'{t.qualified}' not listed in catalog {file.name}",
