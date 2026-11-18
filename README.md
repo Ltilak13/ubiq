@@ -102,7 +102,7 @@ scanned. Use `check` to validate references; `explain` reports discovery and
 assembly errors. Invalid configuration reports `E008` instead of a traceback.
 
 Use the bundled GitHub Action (`uses: Ltilak13/ubiq@main`) or the
-[pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`.
+[pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`; Markdown, YAML, and JSON changes trigger it.
 The [integration skill](skills/apply-ubiq/SKILL.md) covers setup in another repo.
 
 The [spec](docs/spec.md) defines the resolution rules and diagnostics, including

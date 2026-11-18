@@ -11,4 +11,4 @@
   entry: ubiq check
   language: python
   pass_filenames: false
-  types_or: [markdown, yaml]
+  types_or: [markdown, yaml, json]

@@ -1,15 +1,9 @@
 """CLI contracts for validated discovery, reference output, and explanations."""
 
-
 import json
-
-
 from pathlib import Path
 
-
 from ubiq.cli import build, main
-
-
 from test_ubiq import REC_SESSION, make_repo
 
 
@@ -188,6 +182,12 @@ def test_explain_tracks_discovery_without_crawling(tmp_path, capsys):
     assert result == json.loads(capsys.readouterr().out)
     assert main(["explain", "--root", str(tmp_path)]) == 0
     assert "unmatched docs: empty/*.md" in capsys.readouterr().out
+
+
+def test_json_catalogs_trigger_precommit():
+    import yaml
+    hook = yaml.safe_load((Path(__file__).parents[1] / ".pre-commit-hooks.yaml").read_text())[0]
+    assert "json" in hook["types_or"] and hook["pass_filenames"] is False
 
 
 def test_invalid_utf8_overlay_is_reported_once(tmp_path, capsys):
