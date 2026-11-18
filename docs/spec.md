@@ -21,7 +21,9 @@ An id reference resolves against record `id:` fields. Configured
 [[delimiter]]s (UB-6) are explicit references with the same rules. An [[overlay]] (UB-7)
 is sidecar frontmatter linked to a source file the linter does not own. A [[catalog]]
 is an inventory (not a second glossary): entries must resolve, and optional `cover`
-globs require every matching record to be listed. Docs listed under `historical`
+globs require every matching record to be listed. Catalog entries resolve by ID
+before name; coverage credits only a uniquely resolved record. An ambiguous entry
+can produce E003 and leave its candidate records uncovered (E007). Docs listed under `historical`
 are scanned for mentions and resolved refs. Unresolved vocabulary links,
 `[[old]]`, and `/old-name` do not fail the build.
 

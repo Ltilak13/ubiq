@@ -548,7 +548,7 @@ def test_field_and_catalog_refs_require_unique_names(tmp_path, capsys):
     assert main(["check", "--root", str(tmp_path), "--json"]) == 1
     out = json.loads(capsys.readouterr().out)
     assert [d["code"] for d in out["diagnostics"] if d["severity"] == "error"] == [
-        "E003", "E003"]
+        "E007", "E007", "E003", "E003"]
     (tmp_path / "doc.md").write_text("---\nuses: ['game:session']\n---\n")
     (tmp_path / "plugin.json").write_text('{"skills": ["auth:session", "game:session"]}')
     assert main(["check", "--root", str(tmp_path)]) == 0

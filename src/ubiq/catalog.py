@@ -31,12 +31,12 @@ def _dotted(obj, path: str):
 
 
 def _load(path: Path):
-    text = path.read_text(encoding="utf-8")
     try:
+        text = path.read_text(encoding="utf-8")
         if path.suffix in {".yaml", ".yml"}:
             return yaml.safe_load(text)
         return json.loads(text)
-    except (json.JSONDecodeError, yaml.YAMLError) as e:
+    except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError) as e:
         raise CatalogError(f"invalid catalog: {str(e).splitlines()[0]}") from e
 
 
@@ -70,18 +70,20 @@ def catalog_refs(spec: dict, file: Path) -> list[Ref]:
     return refs
 
 
-def catalog_cover_gaps(spec: dict, file: Path, glossary: Glossary,
+def catalog_cover_gaps(refs: list[Ref], file: Path, glossary: Glossary,
                        cover_files: set[Path]) -> list[Diagnostic]:
-    """E007: a record whose file is in `cover` is not listed in the catalog."""
-    mode = spec.get("term") or "basename"
-    listed = {normalize(_term_of(str(i), mode))
-              for i in _items(spec, file) if isinstance(i, (str, int))}
+    """E007: a covered record has no uniquely resolving catalog entry."""
+    listed: set[int] = set()
+    for ref in refs:
+        matches = ref.resolve(glossary)
+        if len(matches) == 1:
+            listed.add(id(matches[0]))
     cover_res = {p.resolve() for p in cover_files}
     diags: list[Diagnostic] = []
     for t in glossary.terms:
         if t.file.resolve() not in cover_res:
             continue
-        if not any(n in listed or f"{t.ns}:{n}" in listed for n in t.names()):
+        if id(t) not in listed:
             diags.append(Diagnostic(
                 "E007",
                 f"'{t.qualified}' not listed in catalog {file.name}",

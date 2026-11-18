@@ -235,9 +235,10 @@ def build(root: Path):
             extra.append(Diagnostic("E005", f"catalog file not found: {spec['file']}", cfile))
             continue
         try:
-            refs.extend(catalog_refs(spec, cfile))
+            catalog_entries = catalog_refs(spec, cfile)
+            refs.extend(catalog_entries)
             cover = _expand(root, _as_list(spec.get("cover")), cfg["ignore"])
-            extra.extend(catalog_cover_gaps(spec, cfile, glossary, set(cover)))
+            extra.extend(catalog_cover_gaps(catalog_entries, cfile, glossary, set(cover)))
         except CatalogError as e:
             extra.append(Diagnostic("E005", str(e), cfile))
 
