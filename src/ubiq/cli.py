@@ -248,20 +248,40 @@ def cmd_refs(args) -> int:
     glossary, refs, _, extra = build(root)
     errors = _assembly_errors(glossary, extra)
     if errors:
-        return _report(errors, root, False)
-    wanted = glossary.resolve(args.term) or [
-        t for t in glossary.terms if t.id == args.term]
-    if not wanted:
+        return _report(errors, root, args.json)
+    wanted = glossary.resolve(args.term) or glossary.by_id.get(args.term, [])
+    wanted_ids = {id(term) for term in wanted}
+    hits = sorted(
+        (ref for ref in refs if (not args.kind or ref.kind in args.kind)
+         and any(id(term) in wanted_ids for term in ref.resolve(glossary))),
+        key=lambda ref: (str(ref.file), ref.line))
+    if args.json:
+        result = {
+            "query": args.term,
+            "definitions": [
+                {"term": term.term, "namespace": term.ns, "qualified": term.qualified,
+                 "id": term.id, "aliases": term.aliases,
+                 "file": _display_path(term.file, root)}
+                for term in sorted(wanted, key=lambda term: (term.qualified, str(term.file)))],
+            "references": [
+                {"kind": ref.kind, "file": _display_path(ref.file, root),
+                 "line": ref.line, "raw": ref.raw, "target": ref.target,
+                 "destination": _display_path(ref.destination, root) if ref.destination else None,
+                 "historical": ref.historical} for ref in hits],
+            "count": len(hits),
+        }
+        if not wanted:
+            result["error"] = f"no record defines '{args.term}'"
+        print(json.dumps(result, indent=2))
+    elif not wanted:
         print(f"no record defines '{args.term}'", file=sys.stderr)
-        return 1
-    wanted_ids = {id(t) for t in wanted}
-    hits = [r for r in refs if any(id(t) in wanted_ids for t in r.resolve(glossary))]
-    for t in wanted:
-        print(f"defined: {t.qualified} — {t.file}")
-    for r in sorted(hits, key=lambda r: (str(r.file), r.line)):
-        print(f"{r.file}:{r.line}: {r.kind} '{r.raw}'")
-    print(f"{len(hits)} references")
-    return 0
+    else:
+        for term in wanted:
+            print(f"defined: {term.qualified} — {term.file}")
+        for ref in hits:
+            print(f"{ref.file}:{ref.line}: {ref.kind} '{ref.raw}'")
+        print(f"{len(hits)} references")
+    return 0 if wanted else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -287,6 +307,10 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("refs", help="find every use of a term")
     r.add_argument("term")
     r.add_argument("--root", default=".")
+    r.add_argument("--json", action="store_true")
+    r.add_argument("--kind", action="append", choices=[
+        "explicit", "id", "field", "mention", "catalog", "markdown"],
+        help="include this reference kind (repeat to select several)")
     r.set_defaults(fn=cmd_refs)
 
     args = p.parse_args(argv)

@@ -101,3 +101,15 @@ qualified reference credits only the selected namespace. Markdown vocabulary
 links count once, without also indexing their label or destination as mentions.
 Plain mentions with multiple possible definitions remain searchable in each
 namespace. Context output qualifies names when the glossary contains a collision.
+
+
+## Command output
+
+`refs TERM --json` returns `query`, `definitions`, `references`, and `count`.
+Definitions include the canonical term, namespace, qualified name, optional ID,
+aliases, and file. References include kind, file, line, raw text, target,
+optional Markdown destination, and historical status. Repeatable `--kind`
+selects the union of the named kinds. An unknown query exits 1 with empty arrays
+and an `error` message. Without flags, text output retains its existing format.
+Catalog locations retain their existing one-based inventory index; they are not
+source-file line numbers.

@@ -82,7 +82,15 @@ ubiq terms                             # list the glossary
 ubiq terms --format context --ns repo   # emit a CONTEXT.md Language section
 ubiq refs session                      # find links and ordinary mentions
 ubiq refs game:session                 # restrict the query to a namespace
+ubiq refs session --json               # structured definitions and references
+ubiq refs session --kind explicit --kind markdown
 ```
+
+`--kind` is repeatable: results include any selected kind (`explicit`, `id`,
+`field`, `mention`, `catalog`, or `markdown`). Without filters, `refs` includes
+all kinds. Its JSON output contains `query`, `definitions`, `references`, and
+`count`; an unknown query returns an empty result with `error` and exits 1.
+Paths inside the repository are relative to its root; external paths are absolute.
 
 Use the bundled GitHub Action (`uses: Ltilak13/ubiq@main`) or the
 [pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`.

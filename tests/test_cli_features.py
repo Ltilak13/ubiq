@@ -107,6 +107,52 @@ def test_overlay_can_define_a_selected_source_without_term(tmp_path, capsys):
     assert len(build(tmp_path)) == 4
 
 
+def test_refs_json_filters_and_default_text(tmp_path, capsys):
+    make_repo(tmp_path, {"session.md": REC_SESSION},
+              {"README.md": "[[session]] then session. [play](glossary/session.md)\n",
+               "CHANGELOG.md": "[[session]]\n"},
+              'glossary: ["glossary/*.md"]\ndocs: [README.md]\nhistorical: [CHANGELOG.md]\n')
+    args = ["refs", "session", "--root", str(tmp_path)]
+    assert main(args) == 0
+    text = capsys.readouterr().out
+    assert "defined: core:session" in text and "4 references" in text
+    assert main([*args, "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["count"] == 4 and result["query"] == "session"
+    assert result["definitions"][0]["file"] == "glossary/session.md"
+    assert result["references"][0]["historical"] is True
+    link = next(ref for ref in result["references"] if ref["kind"] == "markdown")
+    assert link["destination"] == "glossary/session.md" and link["line"] == 1
+    assert main([*args, "--json", "--kind", "explicit", "--kind", "markdown"]) == 0
+    filtered = json.loads(capsys.readouterr().out)
+    assert filtered["count"] == 3
+    assert {ref["kind"] for ref in filtered["references"]} == {"explicit", "markdown"}
+    assert main([*args, "--json", "--kind", "id"]) == 0
+    assert json.loads(capsys.readouterr().out)["count"] == 0
+
+
+def test_refs_unknown_term_is_json_failure(tmp_path, capsys):
+    assert main(["refs", "missing", "--root", str(tmp_path), "--json"]) == 1
+    output = capsys.readouterr()
+    result = json.loads(output.out)
+    assert result["definitions"] == [] and result["references"] == []
+    assert result["count"] == 0 and "missing" in result["error"]
+    assert output.err == ""
+
+
+def test_refs_json_external_record_keeps_absolute_path(tmp_path, capsys):
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside.md"
+    outside.write_text(REC_SESSION)
+    (root / "glossary.md").symlink_to(outside)
+    (root / "README.md").write_text("[[session]]")
+    (root / "ubiq.yaml").write_text('glossary: [glossary.md]\ndocs: [README.md]\n')
+    assert main(["refs", "session", "--root", str(root), "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["definitions"][0]["file"] == str(outside)
+
+
 def test_invalid_utf8_overlay_is_reported_once(tmp_path, capsys):
     make_repo(tmp_path, {"session.md": REC_SESSION}, {"README.md": "[[session]]"},
               'glossary: ["glossary/*.md"]\ndocs: [README.md]\n')
