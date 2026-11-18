@@ -84,6 +84,8 @@ ubiq refs session                      # find links and ordinary mentions
 ubiq refs game:session                 # restrict the query to a namespace
 ubiq refs session --json               # structured definitions and references
 ubiq refs session --kind explicit --kind markdown
+ubiq explain                          # show why files were discovered
+ubiq explain --json                    # the same discovery evidence as JSON
 ```
 
 `--kind` is repeatable: results include any selected kind (`explicit`, `id`,
@@ -91,6 +93,13 @@ ubiq refs session --kind explicit --kind markdown
 all kinds. Its JSON output contains `query`, `definitions`, `references`, and
 `count`; an unknown query returns an empty result with `error` and exits 1.
 Paths inside the repository are relative to its root; external paths are absolute.
+
+`explain` shows matching globs, followed links, overlays, and historical rules.
+It reports ignored candidates encountered during discovery and globs with no
+matching files. It doesn't search other directories just to explain exclusions.
+The JSON output distinguishes files selected for discovery from documents actually
+scanned. Use `check` to validate references; `explain` reports discovery and
+assembly errors. Invalid configuration reports `E008` instead of a traceback.
 
 Use the bundled GitHub Action (`uses: Ltilak13/ubiq@main`) or the
 [pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`.

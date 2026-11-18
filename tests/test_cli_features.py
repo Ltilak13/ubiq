@@ -38,6 +38,17 @@ def test_config_errors_are_diagnostics(tmp_path, capsys):
         assert result["diagnostics"][0]["file"] == "ubiq.yaml"
 
 
+def test_all_read_commands_handle_invalid_config(tmp_path, capsys):
+    (tmp_path / "ubiq.yaml").write_text("[]")
+    for command in (["terms"], ["refs", "session"], ["explain"]):
+        assert main([*command, "--root", str(tmp_path)]) == 1
+        output = capsys.readouterr()
+        assert "E008" in output.out and "Traceback" not in output.err
+    for command in (["refs", "session"], ["explain"]):
+        assert main([*command, "--root", str(tmp_path), "--json"]) == 1
+        assert json.loads(capsys.readouterr().out)["errors"] == 1
+
+
 def test_null_config_values_keep_defaults(tmp_path, capsys):
     (tmp_path / "ubiq.yaml").write_text("glossary: null\ndocs: null\n")
     status, result = check_json(tmp_path, capsys)
@@ -151,6 +162,32 @@ def test_refs_json_external_record_keeps_absolute_path(tmp_path, capsys):
     assert main(["refs", "session", "--root", str(root), "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["definitions"][0]["file"] == str(outside)
+
+
+def test_explain_tracks_discovery_without_crawling(tmp_path, capsys):
+    config = ('glossary: ["glossary/*.md"]\ndocs: [README.md, "empty/*.md"]\n'
+              'historical: [CHANGELOG.md]\nignore: [ignored.md]\n')
+    make_repo(tmp_path, {"session.md": REC_SESSION}, {
+        "README.md": "[next](next.md) [ignore](ignored.md) [history](CHANGELOG.md)",
+        "next.md": "[back](README.md) [[session]]", "ignored.md": "[[ghost]]",
+        "unseen.md": "[[ghost]]", "CHANGELOG.md": "[[old]]",
+    }, config)
+    args = ["explain", "--root", str(tmp_path), "--json"]
+    assert main(args) == 0
+    result = json.loads(capsys.readouterr().out)
+    files = {item["file"]: item for item in result["files"]}
+    assert "unseen.md" not in files
+    assert files["ignored.md"]["included"] is False
+    assert files["ignored.md"]["reasons"][0]["ignored_by"] == "ignored.md"
+    assert {r["kind"] for r in files["README.md"]["reasons"]} == {"docs", "link"}
+    assert files["next.md"]["reasons"] == [{"kind": "link", "from": "README.md"}]
+    assert files["CHANGELOG.md"]["historical"] is True
+    assert {r["kind"] for r in files["CHANGELOG.md"]["reasons"]} == {"historical", "link"}
+    assert {"kind": "docs", "pattern": "empty/*.md"} in result["unmatched"]
+    assert main(args) == 0
+    assert result == json.loads(capsys.readouterr().out)
+    assert main(["explain", "--root", str(tmp_path)]) == 0
+    assert "unmatched docs: empty/*.md" in capsys.readouterr().out
 
 
 def test_invalid_utf8_overlay_is_reported_once(tmp_path, capsys):

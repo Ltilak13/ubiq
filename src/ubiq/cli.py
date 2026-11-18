@@ -29,61 +29,116 @@ def _display_path(path: Path, root: Path) -> str:
     return str(path.relative_to(root) if path.is_relative_to(root) else path)
 
 
-def _expand(root: Path, patterns: list[str], ignore: list[str]) -> list[Path]:
+class ScanTrace:
+    """Discovery evidence collected only when requested by explain."""
+
+    def __init__(self, root: Path):
+        self.root = root
+        self.files: dict[str, dict] = {}
+        self.unmatched: list[dict] = []
+
+    def record(self, path: Path, role: str, *, pattern: str | None = None,
+               source: Path | None = None, ignored_by: str | None = None):
+        name = _display_path(path.resolve(), self.root)
+        item = self.files.setdefault(name, {
+            "file": name, "included": False, "historical": False,
+            "exists": path.is_file(), "scanned": False, "reasons": []})
+        reason = {"kind": role}
+        if pattern is not None:
+            reason["pattern"] = pattern
+        if source is not None:
+            reason["from"] = _display_path(source.resolve(), self.root)
+        if ignored_by is not None:
+            reason["ignored_by"] = ignored_by
+        else:
+            item["included"] = True
+            item["historical"] |= role == "historical"
+        if reason not in item["reasons"]:
+            item["reasons"].append(reason)
+
+    def result(self) -> dict:
+        files = sorted(self.files.values(), key=lambda item: item["file"])
+        for item in files:
+            item["reasons"].sort(key=lambda reason: json.dumps(reason, sort_keys=True))
+        return {"files": files, "unmatched": sorted(
+            self.unmatched, key=lambda item: (item["kind"], item["pattern"]))}
+
+
+def _ignored(path: Path, root: Path, patterns: list[str]) -> str | None:
+    relative = str(path.relative_to(root)) if path.is_relative_to(root) else path.name
+    return next((pattern for pattern in patterns if fnmatch.fnmatch(relative, pattern)), None)
+
+
+def _expand(root: Path, patterns: list[str], ignore: list[str],
+            trace: ScanTrace | None = None, role: str = "docs") -> list[Path]:
     out: set[Path] = set()
     for pat in patterns:
         full = pat if Path(pat).is_absolute() else str(root / pat)
+        matched = False
         for hit in globlib.glob(full, recursive=True):
-            p = Path(hit)
-            if not p.is_file():
+            path = Path(hit)
+            if not path.is_file():
                 continue
-            rel = str(p.relative_to(root)) if p.is_relative_to(root) else p.name
-            if not any(fnmatch.fnmatch(rel, ig) for ig in ignore):
-                out.add(p)
+            matched = True
+            ignored = _ignored(path, root, ignore)
+            if trace is not None:
+                trace.record(path, role, pattern=pat, ignored_by=ignored)
+            if ignored is None:
+                out.add(path)
+        if not matched and trace is not None:
+            item = {"kind": role, "pattern": pat}
+            if item not in trace.unmatched:
+                trace.unmatched.append(item)
     return sorted(out)
 
 
-def _close_docs(root: Path, seeds: list[Path], ignore: list[str]) -> list[Path]:
-    """docs: globs are roots. Path wiki-links and relative markdown links to
-    existing in-repo .md files are followed until the set is closed."""
-    seen = {p.resolve() for p in seeds}
-    queue = list(seeds)
+def _close_docs(root: Path, seeds: list[Path], ignore: list[str],
+                trace: ScanTrace | None = None) -> list[Path]:
+    """Follow existing in-repo links while recording all encountered reasons."""
+    seen = {path.resolve() for path in seeds}
+    queue = sorted(seen)
     while queue:
-        p = queue.pop()
+        path = queue.pop()
         try:
-            linked = file_link_targets(p, root)
+            linked = file_link_targets(path, root)
         except (OSError, UnicodeError):
             continue
-        for q in linked:
-            key = q.resolve()
-            if key in seen:
-                continue
-            rel = str(q.relative_to(root)) if q.is_relative_to(root) else q.name
-            if any(fnmatch.fnmatch(rel, ig) for ig in ignore):
+        for target in linked:
+            key = target.resolve()
+            ignored = _ignored(target, root, ignore)
+            if trace is not None:
+                trace.record(target, "link", source=path, ignored_by=ignored)
+            if ignored is not None or key in seen:
                 continue
             seen.add(key)
-            queue.append(q)
-    return sorted(seen, key=lambda p: str(p))
+            queue.append(target)
+    return sorted(seen, key=str)
 
 
-def build(root: Path):
+def build(root: Path, trace: ScanTrace | None = None):
     root = root.resolve()
     cfg = load_config(root)
     term_fields = tuple(cfg["term_field"])
     lenient = cfg["frontmatter"] == "lenient"
     delimiters = [compile_delimiter(d) for d in cfg["delimiters"]]
-    overlay_files = _expand(root, cfg["overlays"], cfg["ignore"])
+    overlay_files = _expand(root, cfg["overlays"], cfg["ignore"], trace, "overlay")
     entries = cfg["glossary"]
     sources = [
         (path, tuple(entry["term_field"]), entry.get("ns"),
          f"glossary[{i}] ({entry['glob']})")
         for i, entry in enumerate(entries)
-        for path in _expand(root, [entry["glob"]], cfg["ignore"])
+        for path in _expand(root, [entry["glob"]], cfg["ignore"], trace, "glossary")
     ]
     glossary = assemble_glossary(root, sources, overlay_files, term_fields, lenient)
 
-    doc_files = _expand(root, cfg["docs"], cfg["ignore"])
-    hist_files = _expand(root, cfg["historical"], cfg["ignore"])
+    if trace is not None:
+        for term in glossary.terms:
+            trace.record(term.file, "record")
+        for source, overlay in glossary.overlay_sources.items():
+            trace.record(source, "overlay-source", source=overlay)
+
+    doc_files = _expand(root, cfg["docs"], cfg["ignore"], trace, "docs")
+    hist_files = _expand(root, cfg["historical"], cfg["ignore"], trace, "historical")
     hist_set = {p.resolve() for p in hist_files}
     # Sidecars are docs too, so their ref_fields (uses: [...]) participate.
     for p in overlay_files:
@@ -92,7 +147,10 @@ def build(root: Path):
     for p in hist_files:
         if p not in doc_files:
             doc_files.append(p)
-    doc_files = _close_docs(root, doc_files, cfg["ignore"])
+    doc_files = _close_docs(root, doc_files, cfg["ignore"], trace)
+    if trace is not None:
+        for path in doc_files:
+            trace.files[_display_path(path, root)]["scanned"] = True
     refs = scan_docs(doc_files, glossary, cfg["id_patterns"],
                      ref_fields=cfg["ref_fields"], lenient=lenient,
                      delimiters=delimiters, historical=hist_set, root=root,
@@ -102,13 +160,15 @@ def build(root: Path):
     extra: list[Diagnostic] = []
     for spec in cfg.get("catalogs") or []:
         cfile = root / spec["file"]
+        if trace is not None:
+            trace.record(cfile, "catalog")
         if not cfile.is_file():
             extra.append(Diagnostic("E005", f"catalog file not found: {spec['file']}", cfile))
             continue
         try:
             catalog_entries = catalog_refs(spec, cfile)
             refs.extend(catalog_entries)
-            cover = _expand(root, spec["cover"], cfg["ignore"])
+            cover = _expand(root, spec["cover"], cfg["ignore"], trace, "cover")
             extra.extend(catalog_cover_gaps(catalog_entries, cfile, glossary, set(cover)))
         except CatalogError as e:
             extra.append(Diagnostic("E005", str(e), cfile))
@@ -217,6 +277,32 @@ def cmd_check(args) -> int:
     return _report(diags, root, args.json, len(glossary.terms), len(refs))
 
 
+def cmd_explain(args) -> int:
+    root = Path(args.root).resolve()
+    trace = ScanTrace(root)
+    glossary, _, _, extra = build(root, trace)
+    diags = _assembly_errors(glossary, extra)
+    result = trace.result()
+    result["diagnostics"] = _diagnostics_json(diags, root)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        for item in result["files"]:
+            state = "included" if item["included"] else "ignored"
+            if item["historical"]:
+                state += ", historical"
+            print(f"{item['file']}: {state}")
+            for reason in item["reasons"]:
+                detail = reason.get("pattern") or reason.get("from") or ""
+                ignored = f" (ignored by {reason['ignored_by']})" if "ignored_by" in reason else ""
+                print(f"  {reason['kind']}: {detail}{ignored}")
+        for item in result["unmatched"]:
+            print(f"unmatched {item['kind']}: {item['pattern']}")
+        for diag in diags:
+            print(diag.render())
+    return int(any(d.is_error for d in diags))
+
+
 def cmd_terms(args) -> int:
     root = Path(args.root).resolve()
     glossary, _, _, extra = build(root)
@@ -312,6 +398,11 @@ def main(argv: list[str] | None = None) -> int:
         "explicit", "id", "field", "mention", "catalog", "markdown"],
         help="include this reference kind (repeat to select several)")
     r.set_defaults(fn=cmd_refs)
+
+    e = sub.add_parser("explain", help="explain discovered files and their inclusion rules")
+    e.add_argument("--root", default=".")
+    e.add_argument("--json", action="store_true")
+    e.set_defaults(fn=cmd_explain)
 
     args = p.parse_args(argv)
     try:

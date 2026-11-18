@@ -113,3 +113,15 @@ selects the union of the named kinds. An unknown query exits 1 with empty arrays
 and an `error` message. Without flags, text output retains its existing format.
 Catalog locations retain their existing one-based inventory index; they are not
 source-file line numbers.
+
+`explain --json` returns `files`, `unmatched`, and assembly `diagnostics`.
+Each file has its path, inclusion status, existence, scanned-document status,
+historical classification, and discovery reasons. Reasons identify the matching
+pattern or source link/overlay; ignored candidates name the ignore rule.
+Unmatched patterns have no file matches, including before ignore filtering.
+Discovery records all encountered reasons, including links back to already
+visited files, without rescanning cycles. It does not enumerate unrelated files.
+Reference errors belong to `check`; `explain` fails on configuration or assembly
+errors. Both JSON commands use root-relative paths inside the repository and
+absolute paths outside it. Configuration failures use the check diagnostic
+JSON envelope and exit 1.

@@ -145,6 +145,7 @@ class Glossary:
     # normalized name -> list of Terms that claim it (canonical or alias)
     by_name: dict[str, list[Term]] = field(default_factory=dict)
     by_id: dict[str, list[Term]] = field(default_factory=dict)
+    overlay_sources: dict[Path, Path] = field(default_factory=dict)
     invalid: list[tuple[Path, str]] = field(default_factory=list)  # unparseable records
 
     def add(self, t: Term) -> None:
@@ -216,6 +217,8 @@ def assemble_glossary(root: Path, sources: list[tuple[Path, tuple[str, ...], str
             glossary.invalid.append((path, str(exc)))
     for source in duplicate_sources:
         overlays.pop(source, None)
+
+    glossary.overlay_sources = {source: path for source, (path, _) in overlays.items()}
 
     selected: dict[Path, tuple[tuple[str, ...], str, str]] = {}
     for path, fields, ns, rule in sources:
