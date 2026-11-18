@@ -14,7 +14,7 @@ a [[catalog]] (UB-8) is a JSON/YAML inventory of terms that is not itself a glos
 
 Resolution rules, in order: an explicit qualified reference resolves within its namespace
 only; an explicit unqualified reference resolves across all namespaces and must land on
-exactly one [[record]]. Inline Markdown links to registered records or configured
+exactly one [[record]]. Markdown links to registered records or configured
 glossary locations resolve by destination, regardless of the visible label.
 A missing destination or a file without a defining record is E002.
 An id reference resolves against record `id:` fields. Configured
@@ -55,7 +55,10 @@ glossary name.
 
 Fenced code blocks are never scanned, so documentation of syntax and shell
 `[[` tests cannot trip the linker. Wiki-links, id patterns, and mentions skip
-inline code as well. Inline Markdown vocabulary links also skip code and images.
+inline code as well. Markdown vocabulary links also skip code and images.
+Fences may have up to three leading spaces and at least three backticks or tildes.
+The closing marker must use the same character and be at least as long. An unclosed
+fence hides the remaining document. Inline code spans use matching backtick runs.
 Configured [[delimiter]]s *do* match inside backticks —
 that is how slash-commands are written. Frontmatter is never scanned as prose,
 so field names are not mentions. Plain-prose mentions of a defined [[term]] are
@@ -72,8 +75,15 @@ are followed the same way. Links into configured glossary globs are checked even
 the target no longer exists. Glob `**` matches zero or more directories. A link
 to a registered record can follow a symlink outside the repo. Ordinary link
 traversal stays inside the repo. URL-encoded paths, fragments, angle-bracket
-destinations, and link titles are supported. Reference-style Markdown links
-are not vocabulary references. Historical docs are the exception: they are
+destinations, and link titles are supported. Full `[label][id]`, collapsed `[id][]`,
+and shortcut `[id]` links use document-local definitions of the form
+`[id]: destination "optional title"`. Definitions must fit on one line, with at
+most three leading spaces. Labels ignore case and collapse whitespace; the first
+definition wins. A usage without a definition remains plain prose. Definition
+lines are metadata: they produce no references, and unused definitions do not
+cause traversal. Checked references report the usage line, not the definition
+line. Nested link labels and multiline definitions are outside the supported
+Markdown subset. Historical docs are the exception: they are
 scanned, but unresolved explicit/Markdown/id/field refs do not fail.
 
 Checks, orphan detection, and `ubiq refs` use the same resolution rules. A

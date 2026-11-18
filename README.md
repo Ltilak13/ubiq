@@ -56,8 +56,9 @@ E002 unresolved reference [[sesion]] — no defining record. Did you mean [[sess
 - Inline Markdown links to registered records or paths matching configured
   glossary globs must resolve. The destination selects the record, so the label
   can be natural prose. Fragments and link titles are allowed. Other local links
-  keep their existing traversal behavior. Reference-style links are not checked
-  vocabulary references yet.
+  keep their existing traversal behavior. Full `[label][id]`, collapsed `[id][]`,
+  and shortcut `[id]` links work with a single-line `[id]: path/to/record.md`
+  definition. Labels ignore case and repeated whitespace; the first definition wins.
 - Wiki-links such as `[[session]]` and `[[game:session]]` resolve by name, alias,
   or record ID. Qualify a name when multiple namespaces define it.
 - Configured delimiters support slash-commands such as `/tdd`. With

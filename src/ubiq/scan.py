@@ -9,7 +9,7 @@ Six kinds of reference:
   catalog   — values from a configured JSON/YAML inventory (must resolve, else E006)
   mention   — plain-prose occurrence of a defined term or alias (indexed for
               `ubiq refs` and orphan detection; never an error)
-  markdown  — inline Markdown link to a record or configured glossary location
+  markdown  — Markdown link to a record or configured glossary location
               (must resolve by destination, else E002/E003)
 
 Refs from `historical` files still index mentions and resolved refs, but
@@ -39,14 +39,22 @@ SKIP_FIELD_VALUES = {"", "-", "—", "na", "n/a", "none", "no", "yes"}
 
 # (?<!!) skips ![[...]] embeds/transclusions (Obsidian-style includes, not term refs)
 EXPLICIT_RE = re.compile(r"(?<!!)\[\[([^\[\]|]+?)(?:\|[^\[\]]*)?\]\]")
-FENCE_RE = re.compile(r"^(```|~~~).*?^\1\s*$", re.DOTALL | re.MULTILINE)
-INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 # GLOSSARY.md, SKILL.md, foo.json — wiki-link targets that are filenames, not terms
 FILE_EXT_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,7}$")
-# [label](./file.md) — skip images ![alt](x)
+MD_DESTINATION = r"<[^>\n]*>|(?:\\.|[^()\s]|\([^()\n]*\))+"
+MD_TITLE = r"(?:[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?"
+MD_DEFINITION_RE = re.compile(
+    r"^ {0,3}\[(?P<label>(?:\\.|[^\[\]\n])+)\]:[ \t]*"
+    r"(?P<destination>" + MD_DESTINATION + r")" + MD_TITLE + r"[ \t]*$",
+    re.MULTILINE,
+)
+# Consume images and complete reference usages too, so their suffixes cannot
+# become accidental shortcut links. Nested labels are outside this grammar.
 MD_LINK_RE = re.compile(
-    r"(?<!!)\[[^\]\n]*\]\(\s*(<[^>\n]*>|(?:\\.|[^()\s]|\([^()\n]*\))+)"
-    r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?\s*\)"
+    r"(?P<image>!)?\[(?P<label>(?:\\.|[^\[\]\n])*)\]"
+    r"(?:\([ \t]*(?P<destination>" + MD_DESTINATION + r")" + MD_TITLE
+    + r"[ \t]*\)|\[(?P<reference>(?:\\.|[^\[\]\n])*)\])?"
 )
 MD_ESCAPE_RE = re.compile(r"\\([" + re.escape(punctuation) + r"])")
 DOC_SUFFIXES = {".md", ".markdown"}
@@ -111,21 +119,15 @@ def resolve_doc_link(source: Path, spec: str, root: Path) -> Path | None:
 
 def file_link_targets(path: Path, root: Path) -> list[Path]:
     """Existing markdown files this doc points at via path wiki-links or relative md links."""
-    text = path.read_text(encoding="utf-8")
-    fm = FRONTMATTER_RE.match(text)
-    if fm:
-        pad = "".join(c if c == "\n" else " " for c in fm.group(0))
-        text = pad + text[fm.end():]
-    clean = _blank_out(text)
+    document = _interpret_markdown(path.read_text(encoding="utf-8"))
     found: list[Path] = []
     seen: set[Path] = set()
     specs: list[str] = []
-    for m in EXPLICIT_RE.finditer(clean):
+    for m in EXPLICIT_RE.finditer(document.prose):
         target = m.group(1).strip()
-        if _looks_like_path(target):
+        if not _escaped(document.prose, m.start()) and _looks_like_path(target):
             specs.append(target)
-    for m in MD_LINK_RE.finditer(clean):
-        specs.append(m.group(1))
+    specs.extend(destination for _, _, destination in document.links)
     for spec in specs:
         hit = resolve_doc_link(path, spec, root)
         if hit and hit not in seen:
@@ -210,22 +212,117 @@ class Ref:
         return matches
 
 
-def _blank_out(text: str) -> str:
-    """Replace code regions with spaces, preserving offsets/line numbers."""
+def _blank(text: str) -> str:
+    """Keep source offsets and line numbers while hiding syntax."""
+    return "".join(c if c == "\n" else " " for c in text)
 
-    def blank(m: re.Match) -> str:
-        return "".join(c if c == "\n" else " " for c in m.group(0))
 
-    return INLINE_CODE_RE.sub(blank, FENCE_RE.sub(blank, text))
+def _mask(text: str, spans: list[tuple[int, int]]) -> str:
+    parts: list[str] = []
+    end = 0
+    for start, stop in sorted(spans):
+        if start < end:
+            continue
+        parts.extend((text[end:start], _blank(text[start:stop])))
+        end = stop
+    parts.append(text[end:])
+    return "".join(parts)
+
+
+def _escaped(text: str, pos: int) -> bool:
+    start = pos
+    while start and text[start - 1] == "\\":
+        start -= 1
+    return (pos - start) % 2 == 1
 
 
 def _blank_fences(text: str) -> str:
-    """Blank fenced blocks only — inline code stays, for delimiter matching."""
+    """Mask fenced blocks, including unmatched openers through EOF."""
+    fence = ""
+    lines: list[str] = []
+    for line in text.splitlines(keepends=True):
+        match = FENCE_RE.match(line.rstrip("\r\n"))
+        if fence:
+            lines.append(_blank(line))
+            if (match and match[1][0] == fence[0] and len(match[1]) >= len(fence)
+                    and not match[2].strip()):
+                fence = ""
+        elif match and not (match[1][0] == "`" and "`" in match[2]):
+            fence = match[1]
+            lines.append(_blank(line))
+        else:
+            lines.append(line)
+    return "".join(lines)
 
-    def blank(m: re.Match) -> str:
-        return "".join(c if c == "\n" else " " for c in m.group(0))
 
-    return FENCE_RE.sub(blank, text)
+def _blank_inline(text: str) -> str:
+    ticks = list(re.finditer(r"`+", text))
+    spans: list[tuple[int, int]] = []
+    following: dict[str, int] = {}
+    closers: dict[int, int] = {}
+    for index in range(len(ticks) - 1, -1, -1):
+        marker = ticks[index].group()
+        if marker in following:
+            closers[index] = following[marker]
+        following[marker] = index
+    i = 0
+    while i < len(ticks):
+        opener = ticks[i]
+        if _escaped(text, opener.start()):
+            i += 1
+            continue
+        closer = closers.get(i)
+        if closer is None:
+            i += 1
+        else:
+            spans.append((opener.start(), ticks[closer].end()))
+            i = closer + 1
+    return _mask(text, spans)
+
+
+def _reference_label(label: str) -> str:
+    return " ".join(MD_ESCAPE_RE.sub(r"\1", label).split()).casefold()
+
+
+@dataclass
+class _Markdown:
+    prose: str
+    delimiters: str
+    links: list[tuple[int, int, str]]
+
+
+def _interpret_markdown(text: str, skip_frontmatter: bool = True) -> _Markdown:
+    """Interpret the supported Markdown subset once for both scan consumers."""
+    fm = FRONTMATTER_RE.match(text)
+    if fm and skip_frontmatter:
+        text = _blank(fm.group()) + text[fm.end():]
+    fenced = _blank_fences(text)
+    outside_inline = _blank_inline(fenced)
+    definitions: dict[str, str] = {}
+    definition_spans: list[tuple[int, int]] = []
+    for m in MD_DEFINITION_RE.finditer(fenced):
+        if outside_inline[m.start("label") - 1] != "[":
+            continue
+        definitions.setdefault(_reference_label(m['label']), m['destination'])
+        definition_spans.append(m.span())
+    delimiters = _mask(fenced, definition_spans)
+    prose = _blank_inline(delimiters)
+    links: list[tuple[int, int, str]] = []
+    for m in MD_LINK_RE.finditer(prose):
+        start = m.start()
+        if m["image"] and _escaped(prose, start):
+            start += 1  # An escaped exclamation mark is prose, not an image.
+        elif m["image"] or _escaped(prose, start):
+            continue
+        if start and prose[start - 1] == "[":
+            continue
+        destination = m['destination']
+        if destination is None:
+            label = m['reference'] if m['reference'] else m['label']
+            destination = definitions.get(_reference_label(label))
+        if destination is not None:
+            links.append((start, m.end(), destination))
+    return _Markdown(prose, delimiters, links)
 
 
 def _line_of(text: str, pos: int) -> int:
@@ -272,16 +369,14 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
     fm = FRONTMATTER_RE.match(text)
     if fm and ref_fields:
         refs += _field_refs(fm.group(1), path, ref_fields, lenient)
-    if skip_frontmatter and fm:
-        pad = "".join(c if c == "\n" else " " for c in fm.group(0))
-        text = pad + text[fm.end():]
-    clean = _blank_out(text)
-    for_delim = _blank_fences(text)
+    document = _interpret_markdown(text, skip_frontmatter)
+    clean = document.prose
+    for_delim = document.delimiters
 
     link_spans: list[tuple[int, int]] = []
     record_files = {t.file.resolve() for t in glossary.terms}
-    for m in MD_LINK_RE.finditer(clean):
-        destination = _doc_link_path(path, m.group(1), root)
+    for start, end, spec in document.links:
+        destination = _doc_link_path(path, spec, root)
         if destination is None:
             continue
         registered = destination.resolve() in record_files
@@ -291,12 +386,17 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
         )
         if not (registered or configured):
             continue
-        refs.append(Ref("markdown", text[m.start():m.end()], "", None, path,
-                        _line_of(clean, m.start()), target=m.group(1),
+        refs.append(Ref("markdown", text[start:end], "", None, path,
+                        _line_of(clean, start), target=spec,
                         destination=destination.resolve()))
-        link_spans.append(m.span())
+        link_spans.append((start, end))
+
+    clean = _mask(clean, link_spans)
+    for_delim = _mask(for_delim, link_spans)
 
     for m in EXPLICIT_RE.finditer(clean):
+        if _escaped(clean, m.start()):
+            continue
         target = m.group(1).strip()
         ns, _, name = target.rpartition(":")
         # Path-shaped wiki-links are file refs, not terms — unless the name is
