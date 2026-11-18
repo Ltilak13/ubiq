@@ -72,7 +72,10 @@ def _parse_lenient(raw: str) -> dict:
 
 def parse_frontmatter(path: Path, lenient: bool = False) -> tuple[dict, str]:
     """Return (frontmatter dict, body). Empty dict if the file has no frontmatter."""
-    text = path.read_text(encoding="utf-8")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise InvalidRecord(f"cannot read record: {exc}") from exc
     m = FRONTMATTER_RE.match(text)
     if not m:
         return {}, text
@@ -85,7 +88,7 @@ def parse_frontmatter(path: Path, lenient: bool = False) -> tuple[dict, str]:
             raise InvalidRecord(
                 f"invalid YAML frontmatter: {str(e).splitlines()[0]}") from e
     if not isinstance(meta, dict):
-        meta = {}
+        raise InvalidRecord("frontmatter must be a mapping")
     return meta, text[m.end():]
 
 
@@ -104,6 +107,8 @@ def parse_record(path: Path, term_fields: tuple[str, ...] = ("term",),
     aliases = meta.get("aliases") or []
     if isinstance(aliases, str):
         aliases = [aliases]
+    if not isinstance(aliases, list):
+        raise InvalidRecord("aliases must be a string or list")
     ns = meta.get("ns", default_ns or DEFAULT_NS)
     return Term(
         term=normalize(str(meta[field_name])),
@@ -120,6 +125,8 @@ def overlay_onto(term: Term, meta: dict) -> Term:
     extra = meta.get("aliases") or []
     if isinstance(extra, str):
         extra = [extra]
+    if not isinstance(extra, list):
+        raise InvalidRecord("overlay aliases must be a string or list")
     aliases = list(dict.fromkeys(
         [*term.aliases, *[normalize(str(a)) for a in extra]]))
     ns = normalize(str(meta["ns"])) if meta.get("ns") else term.ns
@@ -171,3 +178,76 @@ def load_glossary(paths: list[Path],
         if t:
             g.add(t)
     return g
+
+
+class ConflictingGlossary(ValueError):
+    """One source was selected by incompatible glossary rules."""
+
+
+def assemble_glossary(root: Path, sources: list[tuple[Path, tuple[str, ...], str | None, str]],
+                      overlay_paths: list[Path], term_fields: tuple[str, ...],
+                      lenient: bool = False) -> Glossary:
+    """Build one glossary from discovered sources and sidecar records."""
+    glossary = Glossary()
+    overlays: dict[Path, tuple[Path, dict]] = {}
+    seen_overlays: set[Path] = set()
+    duplicate_sources: set[Path] = set()
+    for path in overlay_paths:
+        if path.resolve() in seen_overlays:
+            continue
+        seen_overlays.add(path.resolve())
+        try:
+            meta, _ = parse_frontmatter(path, lenient)
+            source = meta.get("source") or meta.get("on")
+            if source is None:
+                source = meta.get(True)  # YAML 1.1 compatibility for on:
+            if not isinstance(source, str) or not source.strip():
+                raise InvalidRecord("overlay source: expected a nonempty path string")
+            try:
+                resolved = (root / source).resolve()
+            except (ValueError, OSError, RuntimeError) as exc:
+                raise InvalidRecord(f"invalid overlay source path: {exc}") from exc
+            if resolved in overlays:
+                duplicate_sources.add(resolved)
+                raise InvalidRecord(
+                    f"duplicate overlays for {resolved}: {overlays[resolved][0]} and {path}")
+            overlays[resolved] = (path, meta)
+        except InvalidRecord as exc:
+            glossary.invalid.append((path, str(exc)))
+    for source in duplicate_sources:
+        overlays.pop(source, None)
+
+    selected: dict[Path, tuple[tuple[str, ...], str, str]] = {}
+    for path, fields, ns, rule in sources:
+        source = path.resolve()
+        settings = (fields, normalize(ns or DEFAULT_NS))
+        previous = selected.get(source)
+        if previous:
+            if previous[:2] != settings:
+                raise ConflictingGlossary(
+                    f"conflicting glossary rules for {source}: {previous[2]} and {rule}")
+            continue
+        selected[source] = (*settings, rule)
+
+    for source, (path, meta) in overlays.items():
+        selected.setdefault(source, (term_fields, normalize(str(meta.get("ns") or DEFAULT_NS)),
+                                     f"overlay {path}"))
+
+    for source, (fields, ns, _) in selected.items():
+        try:
+            if source in overlays and not source.is_file():
+                raise InvalidRecord(f"overlay source: '{source}' does not exist")
+            term = parse_record(source, fields, lenient, default_ns=ns)
+            if source in overlays:
+                _, meta = overlays[source]
+                if term is None and meta.get("term"):
+                    term = Term(normalize(str(meta["term"])), ns, source)
+                if term is None:
+                    raise InvalidRecord(f"overlay source: '{source}' has no defining term")
+                term = overlay_onto(term, meta)
+            if term:
+                glossary.add(term)
+        except InvalidRecord as exc:
+            location = overlays[source][0] if source in overlays else source
+            glossary.invalid.append((location, str(exc)))
+    return glossary

@@ -15,66 +15,18 @@ import json
 import sys
 from pathlib import Path
 
-import yaml
-
 from . import __version__
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
+from .config import InvalidConfig, load_config
 from .records import (
-    DEFAULT_NS, Glossary, InvalidRecord, Term, normalize, overlay_onto,
-    parse_frontmatter, parse_record,
+    ConflictingGlossary, assemble_glossary, normalize,
 )
 from .scan import compile_delimiter, file_link_targets, scan_docs
 
-DEFAULT_CONFIG = {
-    "glossary": ["glossary/**/*.md", ".ubiq/glossary/**/*.md"],
-    "docs": [
-        "README.md",
-        "AGENTS.md",
-        "CLAUDE.md",
-        "CONTEXT.md",
-        ".agents/**/*.md",
-        ".ubiq/**/*.md",
-        "docs/**/*.md",
-    ],
-    "historical": ["CHANGELOG.md"],
-    "ignore": [".git/**", "node_modules/**", ".venv/**"],
-    "id_patterns": [],
-    # Frontmatter field(s) holding the term, tried in order. Lets existing repos
-    # keep their schema (e.g. [name, title]) instead of renaming to `term:`.
-    "term_field": ["term"],
-    # "strict" = invalid YAML frontmatter is an error (E005).
-    # "lenient" = fall back to line-based key: value parsing for non-YAML dialects.
-    "frontmatter": "strict",
-    # Frontmatter fields in scanned docs whose values are references that must
-    # resolve by record id or name (e.g. solves: [T1]) — E006 otherwise.
-    "ref_fields": [],
-    # Regexes for ids that are defined outside records (e.g. requirement ids that
-    # live as headings in a research doc); matching field refs are accepted.
-    "external_id_patterns": [],
-    # Extra explicit wrappers besides [[term]]. A string is a prefix ("/" → /{term})
-    # or a pattern containing {term}. Dict form adds `except` for tokens that look
-    # like refs but aren't vocabulary (`/plugin` colliding with a term named plugin)
-    # and `only_known: true` to match only glossary names (quieter; typos invisible).
-    # Delimiters match inside inline code; fenced blocks are still ignored.
-    "delimiters": [],
-    # Sidecar records that attach frontmatter to a source file they do not own.
-    # Each overlay is markdown with `source: path/to/source.md` plus optional ns,
-    # aliases, id, and any ref_fields. The source file is not edited.
-    "overlays": [".ubiq/overlays/**/*.md"],
-    # JSON/YAML inventories of terms. Each item must resolve (E006). Optional
-    # `cover` globs: every matching record must appear in the inventory (E007).
-    "catalogs": [],
-}
 
-
-def load_config(root: Path) -> dict:
-    cfg = dict(DEFAULT_CONFIG)
-    f = root / "ubiq.yaml"
-    if f.exists():
-        user = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
-        cfg.update({k: v for k, v in user.items() if v is not None})
-    return cfg
+def _display_path(path: Path, root: Path) -> str:
+    return str(path.relative_to(root) if path.is_relative_to(root) else path)
 
 
 def _expand(root: Path, patterns: list[str], ignore: list[str]) -> list[Path]:
@@ -100,7 +52,7 @@ def _close_docs(root: Path, seeds: list[Path], ignore: list[str]) -> list[Path]:
         p = queue.pop()
         try:
             linked = file_link_targets(p, root)
-        except OSError:
+        except (OSError, UnicodeError):
             continue
         for q in linked:
             key = q.resolve()
@@ -114,104 +66,24 @@ def _close_docs(root: Path, seeds: list[Path], ignore: list[str]) -> list[Path]:
     return sorted(seen, key=lambda p: str(p))
 
 
-def _as_list(val) -> list:
-    if val is None:
-        return []
-    return val if isinstance(val, list) else [val]
-
-
-def _glossary_entries(cfg: dict) -> list[dict]:
-    """Normalize glossary: strings stay globs; dicts may set glob/term_field/ns."""
-    default_tf = _as_list(cfg["term_field"])
-    out = []
-    for item in cfg["glossary"]:
-        if isinstance(item, str):
-            out.append({"glob": item, "term_field": default_tf, "ns": None})
-        else:
-            tf = _as_list(item.get("term_field", default_tf))
-            out.append({"glob": item["glob"], "term_field": tf, "ns": item.get("ns")})
-    return out
-
-
-def _load_overlays(root: Path, paths: list[Path], lenient: bool) -> dict[Path, dict]:
-    """Map resolved source path -> overlay frontmatter (`source:` is the link)."""
-    by_source: dict[Path, dict] = {}
-    for p in paths:
-        try:
-            meta, _ = parse_frontmatter(p, lenient)
-        except InvalidRecord:
-            continue
-        on = meta.get("source") or meta.get("on")
-        # YAML 1.1: the key `on:` loads as boolean True.
-        if on is None and True in meta:
-            on = meta[True]
-        if not on or on is True:
-            continue
-        src = Path(on)
-        resolved = src.resolve() if src.is_absolute() else (root / src).resolve()
-        by_source[resolved] = {**meta, "_overlay_file": p}
-    return by_source
-
-
 def build(root: Path):
     root = root.resolve()
     cfg = load_config(root)
-    term_fields = tuple(_as_list(cfg["term_field"]))
+    term_fields = tuple(cfg["term_field"])
     lenient = cfg["frontmatter"] == "lenient"
-    delimiters = [compile_delimiter(d) for d in (cfg.get("delimiters") or [])]
-    overlay_files = _expand(root, _as_list(cfg.get("overlays")), cfg["ignore"])
-    overlay_by_source = _load_overlays(root, overlay_files, lenient)
-
-    glossary = Glossary()
-    seen: set[Path] = set()
-    entries = _glossary_entries(cfg)
-    for entry in entries:
-        tf = tuple(entry["term_field"])
-        for path in _expand(root, [entry["glob"]], cfg["ignore"]):
-            seen.add(path.resolve())
-            try:
-                t = parse_record(path, tf, lenient, default_ns=entry["ns"])
-            except InvalidRecord as e:
-                glossary.invalid.append((path, str(e)))
-                continue
-            if t:
-                ov = overlay_by_source.get(path.resolve())
-                if ov:
-                    t = overlay_onto(t, ov)
-                glossary.add(t)
-
-    # Overlays whose source was not in a glossary glob still define a record
-    # from the source file's frontmatter plus the sidecar.
-    for src, ov in overlay_by_source.items():
-        if src in seen:
-            continue
-        overlay_path = ov["_overlay_file"]
-        if not src.is_file():
-            glossary.invalid.append(
-                (overlay_path, f"overlay source: '{ov.get('source') or ov.get('on')}' does not exist"))
-            continue
-        try:
-            t = parse_record(src, term_fields, lenient, default_ns=ov.get("ns"))
-        except InvalidRecord as e:
-            glossary.invalid.append((src, str(e)))
-            continue
-        if t:
-            glossary.add(overlay_onto(t, ov))
-        elif ov.get("term"):
-            aliases = ov.get("aliases") or []
-            if isinstance(aliases, str):
-                aliases = [aliases]
-            glossary.add(Term(
-                term=normalize(str(ov["term"])),
-                ns=normalize(str(ov.get("ns") or DEFAULT_NS)),
-                file=src,
-                aliases=[normalize(str(a)) for a in aliases],
-                id=str(ov["id"]) if ov.get("id") is not None else None,
-                definition="",
-            ))
+    delimiters = [compile_delimiter(d) for d in cfg["delimiters"]]
+    overlay_files = _expand(root, cfg["overlays"], cfg["ignore"])
+    entries = cfg["glossary"]
+    sources = [
+        (path, tuple(entry["term_field"]), entry.get("ns"),
+         f"glossary[{i}] ({entry['glob']})")
+        for i, entry in enumerate(entries)
+        for path in _expand(root, [entry["glob"]], cfg["ignore"])
+    ]
+    glossary = assemble_glossary(root, sources, overlay_files, term_fields, lenient)
 
     doc_files = _expand(root, cfg["docs"], cfg["ignore"])
-    hist_files = _expand(root, _as_list(cfg.get("historical")), cfg["ignore"])
+    hist_files = _expand(root, cfg["historical"], cfg["ignore"])
     hist_set = {p.resolve() for p in hist_files}
     # Sidecars are docs too, so their ref_fields (uses: [...]) participate.
     for p in overlay_files:
@@ -224,12 +96,11 @@ def build(root: Path):
     refs = scan_docs(doc_files, glossary, cfg["id_patterns"],
                      ref_fields=cfg["ref_fields"], lenient=lenient,
                      delimiters=delimiters, historical=hist_set, root=root,
-                     glossary_patterns=[entry["glob"] for entry in entries])
+                     glossary_patterns=[entry["glob"] for entry in entries],
+                     invalid=glossary.invalid)
 
     extra: list[Diagnostic] = []
     for spec in cfg.get("catalogs") or []:
-        if not isinstance(spec, dict) or not spec.get("file"):
-            continue
         cfile = root / spec["file"]
         if not cfile.is_file():
             extra.append(Diagnostic("E005", f"catalog file not found: {spec['file']}", cfile))
@@ -237,7 +108,7 @@ def build(root: Path):
         try:
             catalog_entries = catalog_refs(spec, cfile)
             refs.extend(catalog_entries)
-            cover = _expand(root, _as_list(spec.get("cover")), cfg["ignore"])
+            cover = _expand(root, spec["cover"], cfg["ignore"])
             extra.extend(catalog_cover_gaps(catalog_entries, cfile, glossary, set(cover)))
         except CatalogError as e:
             extra.append(Diagnostic("E005", str(e), cfile))
@@ -311,35 +182,47 @@ def cmd_init(args) -> int:
     return 0
 
 
+def _diagnostics_json(diags: list[Diagnostic], root: Path) -> list[dict]:
+    return [{"code": d.code, "message": d.message,
+             "file": _display_path(d.file, root), "line": d.line,
+             "severity": "error" if d.is_error else "warning"} for d in diags]
+
+
+def _report(diags: list[Diagnostic], root: Path, as_json: bool,
+            terms: int = 0, refs: int = 0) -> int:
+    errors = sum(d.is_error for d in diags)
+    if as_json:
+        print(json.dumps({
+            "terms": terms, "refs": refs, "errors": errors,
+            "warnings": len(diags) - errors,
+            "diagnostics": _diagnostics_json(diags, root),
+        }, indent=2))
+    else:
+        for diag in diags:
+            print(diag.render())
+        print(f"{'FAIL' if errors else 'OK'}: {terms} terms, {refs} refs, "
+              f"{errors} errors, {len(diags) - errors} warnings")
+    return 1 if errors else 0
+
+
+def _assembly_errors(glossary, extra) -> list[Diagnostic]:
+    return [*extra, *(Diagnostic("E005", message, path)
+                      for path, message in glossary.invalid)]
+
+
 def cmd_check(args) -> int:
     root = Path(args.root).resolve()
     glossary, refs, cfg, extra = build(root)
     diags = extra + run_checks(glossary, refs, cfg["external_id_patterns"])
-    errors = [d for d in diags if d.is_error]
-    if args.json:
-        print(json.dumps({
-            "terms": len(glossary.terms),
-            "refs": len(refs),
-            "errors": len(errors),
-            "warnings": len(diags) - len(errors),
-            "diagnostics": [
-                {"code": d.code, "message": d.message,
-                 "file": str(d.file.relative_to(root) if d.file.is_relative_to(root) else d.file),
-                 "line": d.line, "severity": "error" if d.is_error else "warning"}
-                for d in diags
-            ],
-        }, indent=2))
-    else:
-        for d in diags:
-            print(d.render())
-        status = "FAIL" if errors else "OK"
-        print(f"{status}: {len(glossary.terms)} terms, {len(refs)} refs, "
-              f"{len(errors)} errors, {len(diags) - len(errors)} warnings")
-    return 1 if errors else 0
+    return _report(diags, root, args.json, len(glossary.terms), len(refs))
 
 
 def cmd_terms(args) -> int:
-    glossary, _, _, _ = build(Path(args.root).resolve())
+    root = Path(args.root).resolve()
+    glossary, _, _, extra = build(root)
+    errors = _assembly_errors(glossary, extra)
+    if errors:
+        return _report(errors, root, False)
     terms = glossary.terms
     if args.ns:
         terms = [t for t in terms if t.ns == normalize(args.ns)]
@@ -362,7 +245,10 @@ def cmd_terms(args) -> int:
 
 def cmd_refs(args) -> int:
     root = Path(args.root).resolve()
-    glossary, refs, _, _ = build(root)
+    glossary, refs, _, extra = build(root)
+    errors = _assembly_errors(glossary, extra)
+    if errors:
+        return _report(errors, root, False)
     wanted = glossary.resolve(args.term) or [
         t for t in glossary.terms if t.id == args.term]
     if not wanted:
@@ -404,7 +290,12 @@ def main(argv: list[str] | None = None) -> int:
     r.set_defaults(fn=cmd_refs)
 
     args = p.parse_args(argv)
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except (InvalidConfig, ConflictingGlossary) as exc:
+        root = Path(args.root).resolve()
+        return _report([Diagnostic("E008", str(exc), root / "ubiq.yaml")],
+                       root, getattr(args, "json", False))
 
 
 if __name__ == "__main__":

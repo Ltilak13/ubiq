@@ -10,6 +10,7 @@ Errors (fail the build):
                               defining record (external_id_patterns whitelists ids
                               defined outside records)
   E007 catalog-cover-gap      a record matching a catalog's `cover` globs is not listed
+  E008 invalid-configuration  invalid settings or conflicting glossary selection rules
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
@@ -25,7 +26,7 @@ from pathlib import Path
 from .records import Glossary
 from .scan import Ref
 
-ERROR_CODES = {"E001", "E002", "E003", "E004", "E005", "E006", "E007"}
+ERROR_CODES = {"E001", "E002", "E003", "E004", "E005", "E006", "E007", "E008"}
 
 
 @dataclass

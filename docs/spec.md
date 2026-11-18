@@ -32,6 +32,13 @@ frontmatter (`name:`) can be a record without adding fields to those files.
 `only_known: true` on a [[delimiter]] matches a token only if it is already a
 glossary name.
 
+A source path is registered once, including symlink aliases. Equivalent matching
+glossary rules deduplicate; conflicting effective `term_field` or `ns` rules
+report E008 with both rules. A file's own namespace does not override a conflict
+between its selection rules. Distinct overlays targeting one resolved source
+report E005; consolidate them instead of relying on filename order. Malformed
+overlay metadata and missing sources also report E005.
+
 ## Diagnostics
 
 - `E001` duplicate definition — one name (canonical or alias) claimed by two records in the
@@ -43,11 +50,14 @@ glossary name.
 - `E004` unresolved id — an id-pattern match with no record carrying that id.
 - `E005` invalid record — a [[record]] file exists but its frontmatter cannot be parsed
   (strict mode; `frontmatter: lenient` opts into line-based parsing for non-YAML dialects).
+  Unreadable records/catalogs, malformed overlays, and duplicate overlay sources also use E005.
 - `E006` unresolved field ref — a value in a configured `ref_fields` frontmatter field
   or a [[catalog]] entry with no defining [[record]] by id or name;
   `external_id_patterns` whitelists ids defined outside records.
 - `E007` catalog cover gap — a [[record]] matching a [[catalog]]'s `cover` globs is
   not listed in the inventory.
+- `E008` invalid configuration — invalid YAML, field shapes, regular expressions,
+  delimiter settings, or conflicting glossary rules. The message names the field or rules.
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 

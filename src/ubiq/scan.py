@@ -449,14 +449,22 @@ def scan_docs(paths: list[Path], glossary: Glossary, id_patterns: list[str],
               delimiters: list[Delimiter] | None = None,
               historical: set[Path] | None = None,
               root: Path | None = None,
-              glossary_patterns: list[str] | None = None) -> list[Ref]:
+              glossary_patterns: list[str] | None = None,
+              invalid: list[tuple[Path, str]] | None = None) -> list[Ref]:
     hist = {p.resolve() for p in (historical or [])}
     refs: list[Ref] = []
     for p in sorted(paths):
-        found = scan_file(p, glossary, id_patterns,
-                          ref_fields=ref_fields, lenient=lenient,
-                          delimiters=delimiters, root=root,
-                          glossary_patterns=glossary_patterns)
+        try:
+            found = scan_file(p, glossary, id_patterns,
+                              ref_fields=ref_fields, lenient=lenient,
+                              delimiters=delimiters, root=root,
+                              glossary_patterns=glossary_patterns)
+        except (OSError, UnicodeError) as exc:
+            if invalid is None:
+                raise
+            if not any(path.resolve() == p.resolve() for path, _ in invalid):
+                invalid.append((p, f"cannot read document: {exc}"))
+            continue
         if p.resolve() in hist:
             for r in found:
                 r.historical = True

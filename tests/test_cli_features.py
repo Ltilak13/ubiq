@@ -1,0 +1,154 @@
+"""CLI contracts for validated discovery, reference output, and explanations."""
+
+
+import json
+
+
+from pathlib import Path
+
+
+from ubiq.cli import build, main
+
+
+from test_ubiq import REC_SESSION, make_repo
+
+
+def check_json(root, capsys):
+    status = main(["check", "--root", str(root), "--json"])
+    return status, json.loads(capsys.readouterr().out)
+
+
+def test_config_errors_are_diagnostics(tmp_path, capsys):
+    configs = [
+        "[glossary, docs]", "false", "0", "glossary: [", "docs: README.md",
+        "glossary: [42]", "glossary: [{}]", "glossary: [{glob: '*.md', ns: []}]",
+        "term_field: []", "frontmatter: tolerant", "id_patterns: ['[']",
+        "external_id_patterns: ['(']", "catalogs: [{}]", "catalogs: [false]",
+        "catalogs: [{file: x.json, cover: 5}]", "catalogs: [{file: x.json, term: typo}]",
+        "delimiters: [5]", "delimiters: [{prefix: '/', except: false}]",
+        "delimiters: [{prefix: '/', only_known: 'yes'}]",
+        "delimiters: ['{term}{term}']", "historical: 3", "ref_fields: [null]",
+    ]
+    for config in configs:
+        (tmp_path / "ubiq.yaml").write_text(config)
+        status, result = check_json(tmp_path, capsys)
+        assert status == 1, config
+        assert result["errors"] == 1, config
+        assert result["diagnostics"][0]["code"] == "E008", config
+        assert result["diagnostics"][0]["file"] == "ubiq.yaml"
+
+
+def test_null_config_values_keep_defaults(tmp_path, capsys):
+    (tmp_path / "ubiq.yaml").write_text("glossary: null\ndocs: null\n")
+    status, result = check_json(tmp_path, capsys)
+    assert status == 0 and result["terms"] == 0
+
+
+def test_equivalent_globs_and_symlinks_register_once(tmp_path, capsys):
+    make_repo(tmp_path, {"session.md": REC_SESSION}, {"README.md": "[[session]]"},
+              'glossary: ["glossary/*.md", "glossary/**/*.md", "linked.md"]\ndocs: [README.md]\n')
+    (tmp_path / "linked.md").symlink_to(tmp_path / "glossary/session.md")
+    status, result = check_json(tmp_path, capsys)
+    assert status == 0 and result["terms"] == 1
+    assert result["warnings"] == 0
+
+
+def test_conflicting_globs_report_both_rules(tmp_path, capsys):
+    for setting in ("ns: other", "term_field: name"):
+        config = ('glossary:\n  - glob: "glossary/*.md"\n'
+                  f'  - glob: "glossary/**/*.md"\n    {setting}\ndocs: [README.md]\n')
+        make_repo(tmp_path, {"session.md": REC_SESSION}, {"README.md": "[[session]]"}, config)
+        status, result = check_json(tmp_path, capsys)
+        assert status == 1
+        diag = result["diagnostics"][0]
+        assert diag["code"] == "E008"
+        assert "glossary[0]" in diag["message"] and "glossary[1]" in diag["message"]
+
+
+def test_invalid_overlay_inputs_fail(tmp_path, capsys):
+    make_repo(tmp_path, {"session.md": REC_SESSION}, {"README.md": "[[session]]"},
+              'glossary: ["glossary/*.md"]\ndocs: [README.md]\n')
+    overlays = tmp_path / ".ubiq/overlays"
+    overlays.mkdir(parents=True)
+    for body in ("source: [", "source: []", "aliases: [play]", "source: missing.md",
+                 "source: glossary/session.md\naliases: 7"):
+        (overlays / "bad.md").write_text(f"---\n{body}\n---\n")
+        status, result = check_json(tmp_path, capsys)
+        assert status == 1, body
+        assert any(d["code"] == "E005" for d in result["diagnostics"])
+        assert main(["terms", "--root", str(tmp_path)]) == 1
+        capsys.readouterr()
+
+
+def test_duplicate_overlay_sources_report_both_paths(tmp_path, capsys):
+    make_repo(tmp_path, {"session.md": REC_SESSION}, {"README.md": "[[session]]"},
+              'glossary: ["glossary/*.md"]\ndocs: [README.md]\n')
+    overlays = tmp_path / ".ubiq/overlays"
+    overlays.mkdir(parents=True)
+    for name in ("first", "second"):
+        (overlays / f"{name}.md").write_text(
+            f"---\nsource: glossary/session.md\naliases: [{name}]\n---\n")
+    status, result = check_json(tmp_path, capsys)
+    assert status == 1
+    diag = next(d for d in result["diagnostics"] if d["code"] == "E005")
+    assert "first.md" in diag["message"] and "second.md" in diag["message"]
+
+
+def test_overlay_can_define_a_selected_source_without_term(tmp_path, capsys):
+    make_repo(tmp_path, {"session.md": "A definition without metadata."},
+              {"README.md": "[[session]]"},
+              'glossary: ["glossary/*.md"]\ndocs: [README.md]\n')
+    overlays = tmp_path / ".ubiq/overlays"
+    overlays.mkdir(parents=True)
+    (overlays / "session.md").write_text(
+        "---\nsource: glossary/session.md\nterm: session\n---\n")
+    status, result = check_json(tmp_path, capsys)
+    assert status == 0 and result["terms"] == 1
+    assert len(build(tmp_path)) == 4
+
+
+def test_invalid_utf8_overlay_is_reported_once(tmp_path, capsys):
+    make_repo(tmp_path, {"session.md": REC_SESSION}, {"README.md": "[[session]]"},
+              'glossary: ["glossary/*.md"]\ndocs: [README.md]\n')
+    overlays = tmp_path / ".ubiq/overlays"
+    overlays.mkdir(parents=True)
+    (overlays / "bad.md").write_bytes(b"\xff")
+    status, result = check_json(tmp_path, capsys)
+    assert status == 1 and result["errors"] == 1
+    assert result["diagnostics"][0]["code"] == "E005"
+    assert result["diagnostics"][0]["file"] == ".ubiq/overlays/bad.md"
+
+
+def test_overlay_missing_term_fails_with_and_without_glob(tmp_path, capsys):
+    source = tmp_path / "source.md"
+    source.write_text("No term here.")
+    overlays = tmp_path / ".ubiq/overlays"
+    overlays.mkdir(parents=True)
+    (overlays / "source.md").write_text("---\nsource: source.md\n---\n")
+    for globs in ("[]", "[source.md]"):
+        (tmp_path / "ubiq.yaml").write_text(f"glossary: {globs}\ndocs: []\n")
+        status, result = check_json(tmp_path, capsys)
+        assert status == 1
+        assert result["errors"] == 1
+        assert result["diagnostics"][0]["code"] == "E005"
+        assert "no defining term" in result["diagnostics"][0]["message"]
+
+
+def test_invalid_overlay_source_path_is_diagnostic(tmp_path, capsys):
+    (tmp_path / "ubiq.yaml").write_text("glossary: []\ndocs: []\n")
+    overlays = tmp_path / ".ubiq/overlays"
+    overlays.mkdir(parents=True)
+    (overlays / "bad.md").write_text('---\nsource: "bad\\0path.md"\n---\n')
+    status, result = check_json(tmp_path, capsys)
+    assert status == 1 and result["errors"] == 1
+    assert result["diagnostics"][0]["code"] == "E005"
+    assert result["diagnostics"][0]["file"] == ".ubiq/overlays/bad.md"
+
+
+def test_overflowing_config_patterns_are_diagnostics(tmp_path, capsys):
+    for field in ("id_patterns", "external_id_patterns"):
+        (tmp_path / "ubiq.yaml").write_text(f'{field}: ["a{{99999999999999999999999999999}}"]\n')
+        status, result = check_json(tmp_path, capsys)
+        assert status == 1 and result["errors"] == 1
+        assert result["diagnostics"][0]["code"] == "E008"
+        assert field in result["diagnostics"][0]["message"]

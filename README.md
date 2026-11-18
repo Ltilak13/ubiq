@@ -69,7 +69,9 @@ E002 unresolved reference [[sesion]] — no defining record. Did you mean [[sess
 Records use YAML frontmatter with `term`, optional `ns`, `aliases`, and `id`.
 The body contains the definition. Existing schemas can use another term field,
 including skill `name:` fields. Sidecar overlays attach metadata and dependencies
-without editing the source files.
+without editing the source files. Equivalent glossary globs register each file
+once. Conflicting namespace or term-field rules report `E008`; two overlays
+for one source report `E005` and must be consolidated.
 
 ## Commands and CI
 
