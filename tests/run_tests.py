@@ -6,6 +6,7 @@ Canonical runner is still pytest: `python3 -m pytest tests/`.
 
 import contextlib
 import inspect
+import importlib
 import io
 import sys
 import tempfile
@@ -15,37 +16,43 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import test_ubiq  # noqa: E402
 
 
 class Capsys:
-    def __init__(self, buf):
-        self.buf = buf
+    def __init__(self, buf, err):
+        self.buf, self.err = buf, err
 
     def readouterr(self):
         class R:
             pass
         r = R()
-        r.out, r.err = self.buf.getvalue(), ""
+        r.out, r.err = self.buf.getvalue(), self.err.getvalue()
+        self.err.seek(0)
+        self.err.truncate()
         self.buf.seek(0)
         self.buf.truncate()
         return r
 
 
 def run():
-    tests = [(n, f) for n, f in vars(test_ubiq).items()
-             if n.startswith("test_") and callable(f)]
+    modules = [importlib.import_module(path.stem)
+               for path in sorted(Path(__file__).parent.glob("test_*.py"))]
+    tests = [(f"{module.__name__}.{name}", fn) for module in modules
+             for name, fn in vars(module).items()
+             if name.startswith("test_") and callable(fn)
+             and fn.__module__ == module.__name__]
     failed = 0
     for name, fn in tests:
         params = inspect.signature(fn).parameters
         kwargs, ctx = {}, contextlib.ExitStack()
         with ctx:
             if "tmp_path" in params:
-                kwargs["tmp_path"] = Path(ctx.enter_context(tempfile.TemporaryDirectory()))
-            buf = io.StringIO()
+                kwargs["tmp_path"] = Path(ctx.enter_context(tempfile.TemporaryDirectory())).resolve()
+            buf, err = io.StringIO(), io.StringIO()
             if "capsys" in params:
-                kwargs["capsys"] = Capsys(buf)
+                kwargs["capsys"] = Capsys(buf, err)
                 ctx.enter_context(contextlib.redirect_stdout(buf))
+                ctx.enter_context(contextlib.redirect_stderr(err))
             try:
                 fn(**kwargs)
                 status = "ok"
