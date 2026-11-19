@@ -39,6 +39,13 @@ between its selection rules. Distinct overlays targeting one resolved source
 report E005; consolidate them instead of relying on filename order. Malformed
 overlay metadata and missing sources also report E005.
 
+An overlay on a source without a defining term is valid when it contains at least
+one configured `ref_fields` key and no `term`, `ns`, `aliases`, or `id` keys.
+This applies whether a glossary glob selects the source or not. An empty reference
+list is valid. The overlay creates no term. Its reference fields are checked
+normally, so unresolved targets report E006. Other overlays still require a
+defining term in the source or a nonempty `term` in the overlay.
+
 ## Diagnostics
 
 - `E001` duplicate definition — one name (canonical or alias) claimed by two records in the

@@ -235,3 +235,69 @@ def test_overflowing_config_patterns_are_diagnostics(tmp_path, capsys):
         assert status == 1 and result["errors"] == 1
         assert result["diagnostics"][0]["code"] == "E008"
         assert field in result["diagnostics"][0]["message"]
+
+
+def test_document_overlay_reference_fields_without_a_term(tmp_path, capsys):
+    make_repo(tmp_path, {"session.md": REC_SESSION}, {"README.md": "Ordinary document."})
+    overlays = tmp_path / ".ubiq/overlays"
+    overlays.mkdir(parents=True)
+    overlay = overlays / "readme.md"
+    for extra_glob in ("", ", README.md"):
+        for field in ("uses", "depends_on"):
+            (tmp_path / "ubiq.yaml").write_text(
+                f'glossary: ["glossary/*.md"{extra_glob}]\ndocs: []\n'
+                f'ref_fields: [{field}]\n')
+            for value in ("[session]", "[]", "[missing]"):
+                overlay.write_text(f"---\nsource: README.md\n{field}: {value}\n---\n")
+                status, result = check_json(tmp_path, capsys)
+                assert result["terms"] == 1
+                assert status == (1 if value == "[missing]" else 0)
+                assert [d["code"] for d in result["diagnostics"] if d["severity"] == "error"] == (
+                    ["E006"] if value == "[missing]" else [])
+                assert main(["terms", "--root", str(tmp_path)]) == 0
+                assert "core:session" in capsys.readouterr().out
+                assert main(["refs", "session", "--kind", "field", "--json",
+                             "--root", str(tmp_path)]) == 0
+                refs = json.loads(capsys.readouterr().out)["references"]
+                assert len(refs) == (1 if value == "[session]" else 0)
+                if refs:
+                    assert refs[0]["file"] == ".ubiq/overlays/readme.md"
+                    assert refs[0]["line"] == 3
+                assert main(["explain", "--json", "--root", str(tmp_path)]) == 0
+                files = json.loads(capsys.readouterr().out)["files"]
+                source = next(item for item in files if item["file"] == "README.md")
+                assert {"kind": "overlay-source", "from": ".ubiq/overlays/readme.md"} in source["reasons"]
+                assert not any(reason["kind"] == "record" for reason in source["reasons"])
+
+
+def test_document_overlay_keeps_definition_validation(tmp_path, capsys):
+    make_repo(tmp_path, {"session.md": REC_SESSION}, {"README.md": "Ordinary document."},
+              'glossary: ["glossary/*.md"]\ndocs: []\nref_fields: [uses]\n')
+    overlays = tmp_path / ".ubiq/overlays"
+    overlays.mkdir(parents=True)
+    bodies = [
+        "source: missing.md\nuses: [session]",
+        "source: README.md\nuses: [",
+        "source: README.md\ndepends_on: [session]",
+        *[f"source: README.md\nuses: [session]\n{identity}"
+          for identity in ("term: ''", "aliases: []", "aliases: 7", "ns: other", "id: DOC-1")],
+    ]
+    for body in bodies:
+        (overlays / "readme.md").write_text(f"---\n{body}\n---\n")
+        status, result = check_json(tmp_path, capsys)
+        assert status == 1, body
+        assert any(d["code"] == "E005" for d in result["diagnostics"]), body
+
+
+def test_document_overlay_duplicate_sources_fail(tmp_path, capsys):
+    make_repo(tmp_path, {}, {"README.md": "Ordinary document."},
+              'glossary: []\ndocs: []\nref_fields: [uses]\n')
+    overlays = tmp_path / ".ubiq/overlays"
+    overlays.mkdir(parents=True)
+    for name in ("first", "second"):
+        (overlays / f"{name}.md").write_text("---\nsource: README.md\nuses: []\n---\n")
+    status, result = check_json(tmp_path, capsys)
+    assert status == 1 and result["errors"] == 1
+    diag = result["diagnostics"][0]
+    assert diag["code"] == "E005"
+    assert "first.md" in diag["message"] and "second.md" in diag["message"]

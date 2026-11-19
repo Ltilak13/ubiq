@@ -187,7 +187,7 @@ class ConflictingGlossary(ValueError):
 
 def assemble_glossary(root: Path, sources: list[tuple[Path, tuple[str, ...], str | None, str]],
                       overlay_paths: list[Path], term_fields: tuple[str, ...],
-                      lenient: bool = False) -> Glossary:
+                      lenient: bool = False, *, ref_fields: tuple[str, ...] = ()) -> Glossary:
     """Build one glossary from discovered sources and sidecar records."""
     glossary = Glossary()
     overlays: dict[Path, tuple[Path, dict]] = {}
@@ -246,6 +246,10 @@ def assemble_glossary(root: Path, sources: list[tuple[Path, tuple[str, ...], str
                 if term is None and meta.get("term"):
                     term = Term(normalize(str(meta["term"])), ns, source)
                 if term is None:
+                    if (any(field in meta for field in ref_fields)
+                            and not any(field in meta for field in ("term", "ns", "aliases", "id"))):
+                        # Document dependencies are scanned from the sidecar, without a term.
+                        continue
                     raise InvalidRecord(f"overlay source: '{source}' has no defining term")
                 term = overlay_onto(term, meta)
             if term:

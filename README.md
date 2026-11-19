@@ -73,6 +73,11 @@ without editing the source files. Equivalent glossary globs register each file
 once. Conflicting namespace or term-field rules report `E008`; two overlays
 for one source report `E005` and must be consolidated.
 
+An overlay can declare dependencies for an ordinary document such as `README.md`.
+Include a field listed in `ref_fields`, such as `uses`, and omit term metadata
+(`term`, `ns`, `aliases`, and `id`). An empty dependency list is valid.
+The document stays outside the glossary, and each dependency must resolve.
+
 ## Commands and CI
 
 ```bash

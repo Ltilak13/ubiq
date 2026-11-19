@@ -129,7 +129,8 @@ def build(root: Path, trace: ScanTrace | None = None):
         for i, entry in enumerate(entries)
         for path in _expand(root, [entry["glob"]], cfg["ignore"], trace, "glossary")
     ]
-    glossary = assemble_glossary(root, sources, overlay_files, term_fields, lenient)
+    glossary = assemble_glossary(root, sources, overlay_files, term_fields, lenient,
+                                 ref_fields=tuple(cfg["ref_fields"]))
 
     if trace is not None:
         for term in glossary.terms:
