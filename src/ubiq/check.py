@@ -113,11 +113,17 @@ def run_checks(glossary: Glossary, refs: list[Ref],
                 r.file, r.line))
 
     # W001 — orphan terms (no reference or mention outside the defining record)
+    # Resolve each path once: per-ref filesystem calls dominate large repos.
+    term_files = {id(t): path for path, ts in glossary.by_file.items() for t in ts}
+    ref_files: dict[Path, Path] = {}
     used: set[int] = set()
     for r in refs:
         matches = r.resolve(glossary)
         if len(matches) == 1 or r.kind == "mention":
-            used.update(id(t) for t in matches if r.file.resolve() != t.file.resolve())
+            if r.file not in ref_files:
+                ref_files[r.file] = r.file.resolve()
+            source = ref_files[r.file]
+            used.update(id(t) for t in matches if source != term_files[id(t)])
     for t in glossary.terms:
         if id(t) not in used:
             diags.append(Diagnostic(

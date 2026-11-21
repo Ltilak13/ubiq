@@ -32,7 +32,9 @@ from urllib.parse import unquote, urlsplit
 
 import yaml
 
-from .records import FRONTMATTER_RE, Glossary, Term, _parse_lenient, normalize
+from .records import (
+    FRONTMATTER_RE, Glossary, Term, _parse_lenient, load_vocabulary_yaml, normalize,
+)
 
 # field values that are placeholders, not references
 SKIP_FIELD_VALUES = {"", "-", "—", "na", "n/a", "none", "no", "yes"}
@@ -57,6 +59,8 @@ MD_LINK_RE = re.compile(
     + r"[ \t]*\)|\[(?P<reference>(?:\\.|[^\[\]\n])*)\])?"
 )
 MD_ESCAPE_RE = re.compile(r"\\([" + re.escape(punctuation) + r"])")
+# Raw HTML open/close tags, including attributes that may span lines.
+HTML_TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>")
 DOC_SUFFIXES = {".md", ".markdown"}
 
 
@@ -200,7 +204,7 @@ class Ref:
     def resolve(self, glossary: Glossary) -> list[Term]:
         """Resolve consistently for checks, usage tracking, and refs queries."""
         if self.kind == "markdown":
-            return [t for t in glossary.terms if t.file.resolve() == self.destination]
+            return list(glossary.by_file.get(self.destination, []))
         if self.kind == "id":
             return glossary.by_id.get(self.name, [])
         if self.kind in ("field", "catalog"):
@@ -289,6 +293,9 @@ class _Markdown:
     prose: str
     delimiters: str
     links: list[tuple[int, int, str]]
+    # Inline link and image destinations, `(here)`. Paths, not prose, so a
+    # `/` delimiter must not read `[guide](/setup.md)` as the command `/setup`.
+    destinations: list[tuple[int, int]]
 
 
 def _interpret_markdown(text: str, skip_frontmatter: bool = True) -> _Markdown:
@@ -308,7 +315,10 @@ def _interpret_markdown(text: str, skip_frontmatter: bool = True) -> _Markdown:
     delimiters = _mask(fenced, definition_spans)
     prose = _blank_inline(delimiters)
     links: list[tuple[int, int, str]] = []
+    destinations: list[tuple[int, int]] = []
     for m in MD_LINK_RE.finditer(prose):
+        if m["destination"] is not None:
+            destinations.append(m.span("destination"))
         start = m.start()
         if m["image"] and _escaped(prose, start):
             start += 1  # An escaped exclamation mark is prose, not an image.
@@ -322,7 +332,7 @@ def _interpret_markdown(text: str, skip_frontmatter: bool = True) -> _Markdown:
             destination = definitions.get(_reference_label(label))
         if destination is not None:
             links.append((start, m.end(), destination))
-    return _Markdown(prose, delimiters, links)
+    return _Markdown(prose, delimiters, links, destinations)
 
 
 def _line_of(text: str, pos: int) -> int:
@@ -332,7 +342,7 @@ def _line_of(text: str, pos: int) -> int:
 def _field_refs(fm_text: str, path: Path, ref_fields: list[str],
                 lenient: bool) -> list[Ref]:
     try:
-        meta = yaml.load(fm_text, Loader=yaml.BaseLoader) or {}
+        meta = load_vocabulary_yaml(fm_text) or {}
     except yaml.YAMLError:
         meta = _parse_lenient(fm_text) if lenient else {}
     refs: list[Ref] = []
@@ -374,7 +384,7 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
     for_delim = document.delimiters
 
     link_spans: list[tuple[int, int]] = []
-    record_files = {t.file.resolve() for t in glossary.terms}
+    record_files = glossary.by_file
     for start, end, spec in document.links:
         destination = _doc_link_path(path, spec, root)
         if destination is None:
@@ -409,8 +419,14 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
                         target=name.strip()))
 
     delim_spans: list[tuple[int, int]] = []
+    # Link destinations and HTML tag attributes hold paths (`(/setup.md)`,
+    # `href="/install"`). Skip matches that start inside them rather than
+    # masking, so blanked text cannot create new token boundaries.
+    not_prose = document.destinations + [m.span() for m in HTML_TAG_RE.finditer(for_delim)]
     for delim in delimiters or []:
         for m in delim.regex.finditer(for_delim):
+            if any(a <= m.start() < b for a, b in not_prose):
+                continue
             raw_term = m.group(1)
             name = normalize(raw_term)
             if name in delim.except_names:
