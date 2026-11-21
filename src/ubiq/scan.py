@@ -268,6 +268,11 @@ def _blank_fences(text: str) -> str:
 
 
 def _blank_inline(text: str) -> str:
+    return _mask(text, _inline_spans(text))
+
+
+def _inline_spans(text: str) -> list[tuple[int, int]]:
+    """Inline code spans, backticks included: matching runs, unescaped openers."""
     ticks = list(re.finditer(r"`+", text))
     spans: list[tuple[int, int]] = []
     following: dict[str, int] = {}
@@ -289,7 +294,21 @@ def _blank_inline(text: str) -> str:
         else:
             spans.append((opener.start(), ticks[closer].end()))
             i = closer + 1
-    return _mask(text, spans)
+    return spans
+
+
+def inline_code(text: str) -> list[tuple[int, str]]:
+    """(line, content) of each inline code span outside frontmatter and fences."""
+    fm = FRONTMATTER_RE.match(text)
+    if fm:
+        text = _blank(fm.group()) + text[fm.end():]
+    text = _blank_fences(text)
+    out = []
+    for start, end in _inline_spans(text):
+        span = text[start:end]
+        ticks = len(span) - len(span.lstrip("`"))
+        out.append((_line_of(text, start), span[ticks:len(span) - ticks]))
+    return out
 
 
 def _reference_label(label: str) -> str:
