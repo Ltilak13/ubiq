@@ -15,7 +15,7 @@ Errors (fail the build):
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
   W002 unlinked-mention       a section mentions a term but never links it (once per
-                              term per section; `unlinked_mentions: off` disables it)
+                              term per section; `unlinked_mentions: warn` enables it)
 """
 
 from __future__ import annotations
@@ -50,6 +50,22 @@ class Diagnostic:
 LINKING_KINDS = ("explicit", "markdown", "id")
 
 
+def _term_files(glossary: Glossary) -> dict[int, Path]:
+    """Each term's resolved record path, keyed by `id(term)`."""
+    return {id(t): path for path, ts in glossary.by_file.items() for t in ts}
+
+
+def _resolver():
+    """Memoized `Path.resolve`: per-ref filesystem calls dominate large repos."""
+    cache: dict[Path, Path] = {}
+
+    def resolve(path: Path) -> Path:
+        if path not in cache:
+            cache[path] = path.resolve()
+        return cache[path]
+    return resolve
+
+
 def unlinked_mentions(glossary: Glossary, refs: list[Ref],
                       skip_files: set[Path] | None = None,
                       except_names: list[str] | None = None) -> list[Diagnostic]:
@@ -57,20 +73,20 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
 
     A section starts at an ATX heading (or the top of the file). Any wiki-link,
     delimiter, Markdown vocabulary link, id reference, or other link whose label
-    names the term in that section counts as linked. Headings, historical docs, the term's own record,
-    files in `skip_files` (overlay sidecars), and terms named in `except_names`
-    are not checked.
+    names the term in that section counts as linked. Headings, historical docs,
+    the term's own record, files in `skip_files` (overlay sidecars), and terms
+    named in `except_names` are not checked.
     """
     skip = skip_files or set()
     excepted = {normalize(n) for n in except_names or []}
-    term_files = {id(t): path for path, ts in glossary.by_file.items() for t in ts}
+    term_files = _term_files(glossary)
     linked: set[tuple[Path, int, int]] = set()
     for r in refs:
         if r.kind in LINKING_KINDS or r.linked:
             linked.update((r.file, r.section, id(t)) for t in r.resolve(glossary))
 
-    resolved_files: dict[Path, Path] = {}
-    reported: set[tuple[Path, int, frozenset[int]]] = set()
+    resolved = _resolver()
+    reported: set[tuple[Path, int, int]] = set()
     diags: list[Diagnostic] = []
     for r in refs:
         if r.kind != "mention" or r.historical or r.heading:
@@ -79,16 +95,15 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
                    if t.term not in excepted and normalize(t.qualified) not in excepted]
         if not matches or any((r.file, r.section, id(t)) in linked for t in matches):
             continue
-        if r.file not in resolved_files:
-            resolved_files[r.file] = r.file.resolve()
-        source = resolved_files[r.file]
+        source = resolved(r.file)
         if source in skip or any(term_files[id(t)] == source for t in matches):
             continue
-        key = (r.file, r.section, frozenset(id(t) for t in matches))
-        if key in reported:
+        # Once per term: a mention matching several terms reports those not yet seen.
+        fresh = [t for t in matches if (r.file, r.section, id(t)) not in reported]
+        if not fresh:
             continue
-        reported.add(key)
-        names = " or ".join(t.qualified for t in matches)
+        reported.update((r.file, r.section, id(t)) for t in fresh)
+        names = " or ".join(t.qualified for t in fresh)
         diags.append(Diagnostic(
             "W002", f"unlinked mention '{r.raw}' — this section never links {names}",
             r.file, r.line))
@@ -166,16 +181,13 @@ def run_checks(glossary: Glossary, refs: list[Ref],
                 r.file, r.line))
 
     # W001 — orphan terms (no reference or mention outside the defining record)
-    # Resolve each path once: per-ref filesystem calls dominate large repos.
-    term_files = {id(t): path for path, ts in glossary.by_file.items() for t in ts}
-    ref_files: dict[Path, Path] = {}
+    term_files = _term_files(glossary)
+    resolved = _resolver()
     used: set[int] = set()
     for r in refs:
         matches = r.resolve(glossary)
         if len(matches) == 1 or r.kind == "mention":
-            if r.file not in ref_files:
-                ref_files[r.file] = r.file.resolve()
-            source = ref_files[r.file]
+            source = resolved(r.file)
             used.update(id(t) for t in matches if source != term_files[id(t)])
     for t in glossary.terms:
         if id(t) not in used:
