@@ -404,7 +404,7 @@ def cmd_candidates(args) -> int:
             files = f"{c['files']} file{'s' if c['files'] != 1 else ''}"
             uses = f"{c['occurrences']} use{'s' if c['occurrences'] != 1 else ''}"
             print(f"{c['name']} — {files}, {uses}: {where}")
-        print(f"{len(found)} candidates")
+        print(f"{len(found)} candidate{'s' if len(found) != 1 else ''}")
     return 0
 
 
