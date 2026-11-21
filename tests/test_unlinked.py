@@ -76,3 +76,22 @@ def test_skips_excepted_terms_own_record_sidecars_and_history(tmp_path, capsys):
     for excepted in ("[pr]", "['skill:pr']"):
         (tmp_path / "ubiq.yaml").write_text(cfg + f"unlinked_except: {excepted}\n")
         assert w002(tmp_path, capsys) == (0, [("doc.md", 1)])
+
+
+def test_urls_are_not_mentions_and_external_labels_count_as_links(tmp_path, capsys):
+    doc = ("# A\n\nSee https://example.dev/skills-session now.\n"     # bare URL
+           "\n# B\n\nSee [the page](https://example.dev/session).\n"  # destination
+           "\n# C\n\nSee <https://example.dev/session>.\n"            # autolink
+           '\n# D\n\nSee <a href="/session">here</a>.\n'              # HTML tag
+           "\n# E\n\nThe [session](https://example.dev/s) page; the session ends.\n"
+           "\n# F\n\nA plain session.\n")                             # 23: flagged
+    make_repo(tmp_path, {"s.md": REC_SESSION}, {"doc.md": doc}, config=CFG)
+    assert w002(tmp_path, capsys) == (0, [("doc.md", 23)])
+
+
+def test_external_link_label_still_counts_as_use(tmp_path, capsys):
+    make_repo(tmp_path, {"s.md": REC_SESSION},
+              {"doc.md": "The [session](https://example.dev/s) page.\n"}, config=CFG)
+    main(["check", "--root", str(tmp_path), "--json"])
+    out = json.loads(capsys.readouterr().out)
+    assert [d for d in out["diagnostics"] if d["code"] == "W001"] == []

@@ -56,8 +56,8 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
     """W002: the first plain mention of a term in a section that never links it.
 
     A section starts at an ATX heading (or the top of the file). Any wiki-link,
-    delimiter, Markdown vocabulary link, or id reference to the term in that
-    section counts as linked. Headings, historical docs, the term's own record,
+    delimiter, Markdown vocabulary link, id reference, or other link whose label
+    names the term in that section counts as linked. Headings, historical docs, the term's own record,
     files in `skip_files` (overlay sidecars), and terms named in `except_names`
     are not checked.
     """
@@ -66,7 +66,7 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
     term_files = {id(t): path for path, ts in glossary.by_file.items() for t in ts}
     linked: set[tuple[Path, int, int]] = set()
     for r in refs:
-        if r.kind in LINKING_KINDS:
+        if r.kind in LINKING_KINDS or r.linked:
             linked.update((r.file, r.section, id(t)) for t in r.resolve(glossary))
 
     resolved_files: dict[Path, Path] = {}
