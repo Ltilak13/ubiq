@@ -1,5 +1,6 @@
 """Regressions: YAML scalar typing, delimiter false positives, resolve cost."""
 
+import time
 from pathlib import Path
 
 from ubiq.check import run_checks
@@ -88,3 +89,20 @@ def test_delimiter_skips_bare_url_paths_and_queries(tmp_path, capsys):
     capsys.readouterr()
     assert main(["refs", "tdd", "--kind", "explicit", "--root", str(tmp_path)]) == 0
     assert capsys.readouterr().out.count("explicit '/tdd'") == 1
+
+
+def test_address_scan_stays_linear_on_dotted_runs():
+    from ubiq.scan import URL_RE
+    start = time.perf_counter()
+    assert not list(URL_RE.finditer("a." * 20000))
+    assert time.perf_counter() - start < 1  # quadratic backtracking took ~4s
+    # A version pin is not an email: `tdd@2.0` still mentions `tdd`.
+    assert [m.group() for m in URL_RE.finditer("mail a.b+c@x.io, pin react@18.3.1")] == [
+        "a.b+c@x.io"]
+
+
+def test_version_pins_still_count_as_use(tmp_path, capsys):
+    recs = {"tdd.md": "---\nterm: tdd\n---\n\nThe loop.\n"}
+    make_repo(tmp_path, recs, {"doc.md": "Install tdd@2.0 or tdd@v1.x now.\n"})
+    main(["check", "--root", str(tmp_path)])
+    assert "W001" not in capsys.readouterr().out

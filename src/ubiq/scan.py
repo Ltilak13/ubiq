@@ -72,8 +72,11 @@ HTML_TAG_RE = re.compile(
 # Bare URLs (`scheme://`, `www.`), emails, and `<scheme:...>` / `<a@b.c>`
 # autolinks: addresses, not prose mentions.
 URL_RE = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>|<[^\s<>@]+@[^\s<>]+>"
-                    r"|\b(?:[A-Za-z][A-Za-z0-9+.-]*://|www\.)[^\s<>()\[\]]+"
-                    r"|\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+                    # Lookbehinds, not `\b`: `\b` re-enters every dotted run (quadratic).
+                    r"|(?:(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://|\bwww\.)"
+                    r"[^\s<>()\[\]]+"
+                    # The domain ends in a letter TLD, so `tdd@2.0` is a pin, not an email.
+                    r"|(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b")
 # HTML comments are not rendered, so their words are not prose mentions.
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 DOC_SUFFIXES = {".md", ".markdown"}
