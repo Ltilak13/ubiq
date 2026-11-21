@@ -42,7 +42,7 @@ def test_min_files_and_text_output(tmp_path, capsys):
     status, out = candidates(tmp_path, capsys, "--min-files", "1")
     assert status == 0 and [c["name"] for c in out["candidates"]] == ["to-prd"]
     assert main(["candidates", "--root", str(tmp_path), "--min-files", "1"]) == 0
-    assert capsys.readouterr().out == "to-prd — 1 file, 2 uses: a.md:1\n1 candidates\n"
+    assert capsys.readouterr().out == "to-prd — 1 file, 2 uses: a.md:1\n1 candidate\n"
 
 
 def test_never_writes_files(tmp_path, capsys):
