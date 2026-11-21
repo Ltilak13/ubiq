@@ -72,9 +72,9 @@ defining term in the source or a nonempty `term` in the overlay.
   once per term per section, at the first mention. A section starts at an ATX heading
   or the top of the file. Mentions on heading lines, in historical docs, in the term's
   own record, and in overlay sidecars are not reported. Link destinations, URLs,
-  emails, HTML tags, and HTML comments are never mentions; a mention in another link's label counts as
-  linked. Off unless
-  `unlinked_mentions: warn`; `unlinked_except` lists terms by name or qualified name.
+  emails, HTML tags, and HTML comments are never mentions; a mention in another
+  link's label counts as linked. Off unless `unlinked_mentions: warn`;
+  `unlinked_except` lists terms by name or qualified name.
 
 ## Invariants
 
