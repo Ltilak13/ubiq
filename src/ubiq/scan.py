@@ -62,10 +62,14 @@ MD_LINK_RE = re.compile(
 MD_ESCAPE_RE = re.compile(r"\\([" + re.escape(punctuation) + r"])")
 # ATX headings start sections for unlinked-mention checks (W002).
 HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?=[ \t]|$)", re.MULTILINE)
-# Raw HTML open/close tags, including attributes that may span lines.
-HTML_TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>")
-# Bare URLs and `<scheme:...>` autolinks: addresses, not prose mentions.
-URL_RE = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>|\bhttps?://[^\s<>()\[\]]+")
+# Raw HTML open/close tags. Attributes, which may span lines, need an `=`, so
+# prose such as "x <y and z>" is not a tag.
+HTML_TAG_RE = re.compile(
+    r"</?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>=]*=[^<>]*)?\s*/?>")
+# Bare URLs (`scheme://`, `www.`) and `<scheme:...>` autolinks: addresses, not
+# prose mentions.
+URL_RE = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>"
+                    r"|\b(?:[A-Za-z][A-Za-z0-9+.-]*://|www\.)[^\s<>()\[\]]+")
 DOC_SUFFIXES = {".md", ".markdown"}
 
 
@@ -395,8 +399,9 @@ def _field_refs(fm_text: str, path: Path, ref_fields: list[str],
 
 
 def _mention_pattern(name: str) -> str:
+    """Regex for a name as written: a name with no spaces needs `-` or `_`."""
     words = re.split(r"[\s_-]+", name.strip())
-    slug = re.search(r"\s", name.strip()) is None
+    slug = len(name.split()) == 1
     return (r"[_-]+" if slug else r"[\s_-]+").join(re.escape(w) for w in words if w)
 
 

@@ -105,3 +105,20 @@ def test_slug_names_need_their_separator_but_spaced_names_do_not(tmp_path, capsy
            "\n# C\n\nThe issue-tracker is set.\n")    # 11: spaced name, any separator
     make_repo(tmp_path, recs, {"doc.md": doc}, config=CFG)
     assert w002(tmp_path, capsys) == (0, [("doc.md", 7), ("doc.md", 11)])
+
+
+def test_one_warning_per_term_when_a_mention_matches_several(tmp_path, capsys):
+    recs = {"a.md": "---\nterm: alpha\naliases: [shared]\n---\n\nA.\n",
+            "b.md": "---\nterm: beta\nns: other\naliases: [shared]\n---\n\nB.\n"}
+    make_repo(tmp_path, recs, {"x.md": "Use shared here, then alpha and beta later.\n"},
+              config=CFG)
+    assert w002(tmp_path, capsys) == (0, [("x.md", 1)])
+
+
+def test_angle_bracket_prose_and_other_url_schemes(tmp_path, capsys):
+    doc = ("# A\n\nIf x <y and session z> then w.\n"        # 3: prose, flagged
+           "\n# B\n\nSee www.example.com/session/x today.\n"
+           "\n# C\n\nGet ftp://example.com/session now.\n"
+           '\n# D\n\n<img alt="session" src="s.png"> here.\n')
+    make_repo(tmp_path, {"s.md": REC_SESSION}, {"doc.md": doc}, config=CFG)
+    assert w002(tmp_path, capsys) == (0, [("doc.md", 3)])
