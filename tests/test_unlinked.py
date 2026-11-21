@@ -116,9 +116,11 @@ def test_one_warning_per_term_when_a_mention_matches_several(tmp_path, capsys):
 
 
 def test_angle_bracket_prose_and_other_url_schemes(tmp_path, capsys):
-    doc = ("# A\n\nIf x <y and session z> then w.\n"        # 3: prose, flagged
+    doc = ("# A\n\nIf x < y and session > z then w.\n"      # 3: prose, flagged
            "\n# B\n\nSee www.example.com/session/x today.\n"
            "\n# C\n\nGet ftp://example.com/session now.\n"
-           '\n# D\n\n<img alt="session" src="s.png"> here.\n')
+           '\n# D\n\n<img alt="session" src="s.png"> here.\n'
+           "\n# E\n\n<details open><summary>x</summary></details>"
+           " and <input session disabled>.\n")
     make_repo(tmp_path, {"s.md": REC_SESSION}, {"doc.md": doc}, config=CFG)
     assert w002(tmp_path, capsys) == (0, [("doc.md", 3)])
