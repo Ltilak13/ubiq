@@ -25,6 +25,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 from string import punctuation
@@ -59,6 +60,8 @@ MD_LINK_RE = re.compile(
     + r"[ \t]*\)|\[(?P<reference>(?:\\.|[^\[\]\n])*)\])?"
 )
 MD_ESCAPE_RE = re.compile(r"\\([" + re.escape(punctuation) + r"])")
+# ATX headings start sections for unlinked-mention checks (W002).
+HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?=[ \t]|$)", re.MULTILINE)
 # Raw HTML open/close tags, including attributes that may span lines.
 HTML_TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>")
 DOC_SUFFIXES = {".md", ".markdown"}
@@ -200,6 +203,8 @@ class Ref:
     target: str = ""  # explicit refs: the target as written (for id fallback, e.g. [[T5]])
     historical: bool = False  # historical docs: unresolved explicit/id/field do not fail
     destination: Path | None = None  # Markdown links resolve by file, not label
+    section: int = 0  # ATX headings seen at or before this line (0 = before the first)
+    heading: bool = False  # the reference sits on a heading line
 
     def resolve(self, glossary: Glossary) -> list[Term]:
         """Resolve consistently for checks, usage tracking, and refs queries."""
@@ -456,6 +461,13 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
                 continue  # already counted as explicit
             refs.append(Ref("mention", m.group(0), normalize(m.group(0)), None,
                             path, _line_of(clean, m.start())))
+
+    # Fences, inline code, and frontmatter are already blank in `clean`.
+    heading_lines = [_line_of(clean, m.start()) for m in HEADING_RE.finditer(clean)]
+    headings = set(heading_lines)
+    for ref in refs:
+        ref.section = bisect_right(heading_lines, ref.line)
+        ref.heading = ref.line in headings
     return refs
 
 

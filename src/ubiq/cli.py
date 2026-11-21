@@ -209,6 +209,8 @@ overlays:
 #   - pattern: "/"
 #     only_known: true
 #     except: [plugin]
+# unlinked_mentions: warn     # W002: a section mentions a term but never links it
+# unlinked_except: [pr]       # terms that are ordinary words in this repo
 """
 
 INIT_RECORD = """\
@@ -274,7 +276,11 @@ def _assembly_errors(glossary, extra) -> list[Diagnostic]:
 def cmd_check(args) -> int:
     root = Path(args.root).resolve()
     glossary, refs, cfg, extra = build(root)
-    diags = extra + run_checks(glossary, refs, cfg["external_id_patterns"])
+    sidecars = {path.resolve() for path in glossary.overlay_sources.values()}
+    diags = extra + run_checks(glossary, refs, cfg["external_id_patterns"],
+                               unlinked=cfg["unlinked_mentions"] == "warn",
+                               skip_unlinked=sidecars,
+                               unlinked_except=cfg["unlinked_except"])
     return _report(diags, root, args.json, len(glossary.terms), len(refs))
 
 

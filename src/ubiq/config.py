@@ -54,6 +54,13 @@ DEFAULT_CONFIG = {
     # JSON/YAML inventories of terms. Each item must resolve (E006). Optional
     # `cover` globs: every matching record must appear in the inventory (E007).
     "catalogs": [],
+    # W002: warn once per term per section when a term is mentioned but never
+    # linked there. "warn" or "off". Warnings never fail the check. Off by
+    # default: on a 39-skill repo it reported 505 warnings on first run.
+    "unlinked_mentions": "off",
+    # Terms whose plain mentions are ordinary words here (`pr` vs "PR"), by name
+    # or qualified name. Explicit references to them are still checked.
+    "unlinked_except": [],
 }
 
 
@@ -85,7 +92,8 @@ def load_config(root: Path) -> dict:
             raise InvalidConfig("expected a YAML mapping")
         cfg.update({k: v for k, v in user.items() if v is not None})
 
-    for key in ("docs", "ignore", "id_patterns", "ref_fields", "external_id_patterns"):
+    for key in ("docs", "ignore", "id_patterns", "ref_fields", "external_id_patterns",
+                "unlinked_except"):
         cfg[key] = _strings(cfg[key], key)
     for key in ("term_field", "overlays", "historical"):
         cfg[key] = _strings(cfg[key], key, scalar=True)
@@ -93,6 +101,11 @@ def load_config(root: Path) -> dict:
         raise InvalidConfig("term_field: expected at least one field")
     if cfg["frontmatter"] not in ("strict", "lenient"):
         raise InvalidConfig("frontmatter: expected strict or lenient")
+    # ubiq.yaml uses YAML 1.1 typing, where bare `off` loads as False.
+    if isinstance(cfg["unlinked_mentions"], bool):
+        cfg["unlinked_mentions"] = "warn" if cfg["unlinked_mentions"] else "off"
+    if cfg["unlinked_mentions"] not in ("warn", "off"):
+        raise InvalidConfig("unlinked_mentions: expected warn or off")
     for key in ("id_patterns", "external_id_patterns"):
         for i, pattern in enumerate(cfg[key]):
             try:

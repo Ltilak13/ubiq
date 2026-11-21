@@ -101,3 +101,5 @@ CI — GitHub Action:
 Or `ubiq check` in any job that already has Python. Gate merges on exit 1.
 
 **Done when:** `ubiq check` exits 0 on this repo, and CI runs it on every PR.
+
+Ongoing upkeep — unlinked mentions (`unlinked_mentions: warn`), orphans, and new terms — is the `maintain-ubiq` skill.
