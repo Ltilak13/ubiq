@@ -106,3 +106,17 @@ def test_version_pins_still_count_as_use(tmp_path, capsys):
     make_repo(tmp_path, recs, {"doc.md": "Install tdd@2.0 or tdd@v1.x now.\n"})
     main(["check", "--root", str(tmp_path)])
     assert "W001" not in capsys.readouterr().out
+
+
+def test_comments_hide_mentions_but_not_delimiters(tmp_path, capsys):
+    recs = {"tdd.md": "---\nterm: tdd\n---\n\nThe loop.\n"}
+    doc = ("<!-- tdd, then /ghost -->\n\nUse `<!--` and `https://x/?n=/gone` in code;"
+           " tdd here.\n")
+    cfg = ('glossary: ["glossary/**/*.md"]\ndocs: ["doc.md"]\ndelimiters: ["/"]\n'
+           'unlinked_mentions: warn\n')
+    make_repo(tmp_path, recs, {"doc.md": doc}, config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 1
+    out = capsys.readouterr().out
+    assert "unresolved reference /ghost" in out and "/gone" not in out
+    assert [line for line in out.splitlines() if "W002" in line] == [
+        line for line in out.splitlines() if "doc.md:3: W002" in line]

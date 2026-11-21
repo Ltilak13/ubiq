@@ -333,9 +333,12 @@ class _Markdown:
     prose: str
     delimiters: str
     links: list[tuple[int, int, str]]
-    # Inline link and image destinations, `(here)`. Paths, not prose, so a
-    # `/` delimiter must not read `[guide](/setup.md)` as the command `/setup`.
-    destinations: list[tuple[int, int]]
+    # Spans that hold addresses, not prose: link and image destinations, bare
+    # URLs and emails, and HTML tags (`(/setup.md)`, `?next=/home`,
+    # `href="/install"`). Neither delimiters nor mentions match inside them.
+    addresses: list[tuple[int, int]]
+    # HTML comments: not rendered, so no mentions. Delimiters still match there.
+    comments: list[tuple[int, int]]
 
 
 def _interpret_markdown(text: str, skip_frontmatter: bool = True) -> _Markdown:
@@ -372,7 +375,12 @@ def _interpret_markdown(text: str, skip_frontmatter: bool = True) -> _Markdown:
             destination = definitions.get(_reference_label(label))
         if destination is not None:
             links.append((start, m.end(), destination))
-    return _Markdown(prose, delimiters, links, destinations)
+    # Found in `delimiters`, which keeps inline code, because delimiters match
+    # there; comments in `prose`, so a code span such as `<!--` opens none.
+    addresses = (destinations + [m.span() for m in URL_RE.finditer(delimiters)]
+                 + [m.span() for m in HTML_TAG_RE.finditer(delimiters)])
+    comments = [m.span() for m in HTML_COMMENT_RE.finditer(prose)]
+    return _Markdown(prose, delimiters, links, addresses, comments)
 
 
 def _line_of(text: str, pos: int) -> int:
@@ -466,14 +474,11 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
                         target=name.strip()))
 
     delim_spans: list[tuple[int, int]] = []
-    # Link destinations, HTML tag attributes, and bare URLs hold paths
-    # (`(/setup.md)`, `href="/install"`, `?next=/home`). Skip matches that start inside them rather than
-    # masking, so blanked text cannot create new token boundaries.
-    not_prose = (document.destinations + [m.span() for m in HTML_TAG_RE.finditer(for_delim)]
-                 + [m.span() for m in URL_RE.finditer(for_delim)])
+    # Skip matches that start inside an address rather than masking, so blanked
+    # text cannot create new token boundaries.
     for delim in delimiters or []:
         for m in delim.regex.finditer(for_delim):
-            if any(a <= m.start() < b for a, b in not_prose):
+            if any(a <= m.start() < b for a, b in document.addresses):
                 continue
             raw_term = m.group(1)
             name = normalize(raw_term)
@@ -500,16 +505,14 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
         mention_re = re.compile(r"\b(" + "|".join(names) + r")\b", re.IGNORECASE)
         explicit_spans = [(m.start(), m.end()) for m in EXPLICIT_RE.finditer(clean)]
         skip_spans = explicit_spans + delim_spans + link_spans
-        # Destinations, URLs, HTML tags, and comments are not prose. Labels of
-        # other links stay mentions (they still count as use) but are linked.
-        addresses = (document.destinations + [m.span() for m in URL_RE.finditer(clean)]
-                     + [m.span() for m in HTML_TAG_RE.finditer(clean)]
-                     + [m.span() for m in HTML_COMMENT_RE.finditer(clean)])
+        # Labels of other links stay mentions (they still count as use) but
+        # are linked.
+        not_prose = document.addresses + document.comments
         labels = [(a, b) for a, b, _ in document.links if (a, b) not in link_spans]
         for m in mention_re.finditer(clean):
             if any(a <= m.start() < b for a, b in skip_spans):
                 continue  # already counted as explicit
-            if any(a <= m.start() < b for a, b in addresses):
+            if any(a <= m.start() < b for a, b in not_prose):
                 continue
             refs.append(Ref("mention", m.group(0), normalize(m.group(0)), None,
                             path, _line_of(clean, m.start()),
