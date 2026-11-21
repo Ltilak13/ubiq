@@ -62,10 +62,13 @@ MD_LINK_RE = re.compile(
 MD_ESCAPE_RE = re.compile(r"\\([" + re.escape(punctuation) + r"])")
 # ATX headings start sections for unlinked-mention checks (W002).
 HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?=[ \t]|$)", re.MULTILINE)
-# Raw HTML open/close tags. Attributes, which may span lines, need an `=`, so
-# prose such as "x <y and z>" is not a tag.
+# Raw HTML open/close tags, per the CommonMark grammar: attributes may span
+# lines and need no value (`<details open>`). "x < y" is prose: no tag name.
 HTML_TAG_RE = re.compile(
-    r"</?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>=]*=[^<>]*)?\s*/?>")
+    r"</[A-Za-z][A-Za-z0-9-]*\s*>"
+    r"|<[A-Za-z][A-Za-z0-9-]*"
+    r"(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*"
+    r"(?:\s*=\s*(?:[^\s\"'=<>`]+|'[^']*'|\"[^\"]*\"))?)*\s*/?>")
 # Bare URLs (`scheme://`, `www.`) and `<scheme:...>` autolinks: addresses, not
 # prose mentions.
 URL_RE = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>"
@@ -457,10 +460,11 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
                         target=name.strip()))
 
     delim_spans: list[tuple[int, int]] = []
-    # Link destinations and HTML tag attributes hold paths (`(/setup.md)`,
-    # `href="/install"`). Skip matches that start inside them rather than
+    # Link destinations, HTML tag attributes, and bare URLs hold paths
+    # (`(/setup.md)`, `href="/install"`, `?next=/home`). Skip matches that start inside them rather than
     # masking, so blanked text cannot create new token boundaries.
-    not_prose = document.destinations + [m.span() for m in HTML_TAG_RE.finditer(for_delim)]
+    not_prose = (document.destinations + [m.span() for m in HTML_TAG_RE.finditer(for_delim)]
+                 + [m.span() for m in URL_RE.finditer(for_delim)])
     for delim in delimiters or []:
         for m in delim.regex.finditer(for_delim):
             if any(a <= m.start() < b for a, b in not_prose):

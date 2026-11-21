@@ -76,3 +76,15 @@ def test_checks_resolve_paths_once_not_per_term(tmp_path):
         Path.resolve = original
     assert not [d for d in diags if d.is_error]
     assert calls < 20, calls  # was 16,000+ (200 refs x 40 terms x 2 passes)
+
+
+def test_delimiter_skips_bare_url_paths_and_queries(tmp_path, capsys):
+    recs = {"tdd.md": "---\nterm: tdd\n---\n\nThe loop.\n"}
+    doc = ("Run /tdd, then open https://example.com/?next=/nope or"
+           " www.example.com/a/ghost and <https://x.dev/?to=/gone>.\n")
+    cfg = 'glossary: ["glossary/**/*.md"]\ndocs: ["doc.md"]\ndelimiters: ["/"]\n'
+    make_repo(tmp_path, recs, {"doc.md": doc}, config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 0
+    capsys.readouterr()
+    assert main(["refs", "tdd", "--kind", "explicit", "--root", str(tmp_path)]) == 0
+    assert capsys.readouterr().out.count("explicit '/tdd'") == 1
