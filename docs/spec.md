@@ -144,6 +144,16 @@ Unmatched patterns have no file matches, including before ignore filtering.
 Discovery records all encountered reasons, including links back to already
 visited files, without rescanning cycles. It does not enumerate unrelated files.
 Reference errors belong to `check`; `explain` fails on configuration or assembly
-errors. Both JSON commands use root-relative paths inside the repository and
+errors.
+
+`candidates --json` returns `min_files`, `count`, and `candidates`. A candidate
+is an inline code span, outside fences and frontmatter, whose whole content is a
+hyphenated lowercase identifier (`[a-z][a-z0-9]*(-[a-z0-9]+)+`) that resolves to
+no term or alias, used in at least `min_files` scanned non-historical docs. Each
+has `name`, `files`, `occurrences`, and `locations` (each file and line once).
+Candidates sort by file count, descending, then name. The command exits 0
+unless configuration or assembly fails, and never writes files.
+
+All JSON commands use root-relative paths inside the repository and
 absolute paths outside it. Configuration failures use the check diagnostic
 JSON envelope and exit 1.

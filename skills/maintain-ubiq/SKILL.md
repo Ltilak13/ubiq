@@ -57,11 +57,16 @@ A new term not yet used is fine; leave it. A term whose concept is gone: propose
 
 ## 5. New vocabulary
 
-Scan the files changed since the last pass (`git diff --name-only <base>`) for names that should be records:
+Run `ubiq candidates --json` for backticked identifiers used in two or more docs with no record. For each one, decide:
+
+- **A retired name of a term** (`to-prd` after a rename to `to-spec`) — add it as an alias.
+- **A real concept** — propose a record.
+- **A literal, not vocabulary** (a label string, a package or config name) — reject it.
+
+Then scan the files changed since the last pass (`git diff --name-only <base>`) for what `candidates` can't see:
 
 - New skill directories or `name:` fields
 - Bold definitions (`**Term**:`) and `CONTEXT.md` / `GLOSSARY.md` entries with no record
-- Backticked or hyphenated names used across several files
 
 Propose each candidate with where it appears. Create a record only for a name used in two or more files or defined in a human glossary. Confirm the rest first.
 

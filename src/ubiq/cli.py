@@ -4,6 +4,8 @@
   ubiq check [--root DIR] [--json]   lint the vocabulary; exit 1 on errors
   ubiq terms [--root DIR] [--format list|context] [--ns NS]
   ubiq refs TERM [--root DIR]        every place a term is used (traceability = search)
+  ubiq candidates [--root DIR] [--json] [--min-files N]
+                                     backticked identifiers in N+ docs with no record
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
 from .config import InvalidConfig, load_config
@@ -377,6 +380,41 @@ def cmd_refs(args) -> int:
     return 0 if wanted else 1
 
 
+def cmd_candidates(args) -> int:
+    root = Path(args.root).resolve()
+    trace = ScanTrace(root)
+    glossary, _, _, extra = build(root, trace)
+    errors = _assembly_errors(glossary, extra)
+    if errors:
+        return _report(errors, root, args.json)
+    # Live docs only: historical docs keep retired names on purpose.
+    docs = [root / item["file"] for item in trace.result()["files"]
+            if item["scanned"] and not item["historical"]]
+    found = find_candidates(docs, glossary, args.min_files)
+    if args.json:
+        print(json.dumps({"min_files": args.min_files, "count": len(found), "candidates": [
+            {"name": c["name"], "files": c["files"], "occurrences": c["occurrences"],
+             "locations": [{"file": _display_path(path, root), "line": line}
+                           for path, line in c["locations"]]}
+            for c in found]}, indent=2))
+    else:
+        for c in found:
+            where = ", ".join(f"{_display_path(path, root)}:{line}"
+                              for path, line in c["locations"])
+            files = f"{c['files']} file{'s' if c['files'] != 1 else ''}"
+            uses = f"{c['occurrences']} use{'s' if c['occurrences'] != 1 else ''}"
+            print(f"{c['name']} — {files}, {uses}: {where}")
+        print(f"{len(found)} candidates")
+    return 0
+
+
+def _positive(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("expected 1 or more")
+    return number
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ubiq", description="A linker for prose.")
     p.add_argument("--version", action="version", version=f"ubiq {__version__}")
@@ -410,6 +448,14 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--root", default=".")
     e.add_argument("--json", action="store_true")
     e.set_defaults(fn=cmd_explain)
+
+    k = sub.add_parser("candidates",
+                       help="list backticked identifiers used across docs with no record")
+    k.add_argument("--root", default=".")
+    k.add_argument("--json", action="store_true")
+    k.add_argument("--min-files", type=_positive, default=2,
+                   help="report names used in at least this many docs (default 2)")
+    k.set_defaults(fn=cmd_candidates)
 
     args = p.parse_args(argv)
     try:
