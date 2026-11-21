@@ -58,6 +58,8 @@ class Term:
     aliases: list[str] = field(default_factory=list)
     id: str | None = None
     definition: str = ""
+    # Term and aliases as written, before normalize: `grill-me` vs `grill me`.
+    spellings: list[str] = field(default_factory=list)
 
     @property
     def qualified(self) -> str:
@@ -138,6 +140,7 @@ def parse_record(path: Path, term_fields: tuple[str, ...] = ("term",),
         aliases=[normalize(str(a)) for a in aliases],
         id=str(meta["id"]) if meta.get("id") is not None else None,
         definition=body.strip(),
+        spellings=[str(meta[field_name]).strip(), *(str(a).strip() for a in aliases)],
     )
 
 
@@ -156,8 +159,12 @@ def overlay_onto(term: Term, meta: dict) -> Term:
         term_name = normalize(str(meta["term"]))
     else:
         term_name = term.term
+    # An overlay `term:` replaces the record's own spelling, which comes first.
+    kept = term.spellings[1:] if meta.get("term") else term.spellings
+    spellings = [*([str(meta["term"]).strip()] if meta.get("term") else []),
+                 *kept, *(str(a).strip() for a in extra)]
     return Term(term=term_name, ns=ns, file=term.file, aliases=aliases,
-                id=id_, definition=term.definition)
+                id=id_, definition=term.definition, spellings=spellings)
 
 
 @dataclass
@@ -267,7 +274,8 @@ def assemble_glossary(root: Path, sources: list[tuple[Path, tuple[str, ...], str
             if source in overlays:
                 _, meta = overlays[source]
                 if term is None and meta.get("term"):
-                    term = Term(normalize(str(meta["term"])), ns, source)
+                    term = Term(normalize(str(meta["term"])), ns, source,
+                                spellings=[str(meta["term"]).strip()])
                 if term is None:
                     if (any(field in meta for field in ref_fields)
                             and not any(field in meta for field in ("term", "ns", "aliases", "id"))):

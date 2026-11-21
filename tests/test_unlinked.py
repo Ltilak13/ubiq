@@ -95,3 +95,13 @@ def test_external_link_label_still_counts_as_use(tmp_path, capsys):
     main(["check", "--root", str(tmp_path), "--json"])
     out = json.loads(capsys.readouterr().out)
     assert [d for d in out["diagnostics"] if d["code"] == "W001"] == []
+
+
+def test_slug_names_need_their_separator_but_spaced_names_do_not(tmp_path, capsys):
+    recs = {"g.md": "---\nterm: grill-me\n---\n\nInterview.\n",
+            "t.md": "---\nterm: issue tracker\n---\n\nWhere issues live.\n"}
+    doc = ("# A\n\nDon't grill me, just show it.\n"   # ordinary phrase: not a mention
+           "\n# B\n\nRun grill_me or grill-me.\n"     # 7: slug forms match
+           "\n# C\n\nThe issue-tracker is set.\n")    # 11: spaced name, any separator
+    make_repo(tmp_path, recs, {"doc.md": doc}, config=CFG)
+    assert w002(tmp_path, capsys) == (0, [("doc.md", 7), ("doc.md", 11)])

@@ -375,6 +375,12 @@ def _field_refs(fm_text: str, path: Path, ref_fields: list[str],
     return refs
 
 
+def _mention_pattern(name: str) -> str:
+    words = re.split(r"[\s_-]+", name.strip())
+    slug = re.search(r"\s", name.strip()) is None
+    return (r"[_-]+" if slug else r"[\s_-]+").join(re.escape(w) for w in words if w)
+
+
 def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
               skip_frontmatter: bool = True,
               ref_fields: list[str] | None = None,
@@ -451,12 +457,13 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
                             _line_of(clean, m.start())))
 
     # Plain mentions of known terms/aliases (longest-first so multiword terms win).
-    names = sorted(glossary.by_name, key=len, reverse=True)
+    # A slug name (`grill-me`) needs a hyphen or underscore, so the phrase
+    # "grill me" is prose; a spaced name (`issue tracker`) takes any separator.
+    names = sorted({_mention_pattern(n) for t in glossary.terms
+                    for n in t.spellings or t.names()},
+                   key=len, reverse=True)
     if names:
-        mention_re = re.compile(
-            r"\b(" + "|".join(re.escape(n).replace(r"\ ", r"[\s_-]+") for n in names) + r")\b",
-            re.IGNORECASE,
-        )
+        mention_re = re.compile(r"\b(" + "|".join(names) + r")\b", re.IGNORECASE)
         explicit_spans = [(m.start(), m.end()) for m in EXPLICIT_RE.finditer(clean)]
         skip_spans = explicit_spans + delim_spans + link_spans
         # Destinations, URLs, and HTML tags are addresses, not prose. Labels of
