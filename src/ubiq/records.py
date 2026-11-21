@@ -155,14 +155,12 @@ def overlay_onto(term: Term, meta: dict) -> Term:
         [*term.aliases, *[normalize(str(a)) for a in extra]]))
     ns = normalize(str(meta["ns"])) if meta.get("ns") else term.ns
     id_ = str(meta["id"]) if meta.get("id") is not None else term.id
+    term_name, spellings = term.term, list(term.spellings)
     if meta.get("term"):
+        # An overlay `term:` replaces the record's own spelling, which comes first.
         term_name = normalize(str(meta["term"]))
-    else:
-        term_name = term.term
-    # An overlay `term:` replaces the record's own spelling, which comes first.
-    kept = term.spellings[1:] if meta.get("term") else term.spellings
-    spellings = [*([str(meta["term"]).strip()] if meta.get("term") else []),
-                 *kept, *(str(a).strip() for a in extra)]
+        spellings = [str(meta["term"]).strip(), *term.spellings[1:]]
+    spellings += [str(a).strip() for a in extra]
     return Term(term=term_name, ns=ns, file=term.file, aliases=aliases,
                 id=id_, definition=term.definition, spellings=spellings)
 
