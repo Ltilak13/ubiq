@@ -64,6 +64,8 @@ MD_ESCAPE_RE = re.compile(r"\\([" + re.escape(punctuation) + r"])")
 HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?=[ \t]|$)", re.MULTILINE)
 # Raw HTML open/close tags, including attributes that may span lines.
 HTML_TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>")
+# Bare URLs and `<scheme:...>` autolinks: addresses, not prose mentions.
+URL_RE = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>|\bhttps?://[^\s<>()\[\]]+")
 DOC_SUFFIXES = {".md", ".markdown"}
 
 
@@ -205,6 +207,7 @@ class Ref:
     destination: Path | None = None  # Markdown links resolve by file, not label
     section: int = 0  # ATX headings seen at or before this line (0 = before the first)
     heading: bool = False  # the reference sits on a heading line
+    linked: bool = False  # mention inside a non-vocabulary link label (author linked it)
 
     def resolve(self, glossary: Glossary) -> list[Term]:
         """Resolve consistently for checks, usage tracking, and refs queries."""
@@ -456,11 +459,19 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
         )
         explicit_spans = [(m.start(), m.end()) for m in EXPLICIT_RE.finditer(clean)]
         skip_spans = explicit_spans + delim_spans + link_spans
+        # Destinations, URLs, and HTML tags are addresses, not prose. Labels of
+        # other links stay mentions (they still count as use) but are linked.
+        addresses = (document.destinations + [m.span() for m in URL_RE.finditer(clean)]
+                     + [m.span() for m in HTML_TAG_RE.finditer(clean)])
+        labels = [(a, b) for a, b, _ in document.links if (a, b) not in link_spans]
         for m in mention_re.finditer(clean):
             if any(a <= m.start() < b for a, b in skip_spans):
                 continue  # already counted as explicit
+            if any(a <= m.start() < b for a, b in addresses):
+                continue
             refs.append(Ref("mention", m.group(0), normalize(m.group(0)), None,
-                            path, _line_of(clean, m.start())))
+                            path, _line_of(clean, m.start()),
+                            linked=any(a <= m.start() < b for a, b in labels)))
 
     # Fences, inline code, and frontmatter are already blank in `clean`.
     heading_lines = [_line_of(clean, m.start()) for m in HEADING_RE.finditer(clean)]
