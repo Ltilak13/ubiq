@@ -1,0 +1,5 @@
+interface:
+  display_name: "Maintain ubiq"
+  short_description: "Fix references, link unlinked mentions, and propose new terms"
+policy:
+  allow_implicit_invocation: false

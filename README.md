@@ -45,6 +45,17 @@ defines a record, `ubiq check` fails with `E002` and the source location.
 Link the first useful mention in a section and leave repeated mentions plain.
 Those plain mentions still appear in `ubiq refs session`.
 
+To find sections that skip the link, turn on the unlinked-mention warning:
+
+```yaml
+unlinked_mentions: warn       # W002, once per term per section; never fails the check
+unlinked_except: [pr]         # terms that are ordinary words here ("PR")
+```
+
+Headings, historical docs, a term's own record, and overlay sidecars are not
+reported. The [maintain skill](skills/maintain-ubiq/SKILL.md) works through
+these warnings.
+
 Wiki-links remain available. A typo such as `[[sesion]]` reports:
 
 ```text

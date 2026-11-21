@@ -67,6 +67,12 @@ defining term in the source or a nonempty `term` in the overlay.
   delimiter settings, or conflicting glossary rules. The message names the field or rules.
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
+- `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,
+  Markdown vocabulary link, or id reference in that section resolves to it. Reported
+  once per term per section, at the first mention. A section starts at an ATX heading
+  or the top of the file. Mentions on heading lines, in historical docs, in the term's
+  own record, and in overlay sidecars are not reported. Off unless
+  `unlinked_mentions: warn`; `unlinked_except` lists terms by name or qualified name.
 
 ## Invariants
 

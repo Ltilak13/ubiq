@@ -14,6 +14,8 @@ Errors (fail the build):
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
+  W002 unlinked-mention       a section mentions a term but never links it (once per
+                              term per section; `unlinked_mentions: off` disables it)
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from dataclasses import dataclass
 from difflib import get_close_matches
 from pathlib import Path
 
-from .records import Glossary
+from .records import Glossary, normalize
 from .scan import Ref
 
 ERROR_CODES = {"E001", "E002", "E003", "E004", "E005", "E006", "E007", "E008"}
@@ -45,8 +47,59 @@ class Diagnostic:
         return f"{loc}: {self.code} {self.message}"
 
 
+LINKING_KINDS = ("explicit", "markdown", "id")
+
+
+def unlinked_mentions(glossary: Glossary, refs: list[Ref],
+                      skip_files: set[Path] | None = None,
+                      except_names: list[str] | None = None) -> list[Diagnostic]:
+    """W002: the first plain mention of a term in a section that never links it.
+
+    A section starts at an ATX heading (or the top of the file). Any wiki-link,
+    delimiter, Markdown vocabulary link, or id reference to the term in that
+    section counts as linked. Headings, historical docs, the term's own record,
+    files in `skip_files` (overlay sidecars), and terms named in `except_names`
+    are not checked.
+    """
+    skip = skip_files or set()
+    excepted = {normalize(n) for n in except_names or []}
+    term_files = {id(t): path for path, ts in glossary.by_file.items() for t in ts}
+    linked: set[tuple[Path, int, int]] = set()
+    for r in refs:
+        if r.kind in LINKING_KINDS:
+            linked.update((r.file, r.section, id(t)) for t in r.resolve(glossary))
+
+    resolved_files: dict[Path, Path] = {}
+    reported: set[tuple[Path, int, frozenset[int]]] = set()
+    diags: list[Diagnostic] = []
+    for r in refs:
+        if r.kind != "mention" or r.historical or r.heading:
+            continue
+        matches = [t for t in r.resolve(glossary)
+                   if t.term not in excepted and normalize(t.qualified) not in excepted]
+        if not matches or any((r.file, r.section, id(t)) in linked for t in matches):
+            continue
+        if r.file not in resolved_files:
+            resolved_files[r.file] = r.file.resolve()
+        source = resolved_files[r.file]
+        if source in skip or any(term_files[id(t)] == source for t in matches):
+            continue
+        key = (r.file, r.section, frozenset(id(t) for t in matches))
+        if key in reported:
+            continue
+        reported.add(key)
+        names = " or ".join(t.qualified for t in matches)
+        diags.append(Diagnostic(
+            "W002", f"unlinked mention '{r.raw}' — this section never links {names}",
+            r.file, r.line))
+    return diags
+
+
 def run_checks(glossary: Glossary, refs: list[Ref],
-               external_id_patterns: list[str] | None = None) -> list[Diagnostic]:
+               external_id_patterns: list[str] | None = None, *,
+               unlinked: bool = False,
+               skip_unlinked: set[Path] | None = None,
+               unlinked_except: list[str] | None = None) -> list[Diagnostic]:
     diags: list[Diagnostic] = []
     external = [re.compile(p) for p in (external_id_patterns or [])]
 
@@ -129,4 +182,6 @@ def run_checks(glossary: Glossary, refs: list[Ref],
             diags.append(Diagnostic(
                 "W001", f"orphan term '{t.qualified}' — defined but never used", t.file))
 
+    if unlinked:
+        diags.extend(unlinked_mentions(glossary, refs, skip_unlinked, unlinked_except))
     return diags
