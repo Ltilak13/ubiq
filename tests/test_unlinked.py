@@ -124,3 +124,12 @@ def test_angle_bracket_prose_and_other_url_schemes(tmp_path, capsys):
            " and <input session disabled>.\n")
     make_repo(tmp_path, {"s.md": REC_SESSION}, {"doc.md": doc}, config=CFG)
     assert w002(tmp_path, capsys) == (0, [("doc.md", 3)])
+
+
+def test_emails_and_html_comments_are_not_mentions(tmp_path, capsys):
+    recs = {"t.md": "---\nterm: issue tracker\n---\n\nWhere issues live.\n"}
+    doc = ("# A\n\nEmail <ops@issue-tracker.com> or ops@issue-tracker.io today.\n"
+           "\n# B\n\n<!-- the issue tracker\nis here -->\n"
+           "\n# C\n\nThe issue tracker.\n")                 # 12: flagged
+    make_repo(tmp_path, recs, {"doc.md": doc}, config=CFG)
+    assert w002(tmp_path, capsys) == (0, [("doc.md", 12)])

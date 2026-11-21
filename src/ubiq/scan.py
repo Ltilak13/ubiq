@@ -69,10 +69,13 @@ HTML_TAG_RE = re.compile(
     r"|<[A-Za-z][A-Za-z0-9-]*"
     r"(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*"
     r"(?:\s*=\s*(?:[^\s\"'=<>`]+|'[^']*'|\"[^\"]*\"))?)*\s*/?>")
-# Bare URLs (`scheme://`, `www.`) and `<scheme:...>` autolinks: addresses, not
-# prose mentions.
-URL_RE = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>"
-                    r"|\b(?:[A-Za-z][A-Za-z0-9+.-]*://|www\.)[^\s<>()\[\]]+")
+# Bare URLs (`scheme://`, `www.`), emails, and `<scheme:...>` / `<a@b.c>`
+# autolinks: addresses, not prose mentions.
+URL_RE = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>|<[^\s<>@]+@[^\s<>]+>"
+                    r"|\b(?:[A-Za-z][A-Za-z0-9+.-]*://|www\.)[^\s<>()\[\]]+"
+                    r"|\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# HTML comments are not rendered, so their words are not prose mentions.
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 DOC_SUFFIXES = {".md", ".markdown"}
 
 
@@ -494,10 +497,11 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
         mention_re = re.compile(r"\b(" + "|".join(names) + r")\b", re.IGNORECASE)
         explicit_spans = [(m.start(), m.end()) for m in EXPLICIT_RE.finditer(clean)]
         skip_spans = explicit_spans + delim_spans + link_spans
-        # Destinations, URLs, and HTML tags are addresses, not prose. Labels of
+        # Destinations, URLs, HTML tags, and comments are not prose. Labels of
         # other links stay mentions (they still count as use) but are linked.
         addresses = (document.destinations + [m.span() for m in URL_RE.finditer(clean)]
-                     + [m.span() for m in HTML_TAG_RE.finditer(clean)])
+                     + [m.span() for m in HTML_TAG_RE.finditer(clean)]
+                     + [m.span() for m in HTML_COMMENT_RE.finditer(clean)])
         labels = [(a, b) for a, b, _ in document.links if (a, b) not in link_spans]
         for m in mention_re.finditer(clean):
             if any(a <= m.start() < b for a, b in skip_spans):
