@@ -56,7 +56,8 @@ DEFAULT_CONFIG = {
     "catalogs": [],
     # W002: warn once per term per section when a term is mentioned but never
     # linked there. "warn" or "off". Warnings never fail the check. Off by
-    # default: on a 39-skill repo it reported 505 warnings on first run.
+    # default: on a 39-skill repo it reported 820 warnings on first run, and
+    # still 111 after excepting 18 ordinary or ubiquitous terms.
     "unlinked_mentions": "off",
     # Terms whose plain mentions are ordinary words here (`pr` vs "PR"), by name
     # or qualified name. Explicit references to them are still checked.
