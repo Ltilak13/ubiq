@@ -36,13 +36,18 @@ Never delete a failing reference, mark a live doc `historical`, or widen a delim
 
 ## 3. Unlinked mentions (W002)
 
-Requires `unlinked_mentions: warn` in `ubiq.yaml`. For each warning:
+Requires `unlinked_mentions: warn` in `ubiq.yaml`. First count the warnings per term. Then decide each term before its lines:
+
+- **The word is ordinary here** (`PR` for a skill named `pr`, "implement" for a skill named `implement`) — add the term to `unlinked_except` once. Don't link around it file by file.
+- **The term is the repo's core noun** (`skill` in a skills repo, `record` in ubiq) and warns in most sections — add it to `unlinked_except`. A link in every section is noise.
+
+For each remaining warning:
 
 - **The mention means the term** — link it at the reported line, in the style the repo already uses: a Markdown link to the record, `[[term]]`, or `/slug`. Link only the first mention in the section and leave the rest plain.
-- **The word is ordinary here** (`PR` for a skill named `pr`) — add the term to `unlinked_except` once. Don't link around it file by file.
+- **The mention is a literal the reader must keep as written** — leave it. Examples: a quoted name in an agent instruction (`call the Skill tool with "tdd"`), a command argument, a label string.
 - **Unclear** — leave it and list it in the summary.
 
-Don't add links inside headings, code, or quoted text.
+Don't add links inside headings, code, or quoted text. A SKILL.md body is an agent prompt: link there only where the link helps the agent find the record.
 
 **Done when:** every W002 is linked, excepted, or listed for a human.
 

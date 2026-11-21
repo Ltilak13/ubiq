@@ -102,4 +102,6 @@ Or `ubiq check` in any job that already has Python. Gate merges on exit 1.
 
 **Done when:** `ubiq check` exits 0 on this repo, and CI runs it on every PR.
 
-Ongoing upkeep — unlinked mentions (`unlinked_mentions: warn`), orphans, and new terms — is the `maintain-ubiq` skill.
+Unlinked mentions (W002) are off by default. When `ubiq check` exits 0, offer to turn them on. If the owner agrees, set `unlinked_mentions: warn`, run `ubiq check --json`, count the warnings per term, and propose an `unlinked_except` list of ordinary words and core nouns. Expect hundreds of warnings on a first run.
+
+Ongoing upkeep — unlinked mentions, orphans, and new terms — is the `maintain-ubiq` skill.
