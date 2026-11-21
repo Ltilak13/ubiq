@@ -120,3 +120,14 @@ def test_comments_hide_mentions_but_not_delimiters(tmp_path, capsys):
     assert "unresolved reference /ghost" in out and "/gone" not in out
     assert [line for line in out.splitlines() if "W002" in line] == [
         line for line in out.splitlines() if "doc.md:3: W002" in line]
+
+
+def test_url_in_code_stops_at_the_closing_backtick(tmp_path, capsys):
+    recs = {"tdd.md": "---\nterm: tdd\n---\n\nThe loop.\n"}
+    cfg = ('glossary: ["glossary/**/*.md"]\ndocs: ["doc.md"]\ndelimiters: ["/"]\n'
+           'unlinked_mentions: warn\n')
+    make_repo(tmp_path, recs, {"doc.md": "Run `https://x.io`tdd and `www.x.io`/ghost.\n"},
+              config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 1
+    out = capsys.readouterr().out
+    assert "unlinked mention 'tdd'" in out and "unresolved reference /ghost" in out
