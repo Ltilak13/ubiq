@@ -76,7 +76,7 @@ def test_invalid_overlay_inputs_fail(tmp_path, capsys):
     overlays = tmp_path / ".ubiq/overlays"
     overlays.mkdir(parents=True)
     for body in ("source: [", "source: []", "aliases: [play]", "source: missing.md",
-                 "source: glossary/session.md\naliases: 7"):
+                 "source: glossary/session.md\naliases: {play: 1}"):
         (overlays / "bad.md").write_text(f"---\n{body}\n---\n")
         status, result = check_json(tmp_path, capsys)
         assert status == 1, body

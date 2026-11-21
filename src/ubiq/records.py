@@ -25,6 +25,27 @@ FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 DEFAULT_NS = "core"
 
 
+class _VocabularyLoader(yaml.SafeLoader):
+    """SafeLoader that keeps scalars as written.
+
+    Vocabulary is text: `term: No`, `id: 007`, and `id: 1.10` must not become
+    False, 7, and 1.1 (YAML 1.1 implicit typing). Null and merge keys still
+    resolve, so an empty field reads as absent.
+    """
+
+
+_KEEP_IMPLICIT = {"tag:yaml.org,2002:null", "tag:yaml.org,2002:merge"}
+_VocabularyLoader.yaml_implicit_resolvers = {
+    first: [(tag, regexp) for tag, regexp in resolvers if tag in _KEEP_IMPLICIT]
+    for first, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
+}
+
+
+def load_vocabulary_yaml(text: str):
+    """Parse record, overlay, reference-field, and catalog YAML without type coercion."""
+    return yaml.load(text, Loader=_VocabularyLoader)
+
+
 class InvalidRecord(ValueError):
     """A glossary record that exists but cannot be parsed (reported as E005)."""
 
@@ -80,7 +101,7 @@ def parse_frontmatter(path: Path, lenient: bool = False) -> tuple[dict, str]:
     if not m:
         return {}, text
     try:
-        meta = yaml.safe_load(m.group(1)) or {}
+        meta = load_vocabulary_yaml(m.group(1)) or {}
     except yaml.YAMLError as e:
         if lenient:
             meta = _parse_lenient(m.group(1))
@@ -145,6 +166,9 @@ class Glossary:
     # normalized name -> list of Terms that claim it (canonical or alias)
     by_name: dict[str, list[Term]] = field(default_factory=dict)
     by_id: dict[str, list[Term]] = field(default_factory=dict)
+    # resolved record path -> Terms defined there. Markdown links resolve by
+    # destination, so this keeps lookups O(1) instead of a filesystem call per term.
+    by_file: dict[Path, list[Term]] = field(default_factory=dict)
     overlay_sources: dict[Path, Path] = field(default_factory=dict)
     invalid: list[tuple[Path, str]] = field(default_factory=list)  # unparseable records
 
@@ -154,6 +178,7 @@ class Glossary:
             self.by_name.setdefault(name, []).append(t)
         if t.id:
             self.by_id.setdefault(t.id, []).append(t)
+        self.by_file.setdefault(t.file.resolve(), []).append(t)
 
     def resolve(self, name: str, ns: str | None = None) -> list[Term]:
         """All terms matching `name` (optionally restricted to namespace `ns`)."""
@@ -200,8 +225,6 @@ def assemble_glossary(root: Path, sources: list[tuple[Path, tuple[str, ...], str
         try:
             meta, _ = parse_frontmatter(path, lenient)
             source = meta.get("source") or meta.get("on")
-            if source is None:
-                source = meta.get(True)  # YAML 1.1 compatibility for on:
             if not isinstance(source, str) or not source.strip():
                 raise InvalidRecord("overlay source: expected a nonempty path string")
             try:

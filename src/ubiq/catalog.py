@@ -13,7 +13,7 @@ from pathlib import Path
 import yaml
 
 from .check import Diagnostic
-from .records import Glossary, normalize
+from .records import Glossary, load_vocabulary_yaml, normalize
 from .scan import Ref
 
 
@@ -34,7 +34,7 @@ def _load(path: Path):
     try:
         text = path.read_text(encoding="utf-8")
         if path.suffix in {".yaml", ".yml"}:
-            return yaml.safe_load(text)
+            return load_vocabulary_yaml(text)
         return json.loads(text)
     except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError) as e:
         raise CatalogError(f"invalid catalog: {str(e).splitlines()[0]}") from e

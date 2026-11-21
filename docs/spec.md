@@ -77,8 +77,12 @@ Fences may have up to three leading spaces and at least three backticks or tilde
 The closing marker must use the same character and be at least as long. An unclosed
 fence hides the remaining document. Inline code spans use matching backtick runs.
 Configured [[delimiter]]s *do* match inside backticks —
-that is how slash-commands are written. Frontmatter is never scanned as prose,
-so field names are not mentions. Plain-prose mentions of a defined [[term]] are
+that is how slash-commands are written. They skip Markdown link and image
+destinations and raw HTML tags, which hold paths such as `(/setup.md)` and
+`href="/install"`, not commands. Frontmatter is never scanned as prose,
+so field names are not mentions. Record, overlay, reference-field, and catalog
+YAML keeps scalars as text: `No`, `007`, and `1.10` stay strings rather than
+becoming a boolean or numbers. Null still reads as absent. Plain-prose mentions of a defined [[term]] are
 indexed for search and orphan detection but can never fail the build — the
 error surface is exactly what the author explicitly marked (wiki-links, Markdown
 vocabulary links, delimiters, id patterns, `ref_fields`, and catalogs).
