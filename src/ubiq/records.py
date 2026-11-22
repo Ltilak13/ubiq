@@ -186,9 +186,11 @@ class Glossary:
     by_file: dict[Path, list[Term]] = field(default_factory=dict)
     overlay_sources: dict[Path, Path] = field(default_factory=dict)
     invalid: list[tuple[Path, str]] = field(default_factory=list)  # unparseable records
+    namespaces: set[str] = field(default_factory=set)
 
     def add(self, t: Term) -> None:
         self.terms.append(t)
+        self.namespaces.add(t.ns)
         for name in t.names():
             self.by_name.setdefault(name, []).append(t)
         if t.id:
@@ -196,9 +198,12 @@ class Glossary:
         self.by_file.setdefault(t.file.resolve(), []).append(t)
 
     def split(self, target: str) -> tuple[str | None, str]:
-        """`ns:name` splits at the last colon; without one, there is no namespace."""
-        ns, _, name = target.rpartition(":")
-        return (normalize(ns), name) if ns else (None, target)
+        """`ns:name` when `ns` is a namespace here; otherwise the colon is part
+        of the name, so a term such as `ratio:2` stays linkable."""
+        ns, _, name = target.partition(":")
+        if name and normalize(ns) in self.namespaces:
+            return normalize(ns), name
+        return None, target
 
     def resolve(self, name: str, ns: str | None = None) -> list[Term]:
         """All terms matching `name` (optionally restricted to namespace `ns`)."""

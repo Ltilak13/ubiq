@@ -14,7 +14,9 @@ a [[catalog]] (UB-8) is a JSON/YAML inventory of terms that is not itself a glos
 
 Resolution rules, in order: an explicit qualified reference resolves within its namespace
 only; an explicit unqualified reference resolves across all namespaces and must land on
-exactly one [[record]]. Markdown links to registered records or configured
+exactly one [[record]]. A colon qualifies a reference only when the text before it
+names a [[namespace]] in the glossary; otherwise the colon is part of the name, so a
+term such as `ratio:2` stays linkable. Markdown links to registered records or configured
 glossary locations resolve by destination, regardless of the visible label.
 A missing destination or a file without a defining record is E002.
 An id reference resolves against record `id:` fields. Configured

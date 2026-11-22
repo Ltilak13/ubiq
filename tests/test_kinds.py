@@ -135,3 +135,14 @@ def test_mentions_match_names_that_start_or_end_in_punctuation(tmp_path, capsys)
     for term, count in (("c++", 1), (".net", 1)):
         assert main(["refs", term, "--root", str(tmp_path), "--json"]) == 0
         assert json.loads(capsys.readouterr().out)["count"] == count, term
+
+
+def test_colons_are_part_of_a_name_unless_the_prefix_is_a_namespace(tmp_path, capsys):
+    recs = {"r.md": "---\nterm: 'ratio:2'\n---\n\nTwo to one.\n",
+            "g.md": "---\nterm: session\nns: game\n---\n\nPlay.\n"}
+    doc = "[[ratio:2]], [[game:session]], and [[nope:session]].\n"
+    make_repo(tmp_path, recs, {"doc.md": doc}, 'glossary: ["glossary/*.md"]\ndocs: ["doc.md"]\n')
+    status, result = check_json(tmp_path, capsys)
+    assert status == 1
+    assert [d["message"] for d in result["diagnostics"] if d["code"] == "E002"] == [
+        "unresolved reference [[nope:session]] — no defining record. Did you mean [[session]]?"]
