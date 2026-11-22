@@ -146,7 +146,7 @@ match within one path segment, dotfiles and dot-directories included; and `**`
 matches zero or more directories. Ignore patterns follow the same rules, so
 `**/node_modules/**` ignores every copy and `node_modules/**` only the one at the
 root. A configured `ignore` list replaces the defaults (`**/.git/**`, `**/node_modules/**`,
-and `**/.venv/**`), so a repository that sets its own keeps the defaults it still needs. Unknown settings are E008 at any level, with a
+and `**/.venv/**`). A repository that sets its own list must repeat each default it still needs. Unknown settings are E008 at any level, with a
 suggestion for a likely typo. A link
 to a registered record can follow a symlink outside the repo. Ordinary link
 traversal stays inside the repo. URL-encoded paths, fragments, angle-bracket
