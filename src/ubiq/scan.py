@@ -25,7 +25,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 from string import punctuation
@@ -316,11 +316,12 @@ def inline_code(text: str) -> list[tuple[int, str]]:
     if fm:
         text = _blank(fm.group()) + text[fm.end():]
     text = _blank_fences(text)
+    line_of = _line_index(text)
     out = []
     for start, end in _inline_spans(text):
         span = text[start:end]
         ticks = len(span) - len(span.lstrip("`"))
-        out.append((_line_of(text, start), span[ticks:len(span) - ticks]))
+        out.append((line_of(start), span[ticks:len(span) - ticks]))
     return out
 
 
@@ -383,8 +384,23 @@ def _interpret_markdown(text: str, skip_frontmatter: bool = True) -> _Markdown:
     return _Markdown(prose, delimiters, links, addresses, comments)
 
 
-def _line_of(text: str, pos: int) -> int:
-    return text.count("\n", 0, pos) + 1
+def _line_index(text: str):
+    """Return pos -> one-based line number. Masked copies keep every newline."""
+    newlines = [m.start() for m in re.finditer("\n", text)]
+    return lambda pos: bisect_left(newlines, pos) + 1
+
+
+def _covers(spans: list[tuple[int, int]]):
+    """Return pos -> whether any half-open span holds pos. Spans may overlap."""
+    starts: list[int] = []
+    ends: list[int] = []
+    for start, end in sorted(spans):
+        if ends and start <= ends[-1]:
+            ends[-1] = max(ends[-1], end)
+        else:
+            starts.append(start)
+            ends.append(end)
+    return lambda pos: (i := bisect_right(starts, pos) - 1) >= 0 and pos < ends[i]
 
 
 def _field_refs(fm_text: str, path: Path, ref_fields: list[str],
@@ -437,6 +453,8 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
     document = _interpret_markdown(text, skip_frontmatter)
     clean = document.prose
     for_delim = document.delimiters
+    line_of = _line_index(clean)
+    in_address = _covers(document.addresses)
 
     link_spans: list[tuple[int, int]] = []
     record_files = glossary.by_file
@@ -452,7 +470,7 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
         if not (registered or configured):
             continue
         refs.append(Ref("markdown", text[start:end], "", None, path,
-                        _line_of(clean, start), target=spec,
+                        line_of(start), target=spec,
                         destination=destination.resolve()))
         link_spans.append((start, end))
 
@@ -470,7 +488,7 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
                 name, normalize(ns) if ns else None):
             continue
         refs.append(Ref("explicit", m.group(0), normalize(name),
-                        normalize(ns) if ns else None, path, _line_of(clean, m.start()),
+                        normalize(ns) if ns else None, path, line_of(m.start()),
                         target=name.strip()))
 
     delim_spans: list[tuple[int, int]] = []
@@ -478,7 +496,7 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
     # text cannot create new token boundaries.
     for delim in delimiters or []:
         for m in delim.regex.finditer(for_delim):
-            if any(a <= m.start() < b for a, b in document.addresses):
+            if in_address(m.start()):
                 continue
             raw_term = m.group(1)
             name = normalize(raw_term)
@@ -487,13 +505,13 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
             if delim.only_known and name not in glossary.by_name:
                 continue
             refs.append(Ref("explicit", m.group(0), name, None, path,
-                            _line_of(for_delim, m.start()), target=raw_term))
+                            line_of(m.start()), target=raw_term))
             delim_spans.append((m.start(), m.end()))
 
     for pat in id_patterns:
         for m in re.finditer(pat, clean):
             refs.append(Ref("id", m.group(0), m.group(0), None, path,
-                            _line_of(clean, m.start())))
+                            line_of(m.start())))
 
     # Plain mentions of known terms/aliases (longest-first so multiword terms win).
     # A slug name (`grill-me`) needs a hyphen or underscore, so the phrase
@@ -504,22 +522,20 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
     if names:
         mention_re = re.compile(r"\b(" + "|".join(names) + r")\b", re.IGNORECASE)
         explicit_spans = [(m.start(), m.end()) for m in EXPLICIT_RE.finditer(clean)]
-        skip_spans = explicit_spans + delim_spans + link_spans
+        in_explicit = _covers(explicit_spans + delim_spans + link_spans)
+        not_prose = _covers(document.addresses + document.comments)
         # Labels of other links stay mentions (they still count as use) but
         # are linked.
-        not_prose = document.addresses + document.comments
-        labels = [(a, b) for a, b, _ in document.links if (a, b) not in link_spans]
+        vocabulary = set(link_spans)
+        in_label = _covers([(a, b) for a, b, _ in document.links if (a, b) not in vocabulary])
         for m in mention_re.finditer(clean):
-            if any(a <= m.start() < b for a, b in skip_spans):
-                continue  # already counted as explicit
-            if any(a <= m.start() < b for a, b in not_prose):
+            if in_explicit(m.start()) or not_prose(m.start()):
                 continue
             refs.append(Ref("mention", m.group(0), normalize(m.group(0)), None,
-                            path, _line_of(clean, m.start()),
-                            linked=any(a <= m.start() < b for a, b in labels)))
+                            path, line_of(m.start()), linked=in_label(m.start())))
 
     # Fences, inline code, and frontmatter are already blank in `clean`.
-    heading_lines = [_line_of(clean, m.start()) for m in HEADING_RE.finditer(clean)]
+    heading_lines = [line_of(m.start()) for m in HEADING_RE.finditer(clean)]
     headings = set(heading_lines)
     for ref in refs:
         ref.section = bisect_right(heading_lines, ref.line)

@@ -1,4 +1,4 @@
-"""Regressions: YAML scalar typing, delimiter false positives, resolve cost."""
+"""Regressions: YAML scalar typing, delimiter false positives, resolve and scan cost."""
 
 import time
 from pathlib import Path
@@ -131,3 +131,24 @@ def test_url_in_code_stops_at_the_closing_backtick(tmp_path, capsys):
     assert main(["check", "--root", str(tmp_path)]) == 1
     out = capsys.readouterr().out
     assert "unlinked mention 'tdd'" in out and "unresolved reference /ghost" in out
+
+
+def test_span_lookups_handle_overlap_and_lines():
+    from ubiq.scan import _covers, _line_index
+    inside = _covers([(10, 20), (0, 100), (200, 210), (210, 215), (300, 300)])
+    assert [p for p in (0, 50, 99, 100, 150, 205, 212, 215, 300) if inside(p)] == [
+        0, 50, 99, 205, 212]
+    line_of = _line_index("a\nb\n\nc")
+    assert [line_of(p) for p in (0, 1, 2, 4, 5)] == [1, 1, 2, 3, 4]
+
+
+def test_long_docs_scan_in_linear_time(tmp_path):
+    recs = {f"t{i}.md": f"---\nterm: term-{i}\n---\n\nTerm {i}.\n" for i in range(50)}
+    doc = "".join(f"Line {n} uses term-{n % 50} and [a link](https://x.io/{n}).\n"
+                  for n in range(8000))
+    make_repo(tmp_path, recs, {"doc.md": doc},
+              config='glossary: ["glossary/**/*.md"]\ndocs: ["doc.md"]\n')
+    start = time.perf_counter()
+    _, refs, _, _ = build(tmp_path)
+    assert time.perf_counter() - start < 3  # per-mention span scans took ~10s
+    assert len([r for r in refs if r.kind == "mention"]) == 8000
