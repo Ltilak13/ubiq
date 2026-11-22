@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from ubiq.cli import build
 from ubiq.check import run_checks
+from ubiq.cli import build
 
 
 def catalog_repo(root, records, items, suffix="json"):
@@ -20,8 +20,9 @@ def catalog_repo(root, records, items, suffix="json"):
 
 
 def errors(root):
-    glossary, refs, cfg, extra = build(root)
-    return [d for d in extra + run_checks(glossary, refs, cfg["external_id_patterns"])
+    built = build(root)
+    return [d for d in built.diagnostics + run_checks(built.glossary, built.refs,
+                                                      built.config.external_id_patterns)
             if d.is_error]
 
 

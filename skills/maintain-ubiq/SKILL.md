@@ -30,7 +30,7 @@ Group diagnostics by code. Fix errors before warnings.
 - **E006 / E007 catalog** — bring the inventory and the records back in sync.
 - **E005 / E008** — fix the file or setting the message names.
 
-Never delete a failing reference, mark a live doc `historical`, or widen a delimiter `except` just to pass.
+Never delete a failing reference, mark a live doc `historical`, widen a delimiter `except`, or lower a kind's severity or `scans` under `references:` just to pass.
 
 **Done when:** `ubiq check` reports no errors.
 

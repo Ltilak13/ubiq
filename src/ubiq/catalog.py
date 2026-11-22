@@ -9,12 +9,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 
-from .check import Diagnostic
+from .check import Diagnostic, reported
+from .kinds import Policy
 from .records import Glossary, load_vocabulary_yaml, normalize
 from .scan import Ref
+
+if TYPE_CHECKING:
+    from .config import CatalogSpec
 
 
 class CatalogError(ValueError):
@@ -47,31 +52,29 @@ def _term_of(item, mode: str) -> str:
     return s
 
 
-def _items(spec: dict, file: Path) -> list:
-    data = _load(file)
-    key = spec.get("items") or "skills"
-    items = _dotted(data, key)
+def _items(spec: CatalogSpec) -> list:
+    items = _dotted(_load(spec.file), spec.items)
     if not isinstance(items, list):
-        raise CatalogError(f"catalog '{key}' is not an array")
+        raise CatalogError(f"catalog '{spec.items}' is not an array")
     return items
 
 
-def catalog_refs(spec: dict, file: Path) -> list[Ref]:
+def catalog_refs(spec: CatalogSpec, policy: Policy) -> list[Ref]:
     """Each inventory value is a catalog ref that must resolve (E006)."""
-    mode = spec.get("term") or "basename"
     refs: list[Ref] = []
-    for i, item in enumerate(_items(spec, file)):
-        if not isinstance(item, (str, int)):
+    for i, item in enumerate(_items(spec)):
+        # bool is an int: a JSON `true` is not a term.
+        if not isinstance(item, (str, int)) or isinstance(item, bool):
             continue
         raw = str(item)
-        name = _term_of(raw, mode)
-        refs.append(Ref("catalog", raw, normalize(name), None, file, i + 1,
+        name = _term_of(raw, spec.term)
+        refs.append(Ref(policy, raw, normalize(name), None, spec.file, i + 1,
                         target=name))
     return refs
 
 
 def catalog_cover_gaps(refs: list[Ref], file: Path, glossary: Glossary,
-                       cover_files: set[Path]) -> list[Diagnostic]:
+                       cover_files: set[Path], policy: Policy) -> list[Diagnostic]:
     """E007: a covered record has no uniquely resolving catalog entry."""
     listed: set[int] = set()
     for ref in refs:
@@ -84,8 +87,6 @@ def catalog_cover_gaps(refs: list[Ref], file: Path, glossary: Glossary,
         if t.file.resolve() not in cover_res:
             continue
         if id(t) not in listed:
-            diags.append(Diagnostic(
-                "E007",
-                f"'{t.qualified}' not listed in catalog {file.name}",
-                file))
+            diags += reported(policy, "E007",
+                              f"'{t.qualified}' not listed in catalog {file.name}", file)
     return diags

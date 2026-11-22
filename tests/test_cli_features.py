@@ -3,8 +3,9 @@
 import json
 from pathlib import Path
 
-from ubiq.cli import build, main
 from test_ubiq import REC_SESSION, make_repo
+
+from ubiq.cli import build, main
 
 
 def check_json(root, capsys):
@@ -109,7 +110,7 @@ def test_overlay_can_define_a_selected_source_without_term(tmp_path, capsys):
         "---\nsource: glossary/session.md\nterm: session\n---\n")
     status, result = check_json(tmp_path, capsys)
     assert status == 0 and result["terms"] == 1
-    assert len(build(tmp_path)) == 4
+    assert len(build(tmp_path).glossary.terms) == 1
 
 
 def test_refs_json_filters_and_default_text(tmp_path, capsys):
@@ -301,3 +302,46 @@ def test_document_overlay_duplicate_sources_fail(tmp_path, capsys):
     diag = result["diagnostics"][0]
     assert diag["code"] == "E005"
     assert "first.md" in diag["message"] and "second.md" in diag["message"]
+
+
+def test_one_glob_language_for_discovery_and_ignores(tmp_path, capsys):
+    """`**` enters dot-directories, default ignores cover nested copies, and
+    every pattern, ignores included, starts at the root."""
+    root = tmp_path / "re[po]*"  # a root with wildcard characters stays literal
+    files = {".ubiq/glossary/s.md": REC_SESSION,
+             "pkg/node_modules/dep/glossary/s.md": REC_SESSION,
+             "pkg/.venv/lib/s.md": REC_SESSION,
+             "drafts/a.md": "[[ghost]]", "drafts/sub/b.md": "[[session]]",
+             "README.md": "[[session]]"}
+    for name, body in files.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(body)
+    (root / "ubiq.yaml").write_text(
+        'glossary: ["**/s.md"]\ndocs: ["README.md", "drafts/**/*.md"]\n'
+        'ignore: ["**/node_modules/**", "**/.venv/**", "drafts/*"]\n')
+    status, result = check_json(root, capsys)
+    assert status == 0 and result["terms"] == 1, result
+    assert main(["explain", "--root", str(root), "--json"]) == 0
+    explained = {item["file"]: item for item in json.loads(capsys.readouterr().out)["files"]}
+    assert explained["drafts/a.md"]["reasons"][0]["ignored_by"] == "drafts/*"
+    assert explained["drafts/sub/b.md"]["scanned"] is True
+    assert explained["pkg/node_modules/dep/glossary/s.md"]["included"] is False
+
+
+def test_glob_covers_dir_only_for_trailing_double_star(tmp_path):
+    from ubiq.globs import Glob
+    nested = Glob.parse("**/node_modules/**", tmp_path)
+    assert nested.covers_dir(tmp_path / "a/node_modules")
+    assert nested.covers_dir(tmp_path / "node_modules/x")
+    assert not nested.covers_dir(tmp_path / "a")
+    assert not Glob.parse("drafts/*", tmp_path).covers_dir(tmp_path / "drafts")
+    assert Glob.parse("../out/*.md", tmp_path / "repo").matches(tmp_path / "out/x.md")
+
+
+def test_glob_walk_visits_a_symlink_cycle_once(tmp_path):
+    from ubiq.globs import Glob
+    (tmp_path / "glossary").mkdir()
+    (tmp_path / "glossary/s.md").write_text(REC_SESSION)
+    (tmp_path / "glossary/loop").symlink_to(tmp_path / "glossary")
+    found = list(Glob.parse("glossary/**/*.md", tmp_path).walk())
+    assert found == [tmp_path / "glossary/s.md"]  # without the guard: 129 paths

@@ -77,6 +77,21 @@ E002 unresolved reference [[sesion]] — no defining record. Did you mean [[sess
 - Configured ID patterns and frontmatter reference fields must resolve too.
   Plain mentions are indexed for search and never fail the check.
 
+Each kind has a policy you can tune per repository: how severe its failures are
+and which regions it scans besides plain prose (`inline_code`, `address`,
+`comment`):
+
+```yaml
+references:
+  id: {severity: warn}       # report unknown ids without failing the check
+  delimiter: {severity: off} # keep /commands searchable, report nothing
+  wiki: {scans: []}          # ignore [[links]] in URLs and HTML comments
+```
+
+Settings that would break a spec guarantee, such as scanning fenced code or
+letting a plain mention fail the build, are rejected with `E008`. The
+[spec](docs/spec.md#reference-kinds) lists every kind's defaults.
+
 Records use YAML frontmatter with `term`, optional `ns`, `aliases`, and `id`.
 The body contains the definition. Existing schemas can use another term field,
 including skill `name:` fields. Sidecar overlays attach metadata and dependencies
@@ -107,14 +122,17 @@ ubiq candidates --json --min-files 3
 ```
 
 `--kind` is repeatable: results include any selected kind (`explicit`, `id`,
-`field`, `mention`, `catalog`, or `markdown`). Without filters, `refs` includes
-all kinds. Its JSON output contains `query`, `definitions`, `references`, and
+`field`, `mention`, `catalog`, or `markdown`) or policy (`wiki` or `delimiter`,
+the two halves of `explicit`). Without filters, `refs` includes all kinds. Its JSON output contains `query`, `definitions`, `references`, and
 `count`; an unknown query returns an empty result with `error` and exits 1.
 Paths inside the repository are relative to its root; external paths are absolute.
 
 `explain` shows matching globs, followed links, overlays, and historical rules.
 It reports ignored candidates encountered during discovery and globs with no
-matching files. It doesn't search other directories just to explain exclusions.
+matching files. Every path setting shares one pattern language: patterns start at
+the repository root, `**` enters dot-directories, and `**/node_modules/**` (a
+default) ignores nested copies. An `ignore:` list you set replaces the defaults,
+so keep the ones your repository still needs. It doesn't search other directories just to explain exclusions.
 The JSON output distinguishes files selected for discovery from documents actually
 scanned. Use `check` to validate references; `explain` reports discovery and
 assembly errors. Invalid configuration reports `E008` instead of a traceback.

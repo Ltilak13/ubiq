@@ -19,8 +19,8 @@ def repo(tmp_path, text, *, historical=False):
 
 
 def references(root):
-    glossary, refs, _, extra = build(root)
-    return refs, extra + run_checks(glossary, refs)
+    built = build(root)
+    return built.refs, built.diagnostics + run_checks(built.glossary, built.refs)
 
 
 def test_fence_variants_keep_code_hidden_and_locations(tmp_path):
@@ -105,7 +105,7 @@ def test_named_links_follow_documents_but_not_unused_definitions(tmp_path):
                 "[more]: extra.md\n[unused]: unused.md\n")
     (root / "extra.md").write_text("[back][root]\n[[ghost]]\n[root]: README.md\n")
     (root / "unused.md").write_text("[[another-ghost]]\n")
-    refs, diags = references(root)
+    _, diags = references(root)
     assert [(d.code, d.file.name, d.line) for d in diags] == [("E002", "extra.md", 2)]
     assert file_link_targets(root / "README.md", root) == [root / "extra.md"]
 
@@ -125,10 +125,10 @@ def test_named_links_support_encoded_paths_and_select_namespace(tmp_path):
     root = repo(tmp_path, "[playing][game]\n[game]: glossary/play%20%28one%29.md#x \"Title\"\n")
     (root / "glossary/play (one).md").write_text(
         "---\nterm: session\nns: game\n---\nPlay.\n")
-    glossary, refs, _, extra = build(root)
-    assert not extra
-    assert len(refs) == 1
-    assert [t.qualified for t in refs[0].resolve(glossary)] == ["game:session"]
+    built = build(root)
+    assert not built.diagnostics
+    assert len(built.refs) == 1
+    assert [t.qualified for t in built.refs[0].resolve(built.glossary)] == ["game:session"]
 
 
 def test_named_links_keep_registered_external_symlinks(tmp_path):

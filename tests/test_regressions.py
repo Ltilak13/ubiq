@@ -3,9 +3,10 @@
 import time
 from pathlib import Path
 
+from test_ubiq import make_repo
+
 from ubiq.check import run_checks
 from ubiq.cli import build, main
-from test_ubiq import make_repo
 
 
 def test_record_scalars_stay_text(tmp_path, capsys):
@@ -59,7 +60,8 @@ def test_checks_resolve_paths_once_not_per_term(tmp_path):
     links = "\n".join(f"[t{i % 40}](glossary/t{i % 40}.md)" for i in range(200))
     make_repo(tmp_path, recs, {"doc.md": links + "\n"},
               config='glossary: ["glossary/**/*.md"]\ndocs: ["doc.md"]\n')
-    glossary, refs, cfg, _ = build(tmp_path)
+    built = build(tmp_path)
+    glossary, refs = built.glossary, built.refs
     assert len([r for r in refs if r.kind == "markdown"]) == 200
 
     calls = 0
@@ -72,7 +74,7 @@ def test_checks_resolve_paths_once_not_per_term(tmp_path):
 
     Path.resolve = counting
     try:
-        diags = run_checks(glossary, refs, cfg["external_id_patterns"])
+        diags = run_checks(glossary, refs, built.config.external_id_patterns)
     finally:
         Path.resolve = original
     assert not [d for d in diags if d.is_error]
@@ -149,7 +151,7 @@ def test_long_docs_scan_in_linear_time(tmp_path):
     make_repo(tmp_path, recs, {"doc.md": doc},
               config='glossary: ["glossary/**/*.md"]\ndocs: ["doc.md"]\n')
     start = time.perf_counter()
-    _, refs, _, _ = build(tmp_path)
+    refs = build(tmp_path).refs
     assert time.perf_counter() - start < 3  # per-mention span scans took ~10s
     assert len([r for r in refs if r.kind == "mention"]) == 8000
 

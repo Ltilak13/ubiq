@@ -46,6 +46,34 @@ list is valid. The overlay creates no term. Its reference fields are checked
 normally, so unresolved targets report E006. Other overlays still require a
 defining term in the source or a nonempty `term` in the overlay.
 
+## Reference kinds
+
+Each kind of [[reference]] has one policy: the regions it matches in, how it
+resolves, what it reports, and whether it links its term for W002.
+
+| Kind | Reported as | Resolves by | Reports | Scans by default | Can scan |
+|---|---|---|---|---|---|
+| `wiki` | explicit | name, then id | E002 | address, comment | inline_code, address, comment |
+| `delimiter` | explicit | name, then id | E002 | inline_code, comment | inline_code, address, comment |
+| `markdown` | markdown | destination | E002 | comment | comment |
+| `id` | id | id | E004 | comment | inline_code, address, comment |
+| `field` | field | id, then name | E006 | frontmatter only | nothing |
+| `catalog` | catalog | id, then name | E006, E007 | inventory only | nothing |
+| `mention` | mention | name | W002 | prose only | inline_code, address, comment |
+
+Every prose kind also matches plain prose. An address is a link or image
+destination, a bare URL or email, or a raw HTML tag. `references:` composes
+overrides onto the table, per kind: `severity` (`error`, `warn`, or `off`) and
+`scans` (the list of regions, replacing the default). A `warn` kind reports its
+codes as warnings, which never fail the check, and an ambiguous ref (E003) takes
+its kind's severity too. An `off` kind reports nothing, and its refs stay indexed
+for `ubiq refs`. `unlinked_mentions` is shorthand for the mention severity, off by default.
+
+No configuration can contradict a guarantee: a setting that would is E008, and a
+test fails if this spec stops stating one. The guarantees are that fenced code
+blocks are never scanned, frontmatter is never scanned as prose, definition lines
+produce no references, and a plain-prose mention can never fail the build.
+
 ## Diagnostics
 
 - `E001` duplicate definition — one name (canonical or alias) claimed by two records in the
@@ -64,28 +92,29 @@ defining term in the source or a nonempty `term` in the overlay.
   `external_id_patterns` whitelists ids defined outside records.
 - `E007` catalog cover gap — a [[record]] matching a [[catalog]]'s `cover` globs is
   not listed in the inventory.
-- `E008` invalid configuration — invalid YAML, field shapes, regular expressions,
-  delimiter settings, or conflicting glossary rules. The message names the field or rules.
+- `E008` invalid configuration — invalid YAML, unknown settings, field shapes, regular
+  expressions, delimiter or `references:` settings, conflicting glossary rules, or a setting
+  that contradicts a guarantee. The message names the field or rules.
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 - `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,
   Markdown vocabulary link, or id reference in that section resolves to it. Reported
   once per term per section, at the first mention. A section starts at an ATX heading
   or the top of the file. Mentions on heading lines, in historical docs, in the term's
-  own record, and in overlay sidecars are not reported. Link destinations, URLs,
-  emails, HTML tags, and HTML comments are never mentions; a mention in another
+  own record, and in overlay sidecars are not reported. By default, link destinations,
+  URLs, emails, HTML tags, and HTML comments are not mentions; a mention in another
   link's label counts as linked. Off unless `unlinked_mentions: warn`;
   `unlinked_except` lists terms by name or qualified name.
 
 ## Invariants
 
 Fenced code blocks are never scanned, so documentation of syntax and shell
-`[[` tests cannot trip the linker. Wiki-links, id patterns, and mentions skip
-inline code as well. Markdown vocabulary links also skip code and images.
+`[[` tests cannot trip the linker. By default, wiki-links, id patterns, and mentions
+skip inline code as well. Markdown vocabulary links also skip code and images.
 Fences may have up to three leading spaces and at least three backticks or tildes.
 The closing marker must use the same character and be at least as long. An unclosed
 fence hides the remaining document. Inline code spans use matching backtick runs.
-Configured [[delimiter]]s *do* match inside backticks —
+By default, configured [[delimiter]]s *do* match inside backticks —
 that is how slash-commands are written. They skip Markdown link and image
 destinations, bare URLs, and raw HTML tags, which hold paths such as `(/setup.md)` and
 `href="/install"`, not commands. Id patterns skip the same addresses, so
@@ -106,7 +135,14 @@ as markdown, it is pulled into the scan (the `docs:` globs are roots; links are
 followed to a fixpoint). Missing wiki-link file targets are not errors because
 workspace templates name files outside this repo. Relative markdown links (`[x](./a.md)`)
 are followed the same way. Links into configured glossary globs are checked even when
-the target no longer exists. Glob `**` matches zero or more directories. A link
+the target no longer exists. Every path setting uses one pattern language: a
+pattern starts at the repository root unless it is absolute; `*`, `?`, and `[...]`
+match within one path segment, dotfiles and dot-directories included; and `**`
+matches zero or more directories. Ignore patterns follow the same rules, so
+`**/node_modules/**` ignores every copy and `node_modules/**` only the one at the
+root. A configured `ignore` list replaces the defaults (`**/.git/**`, `**/node_modules/**`,
+and `**/.venv/**`), so a repository that sets its own keeps the defaults it still needs. Unknown settings are E008 at any level, with a
+suggestion for a likely typo. A link
 to a registered record can follow a symlink outside the repo. Ordinary link
 traversal stays inside the repo. URL-encoded paths, fragments, angle-bracket
 destinations, and link titles are supported. Full `[label][id]`, collapsed `[id][]`,
@@ -131,9 +167,11 @@ namespace. Context output qualifies names when the glossary contains a collision
 
 `refs TERM --json` returns `query`, `definitions`, `references`, and `count`.
 Definitions include the canonical term, namespace, qualified name, optional ID,
-aliases, and file. References include kind, file, line, raw text, target,
-optional Markdown destination, and historical status. Repeatable `--kind`
-selects the union of the named kinds. An unknown query exits 1 with empty arrays
+aliases, and file. References include kind, policy (the kind's row in the
+reference-kind table), file, line, raw text, target, optional Markdown
+destination, and historical status. Repeatable `--kind` selects the union of the
+named kinds; it accepts reported kinds and policy names, so `explicit` selects
+both `wiki` and `delimiter`. An unknown query exits 1 with empty arrays
 and an `error` message. Without flags, text output retains its existing format.
 Catalog locations retain their existing one-based inventory index; they are not
 source-file line numbers.

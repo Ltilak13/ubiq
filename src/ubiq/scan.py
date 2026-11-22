@@ -1,41 +1,46 @@
 """Doc scanning: find references in markdown files.
 
-Six kinds of reference:
-  explicit  — [[term]] / [[ns:term]], plus configured delimiters (e.g. /term)
-              (must resolve, else E002/E003)
-  id        — matches of configured id_patterns  (must resolve to a record id, else E004)
-  field     — values of configured ref_fields in a doc's frontmatter, e.g.
-              solves: [T1] (must resolve by id or name, else E006)
-  catalog   — values from a configured JSON/YAML inventory (must resolve, else E006)
-  mention   — plain-prose occurrence of a defined term or alias (indexed for
-              `ubiq refs` and orphan detection; never an error)
-  markdown  — Markdown link to a record or configured glossary location
-              (must resolve by destination, else E002/E003)
+What each kind matches, where, how it resolves, and what it reports lives in
+the policy table in `kinds.py`; this module extracts candidate matches and asks
+each kind's policy which document regions it may match in.
 
-Refs from `historical` files still index mentions and resolved refs, but
-unresolved explicit/id/field refs do not fail the build.
+  wiki      — [[term]] / [[ns:term]]                       (E002/E003)
+  delimiter — configured wrappers such as /term             (E002/E003)
+  markdown  — Markdown link to a record or glossary path    (E002/E003, by destination)
+  id        — matches of configured id_patterns             (E004)
+  field     — values of configured ref_fields in frontmatter (E006)
+  catalog   — values from a JSON/YAML inventory (catalog.py) (E006)
+  mention   — plain-prose occurrence of a known name        (never an error; W002)
 
-Fenced code blocks are never scanned. Inline code is ignored for wiki-links,
-id patterns, and mentions — but configured delimiters *do* match inside
-backticks, because that is how slash-commands are written (`/tdd`).
+Fenced code, frontmatter, and reference definitions are never scanned as prose.
+Refs from `historical` files are indexed, but unresolved ones do not fail.
 """
 
 from __future__ import annotations
 
-import fnmatch
 import os
 import re
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 from string import punctuation
+from typing import TYPE_CHECKING
 from urllib.parse import unquote, urlsplit
 
 import yaml
 
+from .kinds import Context, Policy
 from .records import (
-    FRONTMATTER_RE, Glossary, Term, _parse_lenient, load_vocabulary_yaml, normalize,
+    FRONTMATTER_RE,
+    Glossary,
+    Term,
+    _parse_lenient,
+    load_vocabulary_yaml,
+    normalize,
 )
+
+if TYPE_CHECKING:
+    from .config import Config
 
 # field values that are placeholders, not references
 SKIP_FIELD_VALUES = {"", "-", "—", "na", "n/a", "none", "no", "yes"}
@@ -80,17 +85,6 @@ URL_RE = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>|<[^\s<>@]+@[^\s<>]+>"
 # HTML comments are not rendered, so their words are not prose mentions.
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 DOC_SUFFIXES = {".md", ".markdown"}
-
-
-def _matches_glob(parts: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
-    """Match path segments. ** consumes zero or more directories."""
-    if not pattern:
-        return not parts
-    if pattern[0] == "**":
-        return (_matches_glob(parts, pattern[1:])
-                or bool(parts) and _matches_glob(parts[1:], pattern))
-    return (bool(parts) and fnmatch.fnmatchcase(parts[0], pattern[0])
-            and _matches_glob(parts[1:], pattern[1:]))
 
 
 def _doc_link_path(source: Path, spec: str, root: Path | None = None) -> Path | None:
@@ -209,32 +203,26 @@ def compile_delimiter(spec: str | dict) -> Delimiter:
 
 @dataclass
 class Ref:
-    kind: str  # "explicit" | "id" | "field" | "mention" | "catalog" | "markdown"
+    policy: Policy  # what this kind matches, how it resolves, and what it reports
     raw: str   # text as written
     name: str  # normalized term (explicit/mention) or the id string
     ns: str | None
     file: Path
     line: int
-    target: str = ""  # explicit refs: the target as written (for id fallback, e.g. [[T5]])
-    historical: bool = False  # historical docs: unresolved explicit/id/field do not fail
+    target: str = ""  # the target as written: a name, an id, or a field value
+    historical: bool = False  # historical docs: unresolved refs do not fail
     destination: Path | None = None  # Markdown links resolve by file, not label
     section: int = 0  # ATX headings seen at or before this line (0 = before the first)
     heading: bool = False  # the reference sits on a heading line
     linked: bool = False  # mention inside a non-vocabulary link label (author linked it)
 
+    @property
+    def kind(self) -> str:
+        return self.policy.kind
+
     def resolve(self, glossary: Glossary) -> list[Term]:
         """Resolve consistently for checks, usage tracking, and refs queries."""
-        if self.kind == "markdown":
-            return list(glossary.by_file.get(self.destination, []))
-        if self.kind == "id":
-            return glossary.by_id.get(self.name, [])
-        if self.kind in ("field", "catalog"):
-            return (glossary.by_id.get(self.target, [])
-                    or glossary.resolve(self.name, self.ns))
-        matches = glossary.resolve(self.name, self.ns)
-        if not matches and self.kind == "explicit" and self.ns is None:
-            matches = glossary.by_id.get(self.target, [])
-        return matches
+        return self.policy.resolve(glossary, self)
 
 
 def _blank(text: str) -> str:
@@ -342,10 +330,10 @@ class _Markdown:
     comments: list[tuple[int, int]]
 
 
-def _interpret_markdown(text: str, skip_frontmatter: bool = True) -> _Markdown:
+def _interpret_markdown(text: str) -> _Markdown:
     """Interpret the supported Markdown subset once for both scan consumers."""
     fm = FRONTMATTER_RE.match(text)
-    if fm and skip_frontmatter:
+    if fm:
         text = _blank(fm.group()) + text[fm.end():]
     fenced = _blank_fences(text)
     outside_inline = _blank_inline(fenced)
@@ -403,8 +391,8 @@ def _covers(spans: list[tuple[int, int]]):
     return lambda pos: (i := bisect_right(starts, pos) - 1) >= 0 and pos < ends[i]
 
 
-def _field_refs(fm_text: str, path: Path, ref_fields: list[str],
-                lenient: bool) -> list[Ref]:
+def _field_refs(fm_text: str, path: Path, ref_fields: tuple[str, ...],
+                lenient: bool, policy: Policy) -> list[Ref]:
     try:
         meta = load_vocabulary_yaml(fm_text) or {}
     except yaml.YAMLError:
@@ -426,7 +414,7 @@ def _field_refs(fm_text: str, path: Path, ref_fields: list[str],
             v = v.strip().strip("'\"")
             if not v or v.lower() in SKIP_FIELD_VALUES:
                 continue
-            refs.append(Ref("field", f"{fld}: {v}", normalize(v), None, path,
+            refs.append(Ref(policy, f"{fld}: {v}", normalize(v), None, path,
                             line, target=v))
     return refs
 
@@ -438,65 +426,63 @@ def _mention_pattern(name: str) -> str:
     return (r"[_-]+" if slug else r"[\s_-]+").join(re.escape(w) for w in words if w)
 
 
-def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
-              skip_frontmatter: bool = True,
-              ref_fields: list[str] | None = None,
-              lenient: bool = False,
-              delimiters: list[Delimiter] | None = None,
-              root: Path | None = None,
-              glossary_patterns: list[str] | None = None) -> list[Ref]:
+def scan_file(path: Path, glossary: Glossary, cfg: Config) -> list[Ref]:
     text = path.read_text(encoding="utf-8")
+    policies = cfg.policies
     refs: list[Ref] = []
     fm = FRONTMATTER_RE.match(text)
-    if fm and ref_fields:
-        refs += _field_refs(fm.group(1), path, ref_fields, lenient)
-    document = _interpret_markdown(text, skip_frontmatter)
-    clean = document.prose
-    for_delim = document.delimiters
-    line_of = _line_index(clean)
-    in_address = _covers(document.addresses)
+    if fm and cfg.ref_fields:
+        refs += _field_refs(fm.group(1), path, cfg.ref_fields, cfg.lenient, policies["field"])
+    document = _interpret_markdown(text)
+    line_of = _line_index(document.prose)
 
+    def view(policy: Policy, claimed: list[tuple[int, int]]):
+        """The text a kind searches, and whether a match start is admitted.
+
+        Code a kind does not scan is masked, since it must not form tokens.
+        Addresses and comments are skipped by match start instead, so blanked
+        text cannot create new token boundaries.
+        """
+        source = document.delimiters if Context.INLINE_CODE in policy.scans else document.prose
+        blocked = [*([] if Context.ADDRESS in policy.scans else document.addresses),
+                   *([] if Context.COMMENT in policy.scans else document.comments)]
+        covered = _covers(blocked)
+        return _mask(source, claimed), lambda pos: not covered(pos)
+
+    markdown = policies["markdown"]
+    _, admits = view(markdown, [])
     link_spans: list[tuple[int, int]] = []
-    record_files = glossary.by_file
     for start, end, spec in document.links:
-        destination = _doc_link_path(path, spec, root)
-        if destination is None:
+        destination = _doc_link_path(path, spec, cfg.root)
+        if destination is None or not admits(start):
             continue
-        registered = destination.resolve() in record_files
-        configured = root is not None and any(
-            _matches_glob(destination.parts, (root / pattern).parts)
-            for pattern in glossary_patterns or []
-        )
-        if not (registered or configured):
+        registered = destination.resolve() in glossary.by_file
+        if not (registered or any(rule.glob.matches(destination) for rule in cfg.glossary)):
             continue
-        refs.append(Ref("markdown", text[start:end], "", None, path,
-                        line_of(start), target=spec,
-                        destination=destination.resolve()))
+        refs.append(Ref(markdown, text[start:end], "", None, path, line_of(start),
+                        target=spec, destination=destination.resolve()))
         link_spans.append((start, end))
 
-    clean = _mask(clean, link_spans)
-    for_delim = _mask(for_delim, link_spans)
-
-    for m in EXPLICIT_RE.finditer(clean):
-        if _escaped(clean, m.start()):
+    wiki = policies["wiki"]
+    source, admits = view(wiki, link_spans)
+    for m in EXPLICIT_RE.finditer(source):
+        if _escaped(source, m.start()) or not admits(m.start()):
             continue
         target = m.group(1).strip()
-        ns, _, name = target.rpartition(":")
+        ns, name = glossary.split(target)
         # Path-shaped wiki-links are file refs, not terms — unless the name is
         # actually a defined term (`[[SKILL.md]]` in a repo that named that file).
-        if _looks_like_path(target) and not glossary.resolve(
-                name, normalize(ns) if ns else None):
+        if _looks_like_path(target) and not glossary.resolve(name, ns):
             continue
-        refs.append(Ref("explicit", m.group(0), normalize(name),
-                        normalize(ns) if ns else None, path, line_of(m.start()),
-                        target=name.strip()))
+        refs.append(Ref(wiki, m.group(0), normalize(name), ns, path,
+                        line_of(m.start()), target=name.strip()))
 
+    delimiter = policies["delimiter"]
+    source, admits = view(delimiter, link_spans)
     delim_spans: list[tuple[int, int]] = []
-    # Skip matches that start inside an address rather than masking, so blanked
-    # text cannot create new token boundaries.
-    for delim in delimiters or []:
-        for m in delim.regex.finditer(for_delim):
-            if in_address(m.start()):
+    for delim in cfg.delimiters:
+        for m in delim.regex.finditer(source):
+            if not admits(m.start()):
                 continue
             raw_term = m.group(1)
             name = normalize(raw_term)
@@ -504,17 +490,18 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
                 continue
             if delim.only_known and name not in glossary.by_name:
                 continue
-            refs.append(Ref("explicit", m.group(0), name, None, path,
+            refs.append(Ref(delimiter, m.group(0), name, None, path,
                             line_of(m.start()), target=raw_term))
             delim_spans.append((m.start(), m.end()))
 
     # A ticket URL (`https://tracker/UB-9`) is an address, not an id reference.
-    for pat in id_patterns:
-        for m in re.finditer(pat, clean):
-            if in_address(m.start()):
-                continue
-            refs.append(Ref("id", m.group(0), m.group(0), None, path,
-                            line_of(m.start())))
+    id_policy = policies["id"]
+    source, admits = view(id_policy, link_spans)
+    for pattern in cfg.id_patterns:
+        for m in pattern.finditer(source):
+            if admits(m.start()):
+                refs.append(Ref(id_policy, m.group(0), m.group(0), None, path,
+                                line_of(m.start()), target=m.group(0)))
 
     # Plain mentions of known terms/aliases (longest-first so multiword terms win).
     # A slug name (`grill-me`) needs a hyphen or underscore, so the phrase
@@ -523,22 +510,23 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
                     for n in t.spellings or t.names()},
                    key=len, reverse=True)
     if names:
+        mention = policies["mention"]
         mention_re = re.compile(r"\b(" + "|".join(names) + r")\b", re.IGNORECASE)
-        explicit_spans = [(m.start(), m.end()) for m in EXPLICIT_RE.finditer(clean)]
-        in_explicit = _covers(explicit_spans + delim_spans + link_spans)
-        not_prose = _covers(document.addresses + document.comments)
+        source, admits = view(mention, link_spans)
+        explicit_spans = [(m.start(), m.end()) for m in EXPLICIT_RE.finditer(source)]
+        claimed = _covers(explicit_spans + delim_spans + link_spans)
         # Labels of other links stay mentions (they still count as use) but
         # are linked.
         vocabulary = set(link_spans)
         in_label = _covers([(a, b) for a, b, _ in document.links if (a, b) not in vocabulary])
-        for m in mention_re.finditer(clean):
-            if in_explicit(m.start()) or not_prose(m.start()):
+        for m in mention_re.finditer(source):
+            if claimed(m.start()) or not admits(m.start()):
                 continue
-            refs.append(Ref("mention", m.group(0), normalize(m.group(0)), None,
+            refs.append(Ref(mention, m.group(0), normalize(m.group(0)), None,
                             path, line_of(m.start()), linked=in_label(m.start())))
 
-    # Fences, inline code, and frontmatter are already blank in `clean`.
-    heading_lines = [line_of(m.start()) for m in HEADING_RE.finditer(clean)]
+    # Fences, inline code, and frontmatter are already blank in `prose`.
+    heading_lines = [line_of(m.start()) for m in HEADING_RE.finditer(document.prose)]
     headings = set(heading_lines)
     for ref in refs:
         ref.section = bisect_right(heading_lines, ref.line)
@@ -546,22 +534,14 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
     return refs
 
 
-def scan_docs(paths: list[Path], glossary: Glossary, id_patterns: list[str],
-              ref_fields: list[str] | None = None,
-              lenient: bool = False,
-              delimiters: list[Delimiter] | None = None,
+def scan_docs(paths: list[Path], glossary: Glossary, cfg: Config,
               historical: set[Path] | None = None,
-              root: Path | None = None,
-              glossary_patterns: list[str] | None = None,
               invalid: list[tuple[Path, str]] | None = None) -> list[Ref]:
     hist = {p.resolve() for p in (historical or [])}
     refs: list[Ref] = []
     for p in sorted(paths):
         try:
-            found = scan_file(p, glossary, id_patterns,
-                              ref_fields=ref_fields, lenient=lenient,
-                              delimiters=delimiters, root=root,
-                              glossary_patterns=glossary_patterns)
+            found = scan_file(p, glossary, cfg)
         except (OSError, UnicodeError) as exc:
             if invalid is None:
                 raise

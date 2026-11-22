@@ -16,6 +16,9 @@ Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
   W002 unlinked-mention       a section mentions a term but never links it (once per
                               term per section; `unlinked_mentions: warn` enables it)
+
+A reference kind's policy (kinds.py) sets the severity of what its refs report:
+`references.id.severity: warn` keeps E004 visible without failing the build.
 """
 
 from __future__ import annotations
@@ -25,10 +28,9 @@ from dataclasses import dataclass
 from difflib import get_close_matches
 from pathlib import Path
 
+from .kinds import Policy, Severity
 from .records import Glossary, normalize
 from .scan import Ref
-
-ERROR_CODES = {"E001", "E002", "E003", "E004", "E005", "E006", "E007", "E008"}
 
 
 @dataclass
@@ -37,17 +39,29 @@ class Diagnostic:
     message: str
     file: Path
     line: int = 0
+    severity: str = ""  # "error" or "warning"; defaults from the code's letter
+
+    def __post_init__(self):
+        self.severity = self.severity or ("error" if self.code.startswith("E") else "warning")
 
     @property
     def is_error(self) -> bool:
-        return self.code in ERROR_CODES
+        return self.severity == "error"
 
     def render(self) -> str:
         loc = f"{self.file}:{self.line}" if self.line else str(self.file)
-        return f"{loc}: {self.code} {self.message}"
+        # A policy can downgrade an E-code; say so next to the code.
+        note = " (warning)" if self.code.startswith("E") and not self.is_error else ""
+        return f"{loc}: {self.code}{note} {self.message}"
 
 
-LINKING_KINDS = ("explicit", "markdown", "id")
+def reported(policy: Policy, code: str, message: str, file: Path,
+             line: int = 0) -> list[Diagnostic]:
+    """The diagnostic at the policy's severity, or none when it is off."""
+    if policy.severity is Severity.OFF:
+        return []
+    severity = "error" if policy.severity is Severity.ERROR else "warning"
+    return [Diagnostic(code, message, file, line, severity)]
 
 
 def _term_files(glossary: Glossary) -> dict[int, Path]:
@@ -77,19 +91,22 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
     the term's own record, files in `skip_files` (overlay sidecars), and terms
     named in `except_names` are not checked.
     """
+    if not any(r.policy.name == "mention" and r.policy.severity is not Severity.OFF
+               for r in refs):
+        return []
     skip = skip_files or set()
     excepted = {normalize(n) for n in except_names or []}
     term_files = _term_files(glossary)
     linked: set[tuple[Path, int, int]] = set()
     for r in refs:
-        if r.kind in LINKING_KINDS or r.linked:
+        if r.policy.links or r.linked:
             linked.update((r.file, r.section, id(t)) for t in r.resolve(glossary))
 
     resolved = _resolver()
-    reported: set[tuple[Path, int, int]] = set()
+    warned: set[tuple[Path, int, int]] = set()
     diags: list[Diagnostic] = []
     for r in refs:
-        if r.kind != "mention" or r.historical or r.heading:
+        if r.policy.name != "mention" or r.historical or r.heading:
             continue
         matches = [t for t in r.resolve(glossary)
                    if t.term not in excepted and normalize(t.qualified) not in excepted]
@@ -99,24 +116,23 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
         if source in skip or any(term_files[id(t)] == source for t in matches):
             continue
         # Once per term: a mention matching several terms reports those not yet seen.
-        fresh = [t for t in matches if (r.file, r.section, id(t)) not in reported]
+        fresh = [t for t in matches if (r.file, r.section, id(t)) not in warned]
         if not fresh:
             continue
-        reported.update((r.file, r.section, id(t)) for t in fresh)
+        warned.update((r.file, r.section, id(t)) for t in fresh)
         names = " or ".join(t.qualified for t in fresh)
-        diags.append(Diagnostic(
-            "W002", f"unlinked mention '{r.raw}' — this section never links {names}",
-            r.file, r.line))
+        diags += reported(r.policy, r.policy.code,
+                          f"unlinked mention '{r.raw}' — this section never links {names}",
+                          r.file, r.line)
     return diags
 
 
 def run_checks(glossary: Glossary, refs: list[Ref],
-               external_id_patterns: list[str] | None = None, *,
-               unlinked: bool = False,
+               external_id_patterns=(), *,
                skip_unlinked: set[Path] | None = None,
                unlinked_except: list[str] | None = None) -> list[Diagnostic]:
     diags: list[Diagnostic] = []
-    external = [re.compile(p) for p in (external_id_patterns or [])]
+    external = [re.compile(p) for p in external_id_patterns]
 
     # E005 — records that exist but cannot be parsed
     for path, msg in glossary.invalid:
@@ -141,7 +157,7 @@ def run_checks(glossary: Glossary, refs: list[Ref],
             diags.append(Diagnostic(
                 "E001", f"id '{id_}' claimed by {len(terms)} records ({files})", terms[0].file))
 
-    # E002/E003/E004/E006 — reference resolution
+    # E002/E003/E004/E006 — reference resolution, at each kind's severity
     for r in refs:
         if r.kind == "mention":
             continue
@@ -149,36 +165,15 @@ def run_checks(glossary: Glossary, refs: list[Ref],
         if matches:
             if len(matches) > 1 and not r.historical:
                 options = ", ".join(f"[[{t.qualified}]]" for t in matches)
-                diags.append(Diagnostic(
-                    "E003", f"ambiguous reference {r.raw} — qualify as one of: {options}",
-                    r.file, r.line))
+                diags += reported(r.policy, "E003",
+                                  f"ambiguous reference {r.raw} — qualify as one of: {options}",
+                                  r.file, r.line)
             continue
         if r.historical:
             continue
-        if r.kind in ("explicit", "markdown"):
-            scope = f" in namespace '{r.ns}'" if r.ns else ""
-            hint = ""
-            if r.kind == "explicit":
-                candidates = sorted(n for n in glossary.by_name
-                                    if glossary.resolve(n, r.ns))
-                near = get_close_matches(r.name, candidates, n=1)
-                if near:
-                    target = f"{r.ns}:{near[0]}" if r.ns else near[0]
-                    hint = f". Did you mean [[{target}]]?"
-            diags.append(Diagnostic(
-                "E002", f"unresolved reference {r.raw}{scope} — no defining record{hint}",
-                r.file, r.line))
-        elif r.kind == "id":
-            diags.append(Diagnostic(
-                "E004", f"unresolved id '{r.name}' — no record carries id: {r.name}",
-                r.file, r.line))
-        elif r.kind in ("field", "catalog"):
-            if any(p.fullmatch(r.target) for p in external):
-                continue
-            label = "catalog entry" if r.kind == "catalog" else "field ref"
-            diags.append(Diagnostic(
-                "E006", f"unresolved {label} '{r.raw}' — no record with that id or name",
-                r.file, r.line))
+        if r.kind in ("field", "catalog") and any(p.fullmatch(r.target) for p in external):
+            continue
+        diags += reported(r.policy, r.policy.code, _unresolved(glossary, r), r.file, r.line)
 
     # W001 — orphan terms (no reference or mention outside the defining record)
     term_files = _term_files(glossary)
@@ -194,6 +189,22 @@ def run_checks(glossary: Glossary, refs: list[Ref],
             diags.append(Diagnostic(
                 "W001", f"orphan term '{t.qualified}' — defined but never used", t.file))
 
-    if unlinked:
-        diags.extend(unlinked_mentions(glossary, refs, skip_unlinked, unlinked_except))
+    diags.extend(unlinked_mentions(glossary, refs, skip_unlinked, unlinked_except))
     return diags
+
+
+def _unresolved(glossary: Glossary, r: Ref) -> str:
+    if r.kind == "id":
+        return f"unresolved id '{r.name}' — no record carries id: {r.name}"
+    if r.kind in ("field", "catalog"):
+        label = "catalog entry" if r.kind == "catalog" else "field ref"
+        return f"unresolved {label} '{r.raw}' — no record with that id or name"
+    scope = f" in namespace '{r.ns}'" if r.ns else ""
+    hint = ""
+    if r.kind == "explicit":
+        candidates = sorted(n for n in glossary.by_name if glossary.resolve(n, r.ns))
+        near = get_close_matches(r.name, candidates, n=1)
+        if near:
+            target = f"{r.ns}:{near[0]}" if r.ns else near[0]
+            hint = f". Did you mean [[{target}]]?"
+    return f"unresolved reference {r.raw}{scope} — no defining record{hint}"

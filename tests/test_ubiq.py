@@ -3,8 +3,7 @@ from pathlib import Path
 
 from ubiq.check import run_checks
 from ubiq.cli import build, main
-from ubiq.records import load_glossary, parse_record
-from ubiq.scan import scan_docs
+from ubiq.records import parse_record
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,12 +23,14 @@ def make_repo(tmp_path: Path, records: dict[str, str], docs: dict[str, str],
 
 
 def diags_for(tmp_path, records, docs, id_patterns=(), ref_fields=(), external=()):
-    root = make_repo(tmp_path, records, docs)
-    glossary = load_glossary(list((root / "glossary").glob("*.md")))
-    doc_files = [p for p in root.rglob("*.md")]
-    refs = scan_docs(doc_files, glossary, list(id_patterns),
-                     ref_fields=list(ref_fields))
-    return run_checks(glossary, refs, list(external))
+    """Run the production pipeline: config, discovery, scan, and checks."""
+    config = {"glossary": ["glossary/*.md"], "docs": ["**/*.md"],
+              "id_patterns": list(id_patterns), "ref_fields": list(ref_fields),
+              "external_id_patterns": list(external)}
+    root = make_repo(tmp_path, records, docs, json.dumps(config))
+    built = build(root)
+    return built.diagnostics + run_checks(built.glossary, built.refs,
+                                          built.config.external_id_patterns)
 
 
 REC_SESSION = "---\nterm: session\n---\n\nA period of play.\n"
@@ -478,10 +479,10 @@ def test_markdown_paths_titles_and_code_exclusions(tmp_path):
            '[web](https://example.com/glossary/missing.md)\n'
            '[other](missing.md)\n[anchor](#missing.md)\n')
     make_repo(tmp_path, {"play (one).md": REC_SESSION}, {"doc.md": doc})
-    glossary, refs, _, extra = build(tmp_path)
-    assert extra == []
-    assert [r.line for r in refs if r.kind == "markdown"] == [1, 2, 3, 4]
-    assert run_checks(glossary, refs) == []
+    built = build(tmp_path)
+    assert built.diagnostics == []
+    assert [r.line for r in built.refs if r.kind == "markdown"] == [1, 2, 3, 4]
+    assert run_checks(built.glossary, built.refs) == []
 
 
 def test_markdown_reference_requires_a_record_at_destination(tmp_path, capsys):

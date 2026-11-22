@@ -11,21 +11,20 @@
 from __future__ import annotations
 
 import argparse
-import fnmatch
-import glob as globlib
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import __version__
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
-from .config import InvalidConfig, load_config
-from .records import (
-    ConflictingGlossary, assemble_glossary, normalize,
-)
-from .scan import compile_delimiter, file_link_targets, scan_docs
+from .config import Config, InvalidConfig, load_config
+from .globs import Glob, first_match
+from .kinds import KINDS
+from .records import ConflictingGlossary, Glossary, assemble_glossary, normalize
+from .scan import Ref, file_link_targets, scan_docs
 
 
 def _display_path(path: Path, root: Path) -> str:
@@ -67,35 +66,34 @@ class ScanTrace:
             self.unmatched, key=lambda item: (item["kind"], item["pattern"]))}
 
 
-def _ignored(path: Path, root: Path, patterns: list[str]) -> str | None:
-    relative = str(path.relative_to(root)) if path.is_relative_to(root) else path.name
-    return next((pattern for pattern in patterns if fnmatch.fnmatch(relative, pattern)), None)
+def _ignored(path: Path, ignore: tuple[Glob, ...]) -> str | None:
+    rule = first_match(ignore, path)
+    return rule.pattern if rule else None
 
 
-def _expand(root: Path, patterns: list[str], ignore: list[str],
+def _expand(globs: tuple[Glob, ...], ignore: tuple[Glob, ...],
             trace: ScanTrace | None = None, role: str = "docs") -> list[Path]:
     out: set[Path] = set()
-    for pat in patterns:
-        full = pat if Path(pat).is_absolute() else str(root / pat)
+    for glob in globs:
         matched = False
-        for hit in globlib.glob(full, recursive=True):
-            path = Path(hit)
+        # explain reports every ignored candidate, so it walks ignored directories.
+        for path in glob.walk(ignore, prune=trace is None):
             if not path.is_file():
                 continue
             matched = True
-            ignored = _ignored(path, root, ignore)
+            ignored = _ignored(path, ignore)
             if trace is not None:
-                trace.record(path, role, pattern=pat, ignored_by=ignored)
+                trace.record(path, role, pattern=glob.pattern, ignored_by=ignored)
             if ignored is None:
                 out.add(path)
         if not matched and trace is not None:
-            item = {"kind": role, "pattern": pat}
+            item = {"kind": role, "pattern": glob.pattern}
             if item not in trace.unmatched:
                 trace.unmatched.append(item)
     return sorted(out)
 
 
-def _close_docs(root: Path, seeds: list[Path], ignore: list[str],
+def _close_docs(root: Path, seeds: list[Path], ignore: tuple[Glob, ...],
                 trace: ScanTrace | None = None) -> list[Path]:
     """Follow existing in-repo links while recording all encountered reasons."""
     seen = {path.resolve() for path in seeds}
@@ -108,7 +106,7 @@ def _close_docs(root: Path, seeds: list[Path], ignore: list[str],
             continue
         for target in linked:
             key = target.resolve()
-            ignored = _ignored(target, root, ignore)
+            ignored = _ignored(target, ignore)
             if trace is not None:
                 trace.record(target, "link", source=path, ignored_by=ignored)
             if ignored is not None or key in seen:
@@ -118,22 +116,27 @@ def _close_docs(root: Path, seeds: list[Path], ignore: list[str],
     return sorted(seen, key=str)
 
 
-def build(root: Path, trace: ScanTrace | None = None):
+@dataclass
+class Build:
+    glossary: Glossary
+    refs: list[Ref]
+    config: Config
+    diagnostics: list[Diagnostic]  # assembly errors: catalogs, unreadable files
+    docs: list[Path]               # every scanned document, resolved
+    historical: set[Path]          # the historical subset of `docs`
+
+
+def build(root: Path, trace: ScanTrace | None = None) -> Build:
     root = root.resolve()
     cfg = load_config(root)
-    term_fields = tuple(cfg["term_field"])
-    lenient = cfg["frontmatter"] == "lenient"
-    delimiters = [compile_delimiter(d) for d in cfg["delimiters"]]
-    overlay_files = _expand(root, cfg["overlays"], cfg["ignore"], trace, "overlay")
-    entries = cfg["glossary"]
+    overlay_files = _expand(cfg.overlays, cfg.ignore, trace, "overlay")
     sources = [
-        (path, tuple(entry["term_field"]), entry.get("ns"),
-         f"glossary[{i}] ({entry['glob']})")
-        for i, entry in enumerate(entries)
-        for path in _expand(root, [entry["glob"]], cfg["ignore"], trace, "glossary")
+        (path, rule.term_field, rule.ns, rule.label)
+        for rule in cfg.glossary
+        for path in _expand((rule.glob,), cfg.ignore, trace, "glossary")
     ]
-    glossary = assemble_glossary(root, sources, overlay_files, term_fields, lenient,
-                                 ref_fields=tuple(cfg["ref_fields"]))
+    glossary = assemble_glossary(root, sources, overlay_files, cfg.term_field, cfg.lenient,
+                                 ref_fields=cfg.ref_fields)
 
     if trace is not None:
         for term in glossary.terms:
@@ -141,43 +144,37 @@ def build(root: Path, trace: ScanTrace | None = None):
         for source, overlay in glossary.overlay_sources.items():
             trace.record(source, "overlay-source", source=overlay)
 
-    doc_files = _expand(root, cfg["docs"], cfg["ignore"], trace, "docs")
-    hist_files = _expand(root, cfg["historical"], cfg["ignore"], trace, "historical")
+    doc_files = _expand(cfg.docs, cfg.ignore, trace, "docs")
+    hist_files = _expand(cfg.historical, cfg.ignore, trace, "historical")
     hist_set = {p.resolve() for p in hist_files}
     # Sidecars are docs too, so their ref_fields (uses: [...]) participate.
-    for p in overlay_files:
+    for p in [*overlay_files, *hist_files]:
         if p not in doc_files:
             doc_files.append(p)
-    for p in hist_files:
-        if p not in doc_files:
-            doc_files.append(p)
-    doc_files = _close_docs(root, doc_files, cfg["ignore"], trace)
+    doc_files = _close_docs(root, doc_files, cfg.ignore, trace)
     if trace is not None:
         for path in doc_files:
             trace.files[_display_path(path, root)]["scanned"] = True
-    refs = scan_docs(doc_files, glossary, cfg["id_patterns"],
-                     ref_fields=cfg["ref_fields"], lenient=lenient,
-                     delimiters=delimiters, historical=hist_set, root=root,
-                     glossary_patterns=[entry["glob"] for entry in entries],
-                     invalid=glossary.invalid)
+    refs = scan_docs(doc_files, glossary, cfg, historical=hist_set, invalid=glossary.invalid)
 
     extra: list[Diagnostic] = []
-    for spec in cfg.get("catalogs") or []:
-        cfile = root / spec["file"]
+    catalog = cfg.policies["catalog"]
+    for spec in cfg.catalogs:
         if trace is not None:
-            trace.record(cfile, "catalog")
-        if not cfile.is_file():
-            extra.append(Diagnostic("E005", f"catalog file not found: {spec['file']}", cfile))
+            trace.record(spec.file, "catalog")
+        if not spec.file.is_file():
+            extra.append(Diagnostic("E005", f"catalog file not found: {spec.path}", spec.file))
             continue
         try:
-            catalog_entries = catalog_refs(spec, cfile)
+            catalog_entries = catalog_refs(spec, catalog)
             refs.extend(catalog_entries)
-            cover = _expand(root, spec["cover"], cfg["ignore"], trace, "cover")
-            extra.extend(catalog_cover_gaps(catalog_entries, cfile, glossary, set(cover)))
+            cover = _expand(spec.cover, cfg.ignore, trace, "cover")
+            extra.extend(catalog_cover_gaps(catalog_entries, spec.file, glossary,
+                                            set(cover), catalog))
         except CatalogError as e:
-            extra.append(Diagnostic("E005", str(e), cfile))
+            extra.append(Diagnostic("E005", str(e), spec.file))
 
-    return glossary, refs, cfg, extra
+    return Build(glossary, refs, cfg, extra, doc_files, hist_set)
 
 
 INIT_CONFIG = """\
@@ -195,9 +192,11 @@ docs:
   - "docs/**/*.md"
 historical:
   - "CHANGELOG.md"
+# Patterns start at the repo root; `**/` also ignores nested copies.
 ignore:
-  - ".git/**"
-  - "node_modules/**"
+  - "**/.git/**"
+  - "**/node_modules/**"
+  - "**/.venv/**"
 id_patterns: []
 ref_fields: []
 overlays:
@@ -214,6 +213,9 @@ overlays:
 #     except: [plugin]
 # unlinked_mentions: warn     # W002: a section mentions a term but never links it
 # unlinked_except: [pr]       # terms that are ordinary words in this repo
+# references:                 # per-kind overrides: severity error|warn|off, scans
+#   id: {severity: warn}      # report unknown ids without failing the check
+#   wiki: {scans: [comment]}  # regions: inline_code, address, comment
 """
 
 INIT_RECORD = """\
@@ -278,20 +280,20 @@ def _assembly_errors(glossary, extra) -> list[Diagnostic]:
 
 def cmd_check(args) -> int:
     root = Path(args.root).resolve()
-    glossary, refs, cfg, extra = build(root)
+    result = build(root)
+    glossary, refs, cfg = result.glossary, result.refs, result.config
     sidecars = {path.resolve() for path in glossary.overlay_sources.values()}
-    diags = extra + run_checks(glossary, refs, cfg["external_id_patterns"],
-                               unlinked=cfg["unlinked_mentions"] == "warn",
-                               skip_unlinked=sidecars,
-                               unlinked_except=cfg["unlinked_except"])
+    diags = result.diagnostics + run_checks(
+        glossary, refs, cfg.external_id_patterns,
+        skip_unlinked=sidecars, unlinked_except=cfg.unlinked_except)
     return _report(diags, root, args.json, len(glossary.terms), len(refs))
 
 
 def cmd_explain(args) -> int:
     root = Path(args.root).resolve()
     trace = ScanTrace(root)
-    glossary, _, _, extra = build(root, trace)
-    diags = _assembly_errors(glossary, extra)
+    built = build(root, trace)
+    diags = _assembly_errors(built.glossary, built.diagnostics)
     result = trace.result()
     result["diagnostics"] = _diagnostics_json(diags, root)
     if args.json:
@@ -315,8 +317,9 @@ def cmd_explain(args) -> int:
 
 def cmd_terms(args) -> int:
     root = Path(args.root).resolve()
-    glossary, _, _, extra = build(root)
-    errors = _assembly_errors(glossary, extra)
+    built = build(root)
+    glossary = built.glossary
+    errors = _assembly_errors(glossary, built.diagnostics)
     if errors:
         return _report(errors, root, False)
     terms = glossary.terms
@@ -341,14 +344,17 @@ def cmd_terms(args) -> int:
 
 def cmd_refs(args) -> int:
     root = Path(args.root).resolve()
-    glossary, refs, _, extra = build(root)
-    errors = _assembly_errors(glossary, extra)
+    built = build(root)
+    glossary, refs = built.glossary, built.refs
+    errors = _assembly_errors(glossary, built.diagnostics)
     if errors:
         return _report(errors, root, args.json)
     wanted = glossary.resolve(args.term) or glossary.by_id.get(args.term, [])
     wanted_ids = {id(term) for term in wanted}
+    # `--kind explicit` selects wiki-links and delimiters; `--kind wiki` one of them.
     hits = sorted(
-        (ref for ref in refs if (not args.kind or ref.kind in args.kind)
+        (ref for ref in refs
+         if (not args.kind or ref.kind in args.kind or ref.policy.name in args.kind)
          and any(id(term) in wanted_ids for term in ref.resolve(glossary))),
         key=lambda ref: (str(ref.file), ref.line))
     if args.json:
@@ -360,7 +366,8 @@ def cmd_refs(args) -> int:
                  "file": _display_path(term.file, root)}
                 for term in sorted(wanted, key=lambda term: (term.qualified, str(term.file)))],
             "references": [
-                {"kind": ref.kind, "file": _display_path(ref.file, root),
+                {"kind": ref.kind, "policy": ref.policy.name,
+                 "file": _display_path(ref.file, root),
                  "line": ref.line, "raw": ref.raw, "target": ref.target,
                  "destination": _display_path(ref.destination, root) if ref.destination else None,
                  "historical": ref.historical} for ref in hits],
@@ -382,15 +389,13 @@ def cmd_refs(args) -> int:
 
 def cmd_candidates(args) -> int:
     root = Path(args.root).resolve()
-    trace = ScanTrace(root)
-    glossary, _, _, extra = build(root, trace)
-    errors = _assembly_errors(glossary, extra)
+    built = build(root)
+    errors = _assembly_errors(built.glossary, built.diagnostics)
     if errors:
         return _report(errors, root, args.json)
     # Live docs only: historical docs keep retired names on purpose.
-    docs = [root / item["file"] for item in trace.result()["files"]
-            if item["scanned"] and not item["historical"]]
-    found = find_candidates(docs, glossary, args.min_files)
+    docs = [path for path in built.docs if path not in built.historical]
+    found = find_candidates(docs, built.glossary, args.min_files)
     if args.json:
         print(json.dumps({"min_files": args.min_files, "count": len(found), "candidates": [
             {"name": c["name"], "files": c["files"], "occurrences": c["occurrences"],
@@ -439,9 +444,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("term")
     r.add_argument("--root", default=".")
     r.add_argument("--json", action="store_true")
-    r.add_argument("--kind", action="append", choices=[
-        "explicit", "id", "field", "mention", "catalog", "markdown"],
-        help="include this reference kind (repeat to select several)")
+    r.add_argument("--kind", action="append", choices=KINDS,
+                   help="include this reference kind (repeat to select several)")
     r.set_defaults(fn=cmd_refs)
 
     e = sub.add_parser("explain", help="explain discovered files and their inclusion rules")

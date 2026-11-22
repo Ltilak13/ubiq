@@ -195,30 +195,20 @@ class Glossary:
             self.by_id.setdefault(t.id, []).append(t)
         self.by_file.setdefault(t.file.resolve(), []).append(t)
 
+    def split(self, target: str) -> tuple[str | None, str]:
+        """`ns:name` splits at the last colon; without one, there is no namespace."""
+        ns, _, name = target.rpartition(":")
+        return (normalize(ns), name) if ns else (None, target)
+
     def resolve(self, name: str, ns: str | None = None) -> list[Term]:
         """All terms matching `name` (optionally restricted to namespace `ns`)."""
-        if ns is None and ":" in name:
-            ns, _, name = name.rpartition(":")
+        if ns is None:
+            ns, name = self.split(name)
         candidates = self.by_name.get(normalize(name), [])
         if ns is not None:
             ns = normalize(ns)
             candidates = [t for t in candidates if t.ns == ns]
         return candidates
-
-
-def load_glossary(paths: list[Path],
-                  term_fields: tuple[str, ...] = ("term",),
-                  lenient: bool = False) -> Glossary:
-    g = Glossary()
-    for p in sorted(paths):
-        try:
-            t = parse_record(p, term_fields, lenient)
-        except InvalidRecord as e:
-            g.invalid.append((p, str(e)))
-            continue
-        if t:
-            g.add(t)
-    return g
 
 
 class ConflictingGlossary(ValueError):
