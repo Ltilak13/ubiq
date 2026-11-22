@@ -128,6 +128,8 @@ vocabulary links, delimiters, id patterns, `ref_fields`, and catalogs).
 A mention matches a name as written: a name with no spaces (`grill-me`) needs a
 hyphen or underscore between its words, so the phrase "grill me" is prose; a
 spaced name (`issue tracker`) matches with any of space, hyphen, or underscore.
+A name that starts or ends in punctuation, such as `C++` or `.NET`, matches where no
+letter, digit, or underscore touches it, so `ASP.NET` is not a mention of `.NET`.
 Wiki-links that look like
 file paths (`[[GLOSSARY.md]]`, `[[dir/file]]`, `[[./x]]`) are not term
 references unless that name is a defined [[term]]. If the target exists in-repo

@@ -125,3 +125,13 @@ def test_refs_kind_selects_a_policy_and_json_names_it(tmp_path, capsys):
         refs = json.loads(capsys.readouterr().out)["references"]
         assert sorted(r["policy"] for r in refs) == expected
         assert {r["kind"] for r in refs} == {"explicit"}
+
+
+def test_mentions_match_names_that_start_or_end_in_punctuation(tmp_path, capsys):
+    recs = {"c.md": "---\nterm: C++\n---\n\nA language.\n",
+            "n.md": "---\nterm: .NET\n---\n\nA platform.\n"}
+    make_repo(tmp_path, recs, {"doc.md": "We write C++ on .NET, not ASP.NET or C++x.\n"},
+              'glossary: ["glossary/*.md"]\ndocs: ["doc.md"]\n')
+    for term, count in (("c++", 1), (".net", 1)):
+        assert main(["refs", term, "--root", str(tmp_path), "--json"]) == 0
+        assert json.loads(capsys.readouterr().out)["count"] == count, term

@@ -506,12 +506,14 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config) -> list[Ref]:
     # Plain mentions of known terms/aliases (longest-first so multiword terms win).
     # A slug name (`grill-me`) needs a hyphen or underscore, so the phrase
     # "grill me" is prose; a spaced name (`issue tracker`) takes any separator.
+    # Lookarounds, not `\b`, so names that start or end in punctuation (`C++`,
+    # `.NET`) still match as whole words.
     names = sorted({_mention_pattern(n) for t in glossary.terms
                     for n in t.spellings or t.names()},
                    key=len, reverse=True)
     if names:
         mention = policies["mention"]
-        mention_re = re.compile(r"\b(" + "|".join(names) + r")\b", re.IGNORECASE)
+        mention_re = re.compile(r"(?<!\w)(" + "|".join(names) + r")(?!\w)", re.IGNORECASE)
         source, admits = view(mention, link_spans)
         explicit_spans = [(m.start(), m.end()) for m in EXPLICIT_RE.finditer(source)]
         claimed = _covers(explicit_spans + delim_spans + link_spans)
