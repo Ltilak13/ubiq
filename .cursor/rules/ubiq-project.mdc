@@ -1,0 +1,11 @@
+---
+description: Keep docs/spec.md guarantees and kinds.GUARANTEES in sync
+globs: docs/spec.md,src/ubiq/kinds.py,tests/test_kinds.py
+alwaysApply: false
+---
+
+`GUARANTEES` in `src/ubiq/kinds.py` quotes sentences from `docs/spec.md` word for word.
+`tests/test_kinds.py` fails when a quoted sentence changes.
+
+- Edit a quoted spec sentence and its guarantee in the same change.
+- When you add a `Context` member, add text for that region to the fixture document of the property test in `tests/test_kinds.py`.
