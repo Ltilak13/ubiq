@@ -1,6 +1,7 @@
 """Reference-kind policies, `references:` config, and the spec guarantees."""
 
 import json
+import re
 from itertools import combinations
 from pathlib import Path
 
@@ -146,3 +147,16 @@ def test_colons_are_part_of_a_name_unless_the_prefix_is_a_namespace(tmp_path, ca
     assert status == 1
     assert [d["message"] for d in result["diagnostics"] if d["code"] == "E002"] == [
         "unresolved reference [[nope:session]] — no defining record. Did you mean [[session]]?"]
+
+
+def test_ambiguity_reports_e003_only_when_qualifying_helps(tmp_path, capsys):
+    dupe = {"a.md": REC.replace("id: UB-1\n", ""), "b.md": REC.replace("id: UB-1\n", "")}
+    make_repo(tmp_path, dupe, {"doc.md": "[[session]]\n"},
+              'glossary: ["glossary/*.md"]\ndocs: ["doc.md"]\n')
+    _, result = check_json(tmp_path, capsys)
+    assert [d["code"] for d in result["diagnostics"] if d["severity"] == "error"] == ["E001"]
+
+    (tmp_path / "glossary/b.md").write_text("---\nterm: session\nns: game\n---\n\nPlay.\n")
+    _, result = check_json(tmp_path, capsys)
+    e003 = [d["message"] for d in result["diagnostics"] if d["code"] == "E003"]
+    assert len(e003) == 1 and re.search(r"\[\[core:session\]\], \[\[game:session\]\]", e003[0])

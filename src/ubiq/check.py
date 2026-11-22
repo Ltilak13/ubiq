@@ -163,8 +163,11 @@ def run_checks(glossary: Glossary, refs: list[Ref],
             continue
         matches = r.resolve(glossary)
         if matches:
-            if len(matches) > 1 and not r.historical:
-                options = ", ".join(f"[[{t.qualified}]]" for t in matches)
+            # Records that share one qualified name are a duplicate, already E001;
+            # qualifying cannot pick between them.
+            qualified = list(dict.fromkeys(t.qualified for t in matches))
+            if len(qualified) > 1 and not r.historical:
+                options = ", ".join(f"[[{name}]]" for name in qualified)
                 diags += reported(r.policy, "E003",
                                   f"ambiguous reference {r.raw} — qualify as one of: {options}",
                                   r.file, r.line)

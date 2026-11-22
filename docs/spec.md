@@ -82,7 +82,8 @@ produce no references, and a plain-prose mention can never fail the build.
   same [[namespace]], or one id claimed twice. The report is the consolidation work order.
 - `E002` unresolved reference — an explicit [[reference]] with no defining [[record]].
   Similar known names produce a suggestion for unresolved wiki-links or delimiters.
-- `E003` ambiguous reference — a reference resolves to multiple records.
+- `E003` ambiguous reference — a reference resolves to records with different qualified
+  names. Records that share one qualified name are E001 instead, since qualifying cannot help.
   Qualify names in wiki-links, frontmatter fields, and catalog entries with a namespace.
 - `E004` unresolved id — an id-pattern match with no record carrying that id.
 - `E005` invalid record — a [[record]] file exists but its frontmatter cannot be parsed
