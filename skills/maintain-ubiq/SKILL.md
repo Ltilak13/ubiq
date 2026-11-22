@@ -12,7 +12,29 @@ The recurring pass after `apply-ubiq`. ubiq reports; this skill decides. Never w
 
 Run `python3 -m ubiq.cli` if `ubiq` is not on `PATH`.
 
-## 1. Run the check
+## 1. Discover groups and run the check
+
+Run `ubiq discover --json` before the check.
+Compare the current groups and schema proposals with `ubiq.yaml`, overlays, catalogs, and existing context glossaries.
+The report is read-only. `.ubiq/discovery.json`, when present, is the initialization snapshot and can be stale.
+
+Inspect new, moved, and renamed files in each group.
+Choose naming fields from actual frontmatter. Preserve aliases, IDs, and explicit namespaces.
+Keep different formats separate when one naming rule would change their meaning.
+Use sidecars for scripts, hooks, or rules without suitable frontmatter.
+Maintain separate inventory arrays for each asset family and matching catalog coverage.
+Compare discovered paths with registered records because catalog coverage cannot detect files without records.
+Exclude generated copies and dependencies after you identify their canonical sources.
+
+Read `GLOSSARY-MAP.md` and context glossaries when they exist.
+Use directory candidates to investigate domain boundaries through vocabulary, ownership, and dependencies.
+A technical folder does not establish a business context.
+Do not rename a namespace solely because a directory moved.
+Preserve qualified references when reorganizing records, and check every affected reference.
+Keep one glossary for a single context. Group records by established context when meanings differ across domains.
+Ask the owner if the evidence cannot resolve competing meanings.
+Apply the new-vocabulary criteria in step 5 before adding records.
+
 
 ```bash
 ubiq check --json
@@ -65,7 +87,8 @@ Run `ubiq candidates --json` for backticked identifiers used in two or more docs
 
 Then scan the files changed since the last pass (`git diff --name-only <base>`) for what `candidates` can't see:
 
-- New skill directories or `name:` fields
+- New asset groups, including skills, rules, scripts, hooks, and domain records
+- New naming fields or metadata formats reported by `ubiq discover --json`
 - Bold definitions (`**Term**:`) and `CONTEXT.md` / `GLOSSARY.md` entries with no record
 
 Propose each candidate with where it appears. Create a record only for a name used in two or more files or defined in a human glossary. Confirm the rest first.
@@ -74,6 +97,6 @@ Propose each candidate with where it appears. Create a record only for a name us
 
 ## 6. Re-check and report
 
-Run `ubiq check` again. Report what you fixed, linked, excepted, created, and left for a human.
+Run `ubiq check` again. Report what you fixed, linked, excepted, created, and left for a human. Include schema changes, group coverage, and unresolved context candidates.
 
 **Done when:** `ubiq check` exits 0 and the summary lists everything not resolved.

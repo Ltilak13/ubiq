@@ -12,6 +12,34 @@ Install: `pip install ubiq` (or `pip install -e <path-to-ubiq>`). Run `python3 -
 
 ## 1. Discover the vocabulary
 
+Run `ubiq discover --json` before you select record families.
+The command reports asset groups by source directory, schema proposals, and candidate domain contexts.
+It preserves source paths and does not edit files.
+Read existing `GLOSSARY-MAP.md` and context glossaries before you interpret directory candidates.
+Inspect representative files in each group, including files with different metadata fields.
+
+Design each group's schema from those files:
+
+- Select the existing naming field, such as `term`, `name`, or `title`.
+- Preserve explicit namespaces, aliases, and IDs when their meaning is consistent.
+- Keep mixed formats in separate glossary rules. Do not force one field onto every file in a folder.
+- Use an overlay when the source has no suitable naming field.
+- Keep inventories in separate arrays, such as `skills`, `rules`, `scripts`, and `hooks`.
+- Map each array to its own `catalogs` entry and coverage paths.
+- Add other record families when the repository provides evidence for them.
+
+Use directory structure to propose groups. Confirm domain boundaries through vocabulary, ownership, and code dependencies.
+Technical categories describe asset types. Business contexts describe where a term has one meaning.
+A `scripts` folder is not evidence for a business context.
+The CLI does not infer domain semantics or relationships from directory names.
+Treat `directory-candidate` namespaces and unknown naming fields as proposals that need inspection.
+
+Keep a single glossary when the repository has one context.
+For established multiple contexts, group records under `.ubiq/glossary/<context>/` and assign the corresponding namespace.
+Preserve existing context glossaries and their map instead of creating duplicate definitions.
+Record cross-context relationships only when code or documentation supports them.
+Ask the owner when competing meanings leave a boundary unresolved.
+
 Walk the repo for words that should be load-bearing:
 
 - Existing frontmatter that already names things (`name:` on `SKILL.md`, `title:`, …)
@@ -19,11 +47,17 @@ Walk the repo for words that should be load-bearing:
 - A human glossary (`CONTEXT.md` Language section, `GLOSSARY.md`)
 - JSON/YAML inventories (`.claude-plugin/plugin.json` `skills` arrays)
 
-**Done when:** you can name the record families (what is already a file vs what needs a new record) and any inventory that must stay in sync with those files.
+**Done when:** each group has a source path, naming field or overlay strategy, namespace rationale, and inventory requirement. Unresolved domain boundaries remain explicit.
 
 ## 2. Write `ubiq.yaml`
 
-Start from `ubiq init` or copy the starter. Keep docs **narrow** — do not use `**/*.md`.
+Start from `ubiq init` or copy the starter.
+Initialization detects recognizable assets and writes separate arrays in `.ubiq/catalogs/assets.json`.
+It reuses suitable frontmatter fields and creates sidecars for other assets.
+Sidecar paths preserve the source directory structure under `.ubiq/overlays/assets/<family>/`.
+The discovery snapshot is `.ubiq/discovery.json`. Review its context and schema proposals before assigning domain namespaces.
+Initialization refuses to overwrite existing configuration or generated metadata paths.
+For an existing configuration, use `ubiq discover --json` and update its metadata through this workflow. Keep docs **narrow** — do not use `**/*.md`.
 
 ```yaml
 glossary:
@@ -39,6 +73,8 @@ docs:
   - "AGENTS.md"
   - "CLAUDE.md"
   - "CONTEXT.md"
+  - "GLOSSARY.md"
+  - "GLOSSARY-MAP.md"
   - ".agents/**/*.md"
   - ".ubiq/**/*.md"
   - "docs/**/*.md"
@@ -64,7 +100,7 @@ catalogs:
 - **`[[term]]`** — wiki-link; always explicit; typos fail. File-shaped targets (`[[GLOSSARY.md]]`, `[[dir/x]]`, `[[./x]]`) are not terms unless that name is a defined term (`[[SKILL.md]]` still counts if you named it). If the file exists in-repo, ubiq **follows** it into the scan — `docs:` are roots, not a closed list. A missing file (a teaching-workspace `[[MISSION.md]]`) is not an error. Relative markdown links (`[x](./a.md)`) are followed the same way. Do not rewrite `ubiq.yaml` to list every reachable file; widen `docs:` only for scan *roots* that nothing already links to.
 - **`/` delimiter** — slash-commands, including inside backticks. Default is strict (every `/slug` is a ref). `only_known: true` is quieter; `except` is only for tokens that *are* glossary names but must not count (`/plugin` vs a term named `plugin`).
 - **`historical`** — mentions and resolved refs still count; E002/E003/E004/E006 on unresolved refs do not.
-- **`catalogs`** — an inventory is not a glossary. Do not glob `plugin.json` as records (duplicate definition vs the real file). Missing entry → E006; a `cover` record not listed → E007.
+- **`catalogs`** — an inventory is not a glossary. Do not glob `plugin.json` as records (duplicate definition vs the real file). Missing entry → E006; a `cover` record not listed → E007. Coverage applies to registered records only. Compare discovery results with the inventory to find files without records.
 
 **Done when:** `ubiq.yaml` names every record family, the docs the linker should read, and any catalog/historical/delimiter rules.
 
@@ -72,7 +108,7 @@ catalogs:
 
 | Kind | Where | When |
 | --- | --- | --- |
-| Org / domain term | `.ubiq/glossary/<term>.md` with `term:` | No existing file already defines it |
+| Org / domain term | `.ubiq/glossary/<context>/<term>.md` with `term:` | No existing file already defines it. Omit the context directory for a single context. |
 | Existing file as record | glossary glob + `term_field` / `ns` | Frontmatter already has the name |
 | Alias, `uses:`, extra `ns` | `.ubiq/overlays/<name>.md` with `source:` | The source file must not be edited |
 

@@ -1,9 +1,10 @@
 """ubiq CLI.
 
-  ubiq init  [--root DIR]            scaffold ubiq.yaml + .ubiq/glossary/ with an example record
+  ubiq init  [--root DIR]            infer asset schemas and scaffold grouped glossary metadata
   ubiq check [--root DIR] [--json]   lint the vocabulary; exit 1 on errors
   ubiq terms [--root DIR] [--format list|context] [--ns NS]
   ubiq refs TERM [--root DIR]        every place a term is used (traceability = search)
+  ubiq discover [--root DIR] [--json] groups, schema proposals, and candidate contexts
   ubiq candidates [--root DIR] [--json] [--min-files N]
                                      backticked identifiers in N+ docs with no record
 """
@@ -16,14 +17,23 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 from . import __version__
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
 from .config import Config, InvalidConfig, load_config
+from .discovery import discover, init_assets
 from .globs import Glob, first_match
 from .kinds import KINDS
-from .records import ConflictingGlossary, Glossary, assemble_glossary, normalize
+from .records import (
+    ConflictingGlossary,
+    Glossary,
+    InvalidRecord,
+    assemble_glossary,
+    normalize,
+)
 from .scan import Ref, file_link_targets, scan_docs
 
 
@@ -237,16 +247,66 @@ def cmd_init(args) -> int:
     root = Path(args.root).resolve()
     cfg = root / "ubiq.yaml"
     gdir = root / ".ubiq" / "glossary"
-    if cfg.exists():
+    if cfg.exists() or cfg.is_symlink():
         print(f"{cfg} already exists — not touching it", file=sys.stderr)
         return 1
-    gdir.mkdir(parents=True, exist_ok=True)  # creates a missing root, like `git init DIR`
-    cfg.write_text(INIT_CONFIG, encoding="utf-8")
-    example = gdir / "glossary-record.md"
-    if not example.exists():
-        example.write_text(INIT_RECORD, encoding="utf-8")
-    print(f"wrote {cfg.relative_to(root)} and {example.relative_to(root)}")
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        report = discover(root)
+        config = yaml.safe_load(INIT_CONFIG)
+        writes = init_assets(root, report, config)
+        for path in writes:
+            if path.exists() or path.is_symlink():
+                print(f"{path} already exists — not touching it", file=sys.stderr)
+                return 1
+            if any(parent.is_symlink() for parent in path.parents if parent != root and parent.is_relative_to(root)):
+                print(f"{path} has a symlink parent — not touching it", file=sys.stderr)
+                return 1
+        example = gdir / "glossary-record.md"
+        if example.is_symlink() or gdir.is_symlink() or (root / ".ubiq").is_symlink():
+            print("glossary path is a symlink — not touching it", file=sys.stderr)
+            return 1
+        if not example.exists():
+            writes[example] = INIT_RECORD
+        writes[cfg] = (yaml.safe_dump(config, sort_keys=False) if report['groups'] or report['glossaries']
+                       else INIT_CONFIG)
+        for path, content in writes.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+    except (OSError, InvalidRecord) as exc:
+        print(f"cannot initialize: {exc}", file=sys.stderr)
+        return 1
+    print(f"wrote {cfg.relative_to(root)} and glossary metadata")
+    if report['contexts']:
+        print("review .ubiq/discovery.json: directory groups are candidate contexts, not confirmed domain boundaries")
     print("next: `ubiq check` — then add one record per term your docs rely on")
+    return 0
+
+
+def cmd_discover(args) -> int:
+    root = Path(args.root).resolve()
+    if not root.is_dir():
+        print(f"repository directory does not exist: {root}", file=sys.stderr)
+        return 1
+    try:
+        report = discover(root)
+    except (OSError, InvalidRecord) as exc:
+        print(f"cannot discover repository: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        for path, families in report['groups'].items():
+            print(f"{path}/")
+            for family, sources in families.items():
+                for source in sources:
+                    print(f"  {family}: {source}")
+        for schema in report['schemas']:
+            field = schema["term_field"] or "review required"
+            print(f"schema: {schema['path']} ({schema['storage']}, term_field={field}, ns={schema['ns']})")
+        for context in report['contexts']:
+            print(f"context candidate: {context['path']} ({context['evidence']})")
+        print("Review candidates against domain language and ownership before assigning namespaces.")
     return 0
 
 
@@ -425,9 +485,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--version", action="version", version=f"ubiq {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    i = sub.add_parser("init", help="scaffold ubiq.yaml + .ubiq/glossary/")
+    i = sub.add_parser("init", help="infer asset schemas and scaffold grouped glossary metadata")
     i.add_argument("--root", default=".")
     i.set_defaults(fn=cmd_init)
+
+    d = sub.add_parser("discover", help="group assets and propose contexts from repository structure")
+    d.add_argument("--root", default=".")
+    d.add_argument("--json", action="store_true")
+    d.set_defaults(fn=cmd_discover)
 
     c = sub.add_parser("check", help="lint the vocabulary")
     c.add_argument("--root", default=".")

@@ -62,6 +62,38 @@ Wiki-links remain available. A typo such as `[[sesion]]` reports:
 E002 unresolved reference [[sesion]] — no defining record. Did you mean [[session]]?
 ```
 
+## Repository groups and schemas
+
+`ubiq init` inspects the repository before it writes configuration. It registers
+recognizable skills, rules, scripts, and hooks in separate arrays under
+`.ubiq/catalogs/assets.json`. Existing naming fields stay in their source files.
+Assets without a naming field get sidecar records whose paths mirror the source tree.
+Initialization preserves source files and refuses to overwrite existing configuration or metadata paths.
+
+For setup or maintenance, inspect the current structure without writing files:
+
+```bash
+ubiq discover --json
+```
+
+The report groups assets by directory and proposes schemas from frontmatter.
+Each schema identifies its files, naming field, available metadata fields,
+namespace evidence, and whether it needs review. Mixed formats remain separate.
+For example, a folder containing `term:` records and `title:` records gets two
+schema proposals. Unknown naming fields remain unresolved for review.
+
+Existing glossaries and directories under `src`, `packages`, `services`, `apps`,
+`domains`, `contexts`, or grouped `glossary` folders supply context candidates. A directory name alone cannot
+establish a domain boundary. The setup and maintenance skills check vocabulary,
+ownership, and code dependencies before assigning domain namespaces. A single
+context can keep one glossary. Established contexts can have separate glossary
+folders and namespaces, with a map that preserves their relationships.
+
+Discovery skips symlinks, common dependency/build directories, and configured
+ignore patterns. It reports current files; `.ubiq/discovery.json` is only the
+initialization snapshot. Generated catalog coverage checks registered records.
+Use discovery during maintenance to find new files that have no record yet.
+
 ## References
 
 - Inline Markdown links to registered records or paths matching configured
@@ -115,6 +147,7 @@ ubiq refs session                      # find links and ordinary mentions
 ubiq refs game:session                 # restrict the query to a namespace
 ubiq refs session --json               # structured definitions and references
 ubiq refs session --kind explicit --kind markdown
+ubiq discover --json                   # propose groups and schemas from source files
 ubiq explain                          # show why files were discovered
 ubiq explain --json                    # the same discovery evidence as JSON
 ubiq candidates                        # backticked names in 2+ docs with no record
