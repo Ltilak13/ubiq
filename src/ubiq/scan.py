@@ -508,8 +508,11 @@ def scan_file(path: Path, glossary: Glossary, id_patterns: list[str],
                             line_of(m.start()), target=raw_term))
             delim_spans.append((m.start(), m.end()))
 
+    # A ticket URL (`https://tracker/UB-9`) is an address, not an id reference.
     for pat in id_patterns:
         for m in re.finditer(pat, clean):
+            if in_address(m.start()):
+                continue
             refs.append(Ref("id", m.group(0), m.group(0), None, path,
                             line_of(m.start())))
 

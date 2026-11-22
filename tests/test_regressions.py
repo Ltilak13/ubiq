@@ -152,3 +152,15 @@ def test_long_docs_scan_in_linear_time(tmp_path):
     _, refs, _, _ = build(tmp_path)
     assert time.perf_counter() - start < 3  # per-mention span scans took ~10s
     assert len([r for r in refs if r.kind == "mention"]) == 8000
+
+
+def test_id_patterns_skip_link_destinations_and_urls(tmp_path, capsys):
+    recs = {"s.md": "---\nterm: session\nid: UB-1\n---\n\nA period.\n"}
+    doc = ("UB-1 is fine; see [the ticket](https://t.io/UB-98), https://t.io/UB-99,\n"
+           '<a href="/UB-97">x</a>, and [UB-96](https://t.io/x) in a label.\n')
+    cfg = 'glossary: ["glossary/**/*.md"]\ndocs: ["doc.md"]\nid_patterns: ["\\\\bUB-\\\\d+\\\\b"]\n'
+    make_repo(tmp_path, recs, {"doc.md": doc}, config=cfg)
+    assert main(["check", "--root", str(tmp_path)]) == 1
+    out = capsys.readouterr().out
+    assert [line.split("unresolved id ")[1][:7] for line in out.splitlines()
+            if "E004" in line] == ["'UB-96'"]

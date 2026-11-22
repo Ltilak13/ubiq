@@ -87,7 +87,8 @@ fence hides the remaining document. Inline code spans use matching backtick runs
 Configured [[delimiter]]s *do* match inside backticks —
 that is how slash-commands are written. They skip Markdown link and image
 destinations, bare URLs, and raw HTML tags, which hold paths such as `(/setup.md)` and
-`href="/install"`, not commands. Frontmatter is never scanned as prose,
+`href="/install"`, not commands. Id patterns skip the same addresses, so
+a ticket URL is not an id reference. Frontmatter is never scanned as prose,
 so field names are not mentions. Record, overlay, reference-field, and catalog
 YAML keeps scalars as text: `No`, `007`, and `1.10` stay strings rather than
 becoming a boolean or numbers. Null still reads as absent. Plain-prose mentions of a defined [[term]] are
