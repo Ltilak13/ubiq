@@ -164,3 +164,24 @@ def test_id_patterns_skip_link_destinations_and_urls(tmp_path, capsys):
     out = capsys.readouterr().out
     assert [line.split("unresolved id ")[1][:7] for line in out.splitlines()
             if "E004" in line] == ["'UB-96'"]
+
+
+def test_empty_ns_reads_as_default(tmp_path):
+    recs = {"s.md": "---\nterm: session\nns:\n---\n\nA period.\n"}
+    make_repo(tmp_path, recs, {"doc.md": "A [[core:session]].\n"})
+    assert main(["check", "--root", str(tmp_path)]) == 0  # was namespace 'none'
+
+
+def test_non_string_or_blank_names_are_invalid_records(tmp_path, capsys):
+    recs = {"list.md": "---\nterm: [a, b]\n---\n\nTwo.\n",
+            "blank.md": "---\nterm: '  '\n---\n\nNone.\n",
+            "alias.md": "---\nterm: ok\naliases: [~]\n---\n\nNull alias.\n",
+            "src.md": "---\nterm: src\n---\n\nSource.\n"}
+    make_repo(tmp_path, recs, {"doc.md": "ok\n", ".ubiq/overlays/src.md":
+                               "---\nsource: glossary/src.md\nterm: [x]\n---\n"})
+    assert main(["check", "--root", str(tmp_path)]) == 1
+    out = capsys.readouterr().out
+    assert out.count("E005") == 4, out
+    assert "term: expected a nonempty string" in out
+    assert "aliases: expected a nonempty string" in out
+    assert "overlay term: expected a nonempty string" in out

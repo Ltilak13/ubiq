@@ -57,7 +57,8 @@ defining term in the source or a nonempty `term` in the overlay.
 - `E004` unresolved id — an id-pattern match with no record carrying that id.
 - `E005` invalid record — a [[record]] file exists but its frontmatter cannot be parsed
   (strict mode; `frontmatter: lenient` opts into line-based parsing for non-YAML dialects).
-  Unreadable records/catalogs, malformed overlays, and duplicate overlay sources also use E005.
+  Unreadable records/catalogs, malformed overlays, duplicate overlay sources, and
+  term or alias names that are not nonempty strings also use E005.
 - `E006` unresolved field ref — a value in a configured `ref_fields` frontmatter field
   or a [[catalog]] entry with no defining [[record]] by id or name;
   `external_id_patterns` whitelists ids defined outside records.

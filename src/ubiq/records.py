@@ -115,6 +115,22 @@ def parse_frontmatter(path: Path, lenient: bool = False) -> tuple[dict, str]:
     return meta, text[m.end():]
 
 
+def _name(value, field: str) -> str:
+    """A term or alias as written. `term: [a, b]` or a blank name is E005."""
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidRecord(f"{field}: expected a nonempty string")
+    return value.strip()
+
+
+def _aliases(meta: dict, label: str = "aliases") -> list[str]:
+    aliases = meta.get("aliases") or []
+    if isinstance(aliases, str):
+        aliases = [aliases]
+    if not isinstance(aliases, list):
+        raise InvalidRecord(f"{label} must be a string or list")
+    return [_name(a, label) for a in aliases]
+
+
 def parse_record(path: Path, term_fields: tuple[str, ...] = ("term",),
                  lenient: bool = False, default_ns: str | None = None) -> Term | None:
     """Parse a glossary record. Returns None if no term field is present.
@@ -127,40 +143,34 @@ def parse_record(path: Path, term_fields: tuple[str, ...] = ("term",),
     field_name = next((f for f in term_fields if meta.get(f)), None)
     if field_name is None:
         return None
-    aliases = meta.get("aliases") or []
-    if isinstance(aliases, str):
-        aliases = [aliases]
-    if not isinstance(aliases, list):
-        raise InvalidRecord("aliases must be a string or list")
-    ns = meta.get("ns", default_ns or DEFAULT_NS)
+    term = _name(meta[field_name], field_name)
+    aliases = _aliases(meta)
+    # An empty `ns:` loads as null, which reads as absent.
+    ns = meta.get("ns") or default_ns or DEFAULT_NS
     return Term(
-        term=normalize(str(meta[field_name])),
+        term=normalize(term),
         ns=normalize(str(ns)),
         file=path,
-        aliases=[normalize(str(a)) for a in aliases],
+        aliases=[normalize(a) for a in aliases],
         id=str(meta["id"]) if meta.get("id") is not None else None,
         definition=body.strip(),
-        spellings=[str(meta[field_name]).strip(), *(str(a).strip() for a in aliases)],
+        spellings=[term, *aliases],
     )
 
 
 def overlay_onto(term: Term, meta: dict) -> Term:
     """Merge sidecar frontmatter onto a record. Overlay wins for ns/id; aliases union."""
-    extra = meta.get("aliases") or []
-    if isinstance(extra, str):
-        extra = [extra]
-    if not isinstance(extra, list):
-        raise InvalidRecord("overlay aliases must be a string or list")
-    aliases = list(dict.fromkeys(
-        [*term.aliases, *[normalize(str(a)) for a in extra]]))
+    extra = _aliases(meta, "overlay aliases")
+    aliases = list(dict.fromkeys([*term.aliases, *map(normalize, extra)]))
     ns = normalize(str(meta["ns"])) if meta.get("ns") else term.ns
     id_ = str(meta["id"]) if meta.get("id") is not None else term.id
     term_name, spellings = term.term, list(term.spellings)
     if meta.get("term"):
         # An overlay `term:` replaces the record's own spelling, which comes first.
-        term_name = normalize(str(meta["term"]))
-        spellings = [str(meta["term"]).strip(), *term.spellings[1:]]
-    spellings += [str(a).strip() for a in extra]
+        written = _name(meta["term"], "overlay term")
+        term_name = normalize(written)
+        spellings = [written, *term.spellings[1:]]
+    spellings += extra
     return Term(term=term_name, ns=ns, file=term.file, aliases=aliases,
                 id=id_, definition=term.definition, spellings=spellings)
 
@@ -272,8 +282,8 @@ def assemble_glossary(root: Path, sources: list[tuple[Path, tuple[str, ...], str
             if source in overlays:
                 _, meta = overlays[source]
                 if term is None and meta.get("term"):
-                    term = Term(normalize(str(meta["term"])), ns, source,
-                                spellings=[str(meta["term"]).strip()])
+                    written = _name(meta["term"], "overlay term")
+                    term = Term(normalize(written), ns, source, spellings=[written])
                 if term is None:
                     if (any(field in meta for field in ref_fields)
                             and not any(field in meta for field in ("term", "ns", "aliases", "id"))):
