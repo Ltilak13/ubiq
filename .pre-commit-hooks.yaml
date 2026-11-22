@@ -2,7 +2,7 @@
 #
 #   repos:
 #     - repo: https://github.com/Ltilak13/ubiq
-#       rev: v0.2.0
+#       rev: v0.5.0
 #       hooks:
 #         - id: ubiq-check
 - id: ubiq-check
