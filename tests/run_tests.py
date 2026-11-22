@@ -5,8 +5,8 @@ Canonical runner is still pytest: `python3 -m pytest tests/`.
 """
 
 import contextlib
-import inspect
 import importlib
+import inspect
 import io
 import sys
 import tempfile
@@ -56,7 +56,7 @@ def run():
             try:
                 fn(**kwargs)
                 status = "ok"
-            except Exception:
+            except Exception:  # noqa: BLE001 — a runner reports every failure
                 status = "FAIL"
                 failed += 1
                 tb = traceback.format_exc()

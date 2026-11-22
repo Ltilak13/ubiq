@@ -2,8 +2,9 @@
 
 import json
 
-from ubiq.cli import main
 from test_ubiq import make_repo
+
+from ubiq.cli import main
 
 CFG = ('glossary: ["glossary/**/*.md"]\ndocs: ["**/*.md"]\n'
        'historical: [CHANGELOG.md]\n')
