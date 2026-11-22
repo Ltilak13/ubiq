@@ -185,3 +185,10 @@ def test_non_string_or_blank_names_are_invalid_records(tmp_path, capsys):
     assert "term: expected a nonempty string" in out
     assert "aliases: expected a nonempty string" in out
     assert "overlay term: expected a nonempty string" in out
+
+
+def test_init_creates_a_missing_root(tmp_path, capsys):
+    root = tmp_path / "new" / "repo"
+    assert main(["init", "--root", str(root)]) == 0
+    assert (root / "ubiq.yaml").is_file()
+    assert main(["check", "--root", str(root)]) == 0

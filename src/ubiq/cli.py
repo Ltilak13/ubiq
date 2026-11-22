@@ -238,8 +238,8 @@ def cmd_init(args) -> int:
     if cfg.exists():
         print(f"{cfg} already exists — not touching it", file=sys.stderr)
         return 1
+    gdir.mkdir(parents=True, exist_ok=True)  # creates a missing root, like `git init DIR`
     cfg.write_text(INIT_CONFIG, encoding="utf-8")
-    gdir.mkdir(parents=True, exist_ok=True)
     example = gdir / "glossary-record.md"
     if not example.exists():
         example.write_text(INIT_RECORD, encoding="utf-8")
