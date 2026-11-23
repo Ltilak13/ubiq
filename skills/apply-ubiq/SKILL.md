@@ -31,6 +31,15 @@ It preserves source paths and does not edit files.
 Read existing `GLOSSARY-MAP.md` and context glossaries before you interpret directory candidates.
 Inspect representative files in each group, including files with different metadata fields.
 
+If meanings, relationships, or context boundaries need clarification, use /domain-modeling when installed.
+Read that skill before you continue the domain review.
+Supply the repository, source evidence, disputed meanings, and permitted edit scope.
+If the skill is unavailable, inspect the glossary and relevant code directly.
+Test proposed meanings and relationships with concrete scenarios.
+Ask the owner to resolve competing meanings that the evidence cannot settle.
+Record agreed definitions and unresolved questions within the permitted edit scope.
+Reuse established definitions when this review finds no conflict.
+
 Design each group's schema from those files:
 
 - Select the existing naming field, such as `term`, `name`, or `title`.
@@ -132,6 +141,16 @@ Overlay key is `source:` (not `on:` — YAML 1.1 loads `on:` as boolean `True`).
 **Done when:** every load-bearing name has exactly one defining record, and no owned file was patched for the linker.
 
 ## 4. Check, then CI
+
+Use /validate-change when installed after changes to configuration, records, overlays, schemas, or migrations.
+Read that skill before you select checks.
+Supply the repository, changed paths, acceptance criteria, and current check evidence.
+If the skill is unavailable, inspect repository instructions and run the relevant checks directly.
+Always run `ubiq check`, including for a read-only inspection.
+For schema or migration changes, also test affected records and invalid cases through the schema change workflow.
+Repair failures within the authorized scope before you report success.
+Report unavailable checks as validation gaps.
+The companion skill does not authorize commits or publication.
 
 ```bash
 python3 -m ubiq.cli check

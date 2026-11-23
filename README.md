@@ -1,19 +1,105 @@
 # ubiq
 
-A linker for prose. Explicit vocabulary references must resolve to exactly one
-defining record, or the check fails.
+A linker for prose. Define your project's terms once, link to them from your
+docs, and let CI catch broken references and ambiguous names.
 
-Define a term once, link to its definition from your docs, and check those links
-in CI. Ubiq reports missing references, duplicate definitions, and ambiguous names.
-It also indexes ordinary mentions for search. It doesn't rewrite your docs or
-check whether every word belongs in the glossary.
+Each explicit vocabulary reference must resolve to exactly one definition.
+Ubiq also indexes ordinary mentions so you can find where a concept is used.
+It doesn't rewrite your docs or decide what your project's terms should mean.
 
-## Quick start
+## Apply ubiq to your project
 
-Install from a Ubiq checkout:
+Start with the language your team already uses. You can keep existing glossary
+files and naming fields; ubiq can register them without changing their format.
+Use `apply-ubiq` for adoption and `maintain-ubiq` for ongoing work. Both workflows
+include the domain review and validation relevant to the change.
+
+```mermaid
+flowchart TD
+    A["First-time setup: apply-ubiq"] --> D["Discover files and review the existing model"]
+    M["Ongoing changes: maintain-ubiq"] --> D
+    D --> Q{"Terms or boundaries need work?"}
+    Q -->|Yes| B["Domain modeling: resolve meanings and relationships"]
+    Q -->|No| C["Update configuration and records"]
+    B --> C
+    C --> S{"Schema changes?"}
+    S -->|Yes| T["Stage and test schema plus record migration"]
+    T --> P["Promote a passing candidate within authorized scope"]
+    S -->|No| V["Validate active state: ubiq check"]
+    P --> V
+    V --> R["Review results and report open questions"]
+    R -.->|Next project change| M
+```
+
+Start with [apply-ubiq](skills/apply-ubiq/SKILL.md), then return to
+[maintain-ubiq](skills/maintain-ubiq/SKILL.md) as your project changes. Domain
+modeling and validation are work inside these flows. The companion skills
+described below can help with that work when installed.
+
+### 1. Understand the domain
+
+Read the existing `GLOSSARY.md`, or `GLOSSARY-MAP.md` when the project has
+multiple contexts. Check important terms against real examples and the code.
+If a word means different things in different parts of the project, resolve
+that distinction before assigning namespaces. A folder named `billing` is a
+clue to investigate, not proof of a separate domain.
+
+The `domain-modeling` companion skill helps challenge fuzzy terms, test
+relationships with concrete scenarios, and capture agreed definitions. It is
+not bundled with ubiq. If it isn't installed, do that analysis directly with
+your agent or team as part of setup or maintenance. An established glossary may
+already give you what you need; a routine reference repair doesn't require
+redesigning the model.
+
+### 2. Set up the checks
+
+Ubiq ships two agent skills in this checkout: `apply-ubiq` and `maintain-ubiq`.
+Use your agent's skill installation mechanism, or ask it to read the linked
+`SKILL.md` and follow it for your target repository. Installing the CLI alone
+doesn't install skills into your agent.
+
+Start with `apply-ubiq`. It discovers existing files, reviews their vocabulary
+and domain boundaries, and creates the configuration and supporting metadata.
+Existing source files stay intact; overlays attach aliases and relationships
+where needed. Setup finishes with a passing check and CI integration.
+
+For a manual setup, follow the [quick start](#quick-start-with-the-cli) below.
+`ubiq init` creates a starting configuration. Review its discoveries before
+treating them as your domain model.
+
+### 3. Validate as you work
+
+Run `ubiq check` locally and in CI. A passing check means the configured
+references and constraints pass. Domain modeling still requires reviewing
+meaning, responsibilities, and relationships. Running `discover`, `check`, and
+`candidates` alone does not complete that review.
+
+If you need typed records or domain constraints, use the
+[schema change workflow](docs/schema-workflow.md): stage the schema and record
+changes together, test affected records and invalid cases, then promote the
+candidate by registering it in `ubiq.yaml`. The normal `ubiq check` must enforce
+the promoted schema. Simple vocabulary linking needs no custom schema.
+The optional `validate-change` companion skill can coordinate repository checks
+for schema and migration changes. Without it, run those checks directly. The
+required validation is the same either way.
+
+### 4. Maintain the vocabulary
+
+Use `maintain-ubiq` after adding concepts, renaming files, or changing how parts
+of the project interact. It compares fresh discovery with registered records,
+fixes errors, and reviews orphan terms and possible new vocabulary. Return to
+domain modeling when a change exposes conflicting meanings or boundaries.
+
+The maintenance report should say what changed, what was checked, and what
+still needs a decision. Linking mentions inside existing prose is opt-in.
+Commits and pushes are separate actions.
+
+## Quick start with the CLI
+
+Install from a local Ubiq checkout (Python 3.10 or later):
 
 ```bash
-pip install -e .
+pip install -e /path/to/ubiq
 ```
 
 Then initialize the repository you want to check:
