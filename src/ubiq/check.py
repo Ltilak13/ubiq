@@ -11,11 +11,14 @@ Errors (fail the build):
                               defined outside records)
   E007 catalog-cover-gap      a record matching a catalog's `cover` globs is not listed
   E008 invalid-configuration  invalid settings or conflicting glossary selection rules
+  E011 include-cycle          a shared part includes itself through other parts (graph.py)
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
   W002 unlinked-mention       a section mentions a term but never links it (once per
                               term per section; `unlinked_mentions: warn` enables it)
+  W003 blocked-invoke         an invoke edge the model cannot follow (graph.py)
+  W004 install-layout         a link that resolves in only one of source tree and install
 
 A reference kind's policy (kinds.py) sets the severity of what its refs report:
 `references.id.severity: warn` keeps E004 visible without failing the build.

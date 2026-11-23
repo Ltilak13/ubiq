@@ -35,6 +35,8 @@ from .records import (
     normalize,
 )
 from .scan import Ref, file_link_targets, scan_docs
+from .graph import KINDS as GRAPH_KINDS, build_edges, check_edges, owners, walk
+from .overlap import find_overlap
 
 
 def _display_path(path: Path, root: Path) -> str:
@@ -349,7 +351,80 @@ def cmd_check(args) -> int:
     if cfg.schemas:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))
+    installed = _installed(cfg)
+    live = [path for path in result.docs if path not in result.historical]
+    diags.extend(check_edges(glossary, refs, cfg.edges, root, live, installed))
     return _report(diags, root, args.json, len(glossary.terms), len(refs))
+
+
+def _installed(cfg: Config) -> list[Path]:
+    return _expand(cfg.edges.install, cfg.ignore, None, "install")
+
+
+def _resolve_one(glossary, query: str):
+    ns, name = glossary.split(query)
+    matches = list({id(t): t for t in glossary.resolve(name, ns)}.values())
+    if len(matches) != 1:
+        found = ", ".join(t.qualified for t in matches) or "no record"
+        raise LookupError(f"{query!r} must name one record ({found})")
+    return matches[0]
+
+
+def cmd_graph(args) -> int:
+    root = Path(args.root).resolve()
+    built = build(root)
+    errors = _assembly_errors(built.glossary, built.diagnostics)
+    if errors:
+        return _report(errors, root, args.json)
+    installed = _installed(built.config)
+    edges = build_edges(built.glossary, built.refs, built.config.edges, root, installed)
+    if args.kind:
+        edges = [e for e in edges if e.kind in args.kind]
+    try:
+        start = _resolve_one(built.glossary, args.target) if args.target else None
+    except LookupError as exc:
+        print(json.dumps({"error": str(exc)}) if args.json else f"error: {exc}")
+        return 1
+    shown = walk(edges, start, args.callers, args.depth)
+    if args.json:
+        print(json.dumps({"target": start.qualified if start else None,
+                          "view": "callers" if args.callers else "dependencies",
+                          "count": len(shown), "edges": [
+            {"kind": e.kind, "source": e.source.qualified, "target": e.target.qualified,
+             "file": _display_path(e.file, root), "line": e.line} for e in shown]}, indent=2))
+    else:
+        for e in shown:
+            print(f"{e.source.qualified} -{e.kind}-> {e.target.qualified}"
+                  f"  {_display_path(e.file, root)}:{e.line}")
+        print(f"{len(shown)} edge{'s' if len(shown) != 1 else ''}")
+    return 0
+
+
+def cmd_overlap(args) -> int:
+    root = Path(args.root).resolve()
+    built = build(root)
+    errors = _assembly_errors(built.glossary, built.diagnostics)
+    if errors:
+        return _report(errors, root, args.json)
+    docs = [path for path in built.docs if path not in built.historical]
+    installed = _installed(built.config)
+    edges = build_edges(built.glossary, built.refs, built.config.edges, root, installed)
+    found = find_overlap(docs, owners(built.glossary, root, installed), edges,
+                         args.min_similarity, args.unit)
+    for c in found:
+        for b in c["blocks"]:
+            b["file"] = _display_path(b["file"], root)
+    if args.json:
+        print(json.dumps({"unit": args.unit, "min_similarity": args.min_similarity,
+                          "count": len(found), "clusters": found}, indent=2))
+    else:
+        for c in found:
+            note = " (restates an included part)" if c["restates_include"] else ""
+            print(f"== {len(c['records'])} records: {', '.join(c['records'])}{note}")
+            for b in c["blocks"]:
+                print(f"   {b['file']}:{b['line']}  {b['text'][:120]}")
+        print(f"{len(found)} cluster{'s' if len(found) != 1 else ''}")
+    return 0
 
 
 def cmd_explain(args) -> int:
@@ -483,6 +558,13 @@ def _positive(value: str) -> int:
     return number
 
 
+def _fraction(value: str) -> float:
+    number = float(value)
+    if not 0 < number <= 1:
+        raise argparse.ArgumentTypeError("expected a number in (0, 1]")
+    return number
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ubiq", description="A linker for prose.")
     p.add_argument("--version", action="version", version=f"ubiq {__version__}")
@@ -528,6 +610,26 @@ def main(argv: list[str] | None = None) -> int:
     k.add_argument("--min-files", type=_positive, default=2,
                    help="report names used in at least this many docs (default 2)")
     k.set_defaults(fn=cmd_candidates)
+
+    g = sub.add_parser("graph", help="show composition edges: invoke and include")
+    g.add_argument("target", nargs="?", help="start from this record (default: all edges)")
+    g.add_argument("--root", default=".")
+    g.add_argument("--json", action="store_true")
+    g.add_argument("--callers", action="store_true", help="follow incoming edges")
+    g.add_argument("--kind", action="append", choices=GRAPH_KINDS,
+                   help="include this edge kind (repeat to select several)")
+    g.add_argument("--depth", type=_positive, default=None,
+                   help="stop after this many hops from the target (default: no limit)")
+    g.set_defaults(fn=cmd_graph)
+
+    o = sub.add_parser("overlap", help="list near-duplicate prose shared across records")
+    o.add_argument("--root", default=".")
+    o.add_argument("--json", action="store_true")
+    o.add_argument("--unit", choices=["paragraph", "line"], default="paragraph",
+                   help="compare paragraphs, or single lines for one-sentence-per-line prose")
+    o.add_argument("--min-similarity", type=_fraction, default=0.5,
+                   help="word-shingle Jaccard similarity to join a cluster (default 0.5)")
+    o.set_defaults(fn=cmd_overlap)
 
     args = p.parse_args(argv)
     try:

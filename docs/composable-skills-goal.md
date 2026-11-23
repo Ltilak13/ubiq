@@ -1,9 +1,10 @@
 # Goal: composable skills
 
-Status: proposed. Ubiq already checks declared `uses` edges, and a repository can
-register a [[shared part]] as a record with configuration alone. Ubiq does not yet
-find text that skills repeat, show includes as graph edges, or check that an edge
-still works where the skill is installed.
+Status: in progress. Shared parts register as records with configuration alone.
+`ubiq graph` shows invoke and include edges, `ubiq overlap` reports repeated text,
+and `ubiq check` reports include cycles (E011), invokes the model can't follow
+(W003), and links that break in the installed layout (W004). Typed relations,
+drift detection, and part inputs remain open.
 
 ## Objective
 
@@ -187,6 +188,8 @@ The goal is achieved when:
 6. Tests cover nested includes, an include cycle, a legitimate invoke cycle, and
    near-duplicate blocks just below and just above the threshold.
 
-Suggested order: parts as include edges in the graph, then overlap, then the edge
-checks, then typed relations and drift. This document defines the goal; it does
-not claim that these capabilities are available today.
+Criteria 1, 2, and 4 have tests in `tests/test_graph.py`. Criteria 3 and 6 are
+partly covered: the tests lack an invoke cycle, nested includes, and pinned
+results for the surveyed repositories. Criterion 5 needs a reviewed refactor of a
+real repository. Remaining order: typed relations, then
+drift, then part inputs. The status line lists what is available today.

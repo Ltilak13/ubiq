@@ -75,6 +75,15 @@ DEFAULT_CONFIG = {
     # that are hyphenated identifiers, and `bold` names for repos that bold
     # their terms. Bold is off by default because most bold is emphasis.
     "candidate_shapes": ["code"],
+    # Composition edges between records (`ubiq graph`, E011, W003, W004).
+    # invoke.fields: frontmatter fields whose values invoke another record
+    #   (default: ref_fields). invoke.blocked_by: a boolean field that, when true
+    #   on the target, means the model cannot invoke it (W003).
+    # include.ns: namespaces of shared parts; a Markdown link to one is an include.
+    # install: globs of files whose directory installs as a sibling under one
+    #   root (skills/*/SKILL.md); links that leave such a directory must resolve
+    #   both there and in the source tree (W004).
+    "edges": {},
 }
 
 
@@ -121,6 +130,37 @@ class Config:
     policies: Policies
     unlinked_except: tuple[str, ...]
     candidate_shapes: Shape
+    edges: "EdgeConfig"
+
+
+@dataclass(frozen=True)
+class EdgeConfig:
+    invoke_fields: tuple[str, ...]
+    blocked_by: str | None
+    include_ns: tuple[str, ...]
+    install: tuple[Glob, ...]
+
+
+def _edges(raw, ref_fields: tuple[str, ...], root: Path) -> EdgeConfig:
+    if not isinstance(raw, dict):
+        raise InvalidConfig("edges: expected a mapping")
+    _known(raw, "edges", ("invoke", "include", "install"))
+    invoke, include = raw.get("invoke") or {}, raw.get("include") or {}
+    if not isinstance(invoke, dict) or not isinstance(include, dict):
+        raise InvalidConfig("edges.invoke and edges.include: expected mappings")
+    _known(invoke, "edges.invoke", ("fields", "blocked_by"))
+    _known(include, "edges.include", ("ns",))
+    fields = tuple(_strings(invoke.get("fields", list(ref_fields)), "edges.invoke.fields", scalar=True))
+    if set(fields) - set(ref_fields):
+        # An invoke edge must resolve, and only ref_fields are resolved (E006).
+        raise InvalidConfig("edges.invoke.fields: each field must also be in ref_fields")
+    blocked = invoke.get("blocked_by")
+    return EdgeConfig(
+        invoke_fields=fields,
+        blocked_by=None if blocked is None else _string(blocked, "edges.invoke.blocked_by"),
+        include_ns=tuple(_strings(include.get("ns", ["part"]), "edges.include.ns", scalar=True)),
+        install=tuple(Glob.parse(g, root) for g in _strings(raw.get("install", []), "edges.install")),
+    )
 
 
 def _strings(value, field: str, scalar: bool = False) -> list[str]:
@@ -324,4 +364,5 @@ def load_config(root: Path) -> Config:
         policies=_policies(cfg["references"], cfg["unlinked_mentions"]),
         unlinked_except=tuple(cfg["unlinked_except"]),
         candidate_shapes=shapes,
+        edges=_edges(cfg["edges"], tuple(cfg["ref_fields"]), root),
     )

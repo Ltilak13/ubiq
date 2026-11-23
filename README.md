@@ -243,6 +243,9 @@ ubiq explain                          # show why files were discovered
 ubiq explain --json                    # the same discovery evidence as JSON
 ubiq candidates                        # marked names in 2+ docs with no record
 ubiq candidates --json --min-files 3
+ubiq graph skill:ship                  # invoke and include edges from a record
+ubiq graph part:checkout --callers     # who reuses a shared part
+ubiq overlap --unit line               # prose that several records repeat
 ```
 
 `--kind` is repeatable: results include any selected kind (`explicit`, `id`,
@@ -286,6 +289,22 @@ Later options include a code-symbol map, advisory semantic checks, external-doc
 adapters, and editor navigation. Each needs useful results on real repositories
 before it becomes a required check.
 
-For skill repositories, the [composable skills goal](docs/composable-skills-goal.md)
-describes shared parts, typed composition edges, and a report of text that
-several skills repeat.
+## Composable skills
+
+Register shared parts as records so skills include them by link instead of
+copying them:
+
+```yaml
+glossary:
+  - {glob: "skills/*/SKILL.md", term_field: name, ns: skill}
+  - {glob: "skills/_shared/*.md", term_field: name, ns: part}
+ref_fields: [uses]
+edges:
+  invoke: {blocked_by: disable-model-invocation}  # W003 for an edge the model can't follow
+  install: ["skills/*/SKILL.md"]                  # W004 for links that break once installed
+```
+
+`uses` declares invoke edges; a link to a `part:` record is an include edge.
+`ubiq graph` shows both, `ubiq overlap` finds text worth extracting, and
+`check` reports include cycles (E011). The
+[composable skills goal](docs/composable-skills-goal.md) covers what is still open.

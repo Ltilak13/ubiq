@@ -110,6 +110,53 @@ produce no references, and a plain-prose mention can never fail the build.
   URLs, emails, HTML tags, and HTML comments are not mentions; a mention in another
   link's label counts as linked. Off unless `unlinked_mentions: warn`;
   `unlinked_except` lists terms by name or qualified name.
+- `E011` include cycle — a [[shared part]] includes itself through Markdown links
+  to other parts. The agent would read the same files forever.
+- `W003` blocked invoke — an invoke edge targets a record whose
+  `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
+- `W004` install layout — a link that leaves an `edges.install` directory resolves
+  in the source tree or in the installed layout, but not both.
+
+## Composition edges
+
+A [[composition edge]] connects the record that owns a document to a record it reuses.
+A document's owner is the record defined in it, the record its overlay sources,
+or the single record defined directly in an enclosing directory (a skill's sibling files).
+The repository root never owns by directory. When `edges.install` is set, only
+installed directories do.
+Documents with no owner contribute no edges.
+
+| Kind | Comes from | Constraint |
+| --- | --- | --- |
+| `invoke` | a value in an `edges.invoke.fields` field (default: `ref_fields`) | W003 when the target sets `blocked_by` |
+| `include` | a Markdown link to a record in an `edges.include.ns` namespace (default: `part`) | E011 on a cycle |
+
+Each `edges.invoke.fields` entry must also be in `ref_fields`, so every invoke
+edge resolves (E006); another field is E008. Unresolved and ambiguous references
+make no edge. Invoke cycles are allowed: two workflows can hand off to each other.
+
+`edges.install` globs select files whose directory installs as a sibling under
+one root, keeping its name. A link leaving such a directory is resolved twice:
+in the source tree, and textually from the installed path, the way an agent
+normalizes `..`. Links inside the directory are the same in both layouts. W004
+covers every Markdown link to a Markdown document, part or not; links to scripts
+and other files are not checked. Two installed directories with the same name
+would install at one path, which is also W004.
+
+`graph --json` returns `target`, `view` (`dependencies` or `callers`), `count`,
+and `edges`, each with `kind`, `source`, `target`, `file`, and `line`. Without a
+target it lists every edge. `--callers` follows incoming edges; `--depth` limits
+hops; `--kind` filters by kind. A target that names no single record exits 1.
+
+`overlap --json` returns `unit`, `min_similarity`, `count`, and `clusters`. Live
+documents with an owner split into paragraphs, or lines with `--unit line`,
+skipping frontmatter, fences, and headings. Blocks with fewer than 10 words (7 for
+lines) are skipped. Two blocks from different owners join when their 4-word
+shingle Jaccard similarity reaches `--min-similarity` (default 0.5) or one
+contains 80% of the other's shingles. Clusters with the same set of owners merge.
+Each cluster has `records`, `restates_include` (one owner includes another
+owner's part), and `blocks` with `record`, `file`, `line`, and `text`. The
+command exits 0 unless configuration or assembly fails, and never writes files.
 
 ## Invariants
 
