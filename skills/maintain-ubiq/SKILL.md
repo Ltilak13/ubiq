@@ -40,14 +40,16 @@ Compare discovered paths with registered records because catalog coverage cannot
 Exclude generated copies and dependencies after you identify their canonical sources.
 
 Read `GLOSSARY-MAP.md` and context glossaries when they exist.
-If changed concepts, relationships, or context boundaries need clarification, use /domain-modeling when installed.
-Read that skill before you continue the domain review.
-Supply the repository, changed concepts, source evidence, and permitted edit scope.
-If the skill is unavailable, inspect the glossary and relevant code directly.
-Test proposed meanings and relationships with concrete scenarios.
-Ask the owner to resolve competing meanings that the evidence cannot settle.
-Record agreed definitions and unresolved questions within the permitted edit scope.
-Reuse established definitions for routine reference repairs that do not change meaning.
+
+1. If changed concepts, relationships, or context boundaries need clarification, use /domain-modeling when installed.
+2. Read that skill before you continue the domain review.
+3. Supply the repository, changed concepts, source evidence, and permitted edit scope.
+4. If the skill is unavailable, inspect the glossary and relevant code directly.
+5. Test proposed meanings and relationships with concrete scenarios.
+6. Ask the owner to resolve competing meanings that the evidence cannot settle.
+7. Record agreed definitions and unresolved questions within the permitted edit scope.
+8. Reuse established definitions for routine reference repairs that do not change meaning.
+
 Use directory candidates to investigate domain boundaries through vocabulary, ownership, and dependencies.
 A technical folder does not establish a business context.
 Do not rename a namespace solely because a directory moved.
@@ -118,14 +120,14 @@ Propose each candidate with where it appears. Create a record only for a name us
 
 ## 6. Re-check and report
 
-Use /validate-change when installed after changes to configuration, records, overlays, schemas, or migrations.
-Read that skill before you select checks.
-Supply the repository, changed paths, acceptance criteria, and current check evidence.
-If the skill is unavailable, inspect repository instructions and run the relevant checks directly.
-For schema or migration changes, also test affected records and invalid cases through the schema change workflow.
-Repair failures within the authorized scope before you report success.
-Report unavailable checks as validation gaps.
-The companion skill does not authorize commits or publication.
+1. Use /validate-change when installed after changes to configuration, records, overlays, schemas, or migrations.
+2. Read that skill before you select checks.
+3. Supply the repository, changed paths, acceptance criteria, and current check evidence.
+4. If the skill is unavailable, inspect repository instructions and run the relevant checks directly.
+5. For schema or migration changes, also test affected records and invalid cases through the schema change workflow.
+6. Repair failures within the authorized scope before you report success.
+7. Report unavailable checks as validation gaps.
+8. The companion skill does not authorize commits or publication.
 
 Run `ubiq check` again. Report what you fixed, linked, excepted, created, and left for a human. Include schema changes, group coverage, and unresolved context candidates.
 
