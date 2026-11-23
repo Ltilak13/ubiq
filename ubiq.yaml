@@ -1,11 +1,25 @@
 # ubiq self-configuration — ubiq lints its own docs (dogfood).
 glossary:
   - "glossary/**/*.md"
+  - glob: "skills/**/SKILL.md"
+    term_field: name
+    ns: skill
+  - glob: ".ubiq/glossary/*.md"
+    ns: skill
 docs:
   - "README.md"
   - "docs/**/*.md"
   - "glossary/**/*.md"
   - "skills/**/*.md"
+  - ".ubiq/**/*.md"
+overlays:
+  - ".ubiq/overlays/*.md"
+ref_fields: [uses]
+catalogs:
+  - file: ".ubiq/catalogs/skills.json"
+    items: skills
+    term: basename
+    cover: ["skills/**/SKILL.md"]
 ignore:
   - ".git/**"
 # Regex patterns whose matches must resolve to a record `id:` (e.g. requirement IDs like R3, T8).
