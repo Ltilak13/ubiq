@@ -92,6 +92,18 @@ Define denominators, exclusions, and acceptance targets before evaluating a
 representative repository. Do not claim near-complete coverage from a high count
 of fields or a single successful example.
 
+## Staged improvement loop
+
+Use the [schema change workflow](schema-workflow.md) for [[schema-staging]].
+The setup or maintenance skill inspects repository changes and selects useful,
+evidence-backed additions. It stages each schema change with the corresponding
+record migration and tests. The skill tries the candidate against affected
+records and invalid cases, then repairs or rejects unsupported changes.
+
+A candidate becomes active through [[schema-promotion]] only when its migration
+passes and the normal checker enforces the new [[domain-schema]]. Preserve prior
+versions for recovery. Sample success alone does not authorize or establish promotion.
+
 ## Acceptance evidence
 
 The goal is achieved when:
@@ -105,6 +117,7 @@ The goal is achieved when:
 7. Maintenance detects new types, missing records, schema drift, and changed domain relationships without silently reclassifying existing records.
 8. Migration preserves file content, identities, aliases, and references, and reports unsupported cases explicitly.
 9. Tests cover multiple domains, different schemas within a domain, shared types across domains, mixed file formats, and ambiguous evidence.
+10. Setup and maintenance discover staged candidates, test useful additions, and distinguish rejected, staged, and successfully promoted changes.
 
 Set the numerical coverage targets and representative repositories during design.
 The measurements and acceptance criteria must stay visible when the implementation

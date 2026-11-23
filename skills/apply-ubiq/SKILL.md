@@ -10,6 +10,16 @@ ubiq is a **linter, not a migrator**. It never rewrites docs. Linker metadata li
 
 Install: `pip install ubiq` (or `pip install -e <path-to-ubiq>`). Run `python3 -m ubiq.cli` if the script is not on `PATH`.
 
+## Schema changes
+
+Read [the schema change workflow](../../docs/schema-workflow.md) when the task adds or changes type/domain schemas.
+Inspect `.ubiq/staging/` for existing candidates before creating a new one.
+Stage useful schema changes with their record migrations, evidence, and tests.
+Test affected existing records and invalid cases. Repair or reject unsupported candidates.
+Promote only within the authorized scope after the normal checker can enforce the schema and the migration passes.
+If enforcement or migration is unavailable, keep the candidate staged and report the promotion blocker.
+Do not describe a passing sample check as an active schema change.
+
 ## 1. Discover the vocabulary
 
 Run `ubiq discover --json` before you select record families.

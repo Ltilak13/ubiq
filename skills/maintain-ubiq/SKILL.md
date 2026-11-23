@@ -12,6 +12,16 @@ The recurring pass after `apply-ubiq`. ubiq reports; this skill decides. Never w
 
 Run `python3 -m ubiq.cli` if `ubiq` is not on `PATH`.
 
+## Schema changes
+
+Read [the schema change workflow](../../docs/schema-workflow.md) when the task adds or changes type/domain schemas.
+Inspect `.ubiq/staging/` for existing candidates before creating a new one.
+Stage useful schema changes with their record migrations, evidence, and tests.
+Test affected existing records and invalid cases. Repair or reject unsupported candidates.
+Promote only within the authorized scope after the normal checker can enforce the schema and the migration passes.
+If enforcement or migration is unavailable, keep the candidate staged and report the promotion blocker.
+Do not describe a passing sample check as an active schema change.
+
 ## 1. Discover groups and run the check
 
 Run `ubiq discover --json` before the check.
