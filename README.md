@@ -241,7 +241,7 @@ ubiq refs session --kind explicit --kind markdown
 ubiq discover --json                   # propose groups and schemas from source files
 ubiq explain                          # show why files were discovered
 ubiq explain --json                    # the same discovery evidence as JSON
-ubiq candidates                        # backticked names in 2+ docs with no record
+ubiq candidates                        # marked names in 2+ docs with no record
 ubiq candidates --json --min-files 3
 ```
 
@@ -263,9 +263,12 @@ assembly errors. Invalid configuration reports `E008` instead of a traceback.
 
 `candidates` lists possible missing terms: inline-code spans that are a whole
 hyphenated lowercase identifier (`ready-for-agent`), match no term or alias, and
-appear in at least `--min-files` live docs (default 2). It reads the same docs as
-`check`, minus historical ones, and never writes. Deciding what becomes a record
-or an alias is left to the [maintenance skill](skills/maintain-ubiq/SKILL.md).
+appear in at least `--min-files` live docs (default 2). If your docs bold their
+terms (`**tracer bullet**`), set `candidate_shapes: [code, bold]` to report bold
+names too. Bold is off by default because most bold text is emphasis. It reads
+the same docs as `check`, minus historical ones, and never writes. Deciding what
+becomes a record or an alias is left to the
+[maintenance skill](skills/maintain-ubiq/SKILL.md).
 
 Use the bundled GitHub Action (`uses: Ltilak13/ubiq@main`) or the
 [pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`; Markdown, YAML, and JSON changes trigger it.

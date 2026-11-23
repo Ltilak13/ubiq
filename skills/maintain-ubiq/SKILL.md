@@ -102,17 +102,20 @@ A new term not yet used is fine; leave it. A term whose concept is gone: propose
 
 ## 5. New vocabulary
 
-Run `ubiq candidates --json` for backticked identifiers used in two or more docs with no record. For each one, decide:
+Run `ubiq candidates --json` for names used in two or more docs with no record. It reports backticked identifiers. It also reports bold names when `candidate_shapes` in `ubiq.yaml` includes `bold`. For each one, decide:
 
 - **A retired name of a term** (`to-prd` after a rename to `to-spec`) — add it as an alias.
 - **A real concept** — propose a record.
-- **A literal, not vocabulary** (a label string, a package or config name) — reject it.
+- **A literal, not vocabulary** (a label string, a package or config name, bold emphasis, a bold list label) — reject it.
+
+If most bold candidates are emphasis, propose to remove `bold` from `candidate_shapes`.
 
 Then scan the files changed since the last pass (`git diff --name-only <base>`) for what `candidates` can't see:
 
 - New asset groups, including skills, rules, scripts, hooks, and domain records
 - New naming fields or metadata formats reported by `ubiq discover --json`
-- Bold definitions (`**Term**:`) and `CONTEXT.md` / `GLOSSARY.md` entries with no record
+- Bold definitions (`**Term**:`) when `candidate_shapes` does not include `bold`
+- `CONTEXT.md` / `GLOSSARY.md` entries with no record
 
 Propose each candidate with where it appears. Create a record only for a name used in two or more files or defined in a human glossary. Confirm the rest first.
 

@@ -6,7 +6,7 @@
   ubiq refs TERM [--root DIR]        every place a term is used (traceability = search)
   ubiq discover [--root DIR] [--json] groups, schema proposals, and candidate contexts
   ubiq candidates [--root DIR] [--json] [--min-files N]
-                                     backticked identifiers in N+ docs with no record
+                                     marked names (candidate_shapes) in N+ docs with no record
 """
 
 from __future__ import annotations
@@ -458,7 +458,7 @@ def cmd_candidates(args) -> int:
         return _report(errors, root, args.json)
     # Live docs only: historical docs keep retired names on purpose.
     docs = [path for path in built.docs if path not in built.historical]
-    found = find_candidates(docs, built.glossary, args.min_files)
+    found = find_candidates(docs, built.glossary, args.min_files, built.config.candidate_shapes)
     if args.json:
         print(json.dumps({"min_files": args.min_files, "count": len(found), "candidates": [
             {"name": c["name"], "files": c["files"], "occurrences": c["occurrences"],
@@ -522,7 +522,7 @@ def main(argv: list[str] | None = None) -> int:
     e.set_defaults(fn=cmd_explain)
 
     k = sub.add_parser("candidates",
-                       help="list backticked identifiers used across docs with no record")
+                       help="list names marked as vocabulary across docs with no record")
     k.add_argument("--root", default=".")
     k.add_argument("--json", action="store_true")
     k.add_argument("--min-files", type=_positive, default=2,

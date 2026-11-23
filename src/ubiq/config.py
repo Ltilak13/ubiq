@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from .candidates import Shape
 from .globs import Glob
 from .kinds import POLICIES, Context, Policies, Severity, broken_guarantees
 from .scan import Delimiter, compile_delimiter
@@ -70,6 +71,10 @@ DEFAULT_CONFIG = {
     # Terms whose plain mentions are ordinary words here (`pr` vs "PR"), by name
     # or qualified name. Explicit references to them are still checked.
     "unlinked_except": [],
+    # Markup that `ubiq candidates` reads as possible vocabulary: `code` spans
+    # that are hyphenated identifiers, and `bold` names for repos that bold
+    # their terms. Bold is off by default because most bold is emphasis.
+    "candidate_shapes": ["code"],
 }
 
 
@@ -115,6 +120,7 @@ class Config:
     schemas: tuple[SchemaSpec, ...]
     policies: Policies
     unlinked_except: tuple[str, ...]
+    candidate_shapes: Shape
 
 
 def _strings(value, field: str, scalar: bool = False) -> list[str]:
@@ -213,8 +219,12 @@ def load_config(root: Path) -> Config:
     for key in ("docs", "ignore", "id_patterns", "ref_fields", "external_id_patterns",
                 "unlinked_except"):
         cfg[key] = _strings(cfg[key], key)
-    for key in ("term_field", "overlays", "historical"):
+    for key in ("term_field", "overlays", "historical", "candidate_shapes"):
         cfg[key] = _strings(cfg[key], key, scalar=True)
+    try:
+        shapes = Shape.parse(cfg["candidate_shapes"])
+    except ValueError as exc:
+        raise InvalidConfig(f"candidate_shapes: {exc}") from None
     if not cfg["term_field"]:
         raise InvalidConfig("term_field: expected at least one field")
     if cfg["frontmatter"] not in ("strict", "lenient"):
@@ -313,4 +323,5 @@ def load_config(root: Path) -> Config:
         schemas=tuple(schemas),
         policies=_policies(cfg["references"], cfg["unlinked_mentions"]),
         unlinked_except=tuple(cfg["unlinked_except"]),
+        candidate_shapes=shapes,
     )

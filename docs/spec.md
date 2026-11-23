@@ -194,11 +194,21 @@ Reference errors belong to `check`; `explain` fails on configuration or assembly
 errors.
 
 `candidates --json` returns `min_files`, `count`, and `candidates`. A candidate
-is an inline code span, outside fences and frontmatter, whose whole content is a
-hyphenated lowercase identifier (`[a-z][a-z0-9]*(-[a-z0-9]+)+`) that resolves to
-no term or alias, used in at least `min_files` scanned non-historical docs. Each
-has `name`, `files`, `occurrences`, and `locations` (each file and line once).
-Candidates sort by file count, descending, then name. The command exits 0
+is a name that the docs mark as vocabulary, that resolves to no term or alias,
+and that is used in at least `min_files` scanned non-historical docs.
+`candidate_shapes` selects the markup; the default is `[code]`:
+
+- `code`: an inline code span, outside fences and frontmatter, whose whole
+  content is a hyphenated lowercase identifier (`[a-z][a-z0-9]*(-[a-z0-9]+)+`).
+- `bold`: a one-line `**…**` or `__…__` span in prose (outside fences,
+  frontmatter, reference definitions, and inline code) whose content, minus a
+  trailing `:` or `.`, is one to four words of letters and digits joined by
+  spaces or hyphens. `__` with a word character on its outer side is literal.
+
+Names that normalize alike are one candidate, named by the first spelling found
+(by path, then shape). Each has `name`, `files`, `occurrences`, and `locations`
+(each file and line once). Candidates sort by file count, descending, then
+normalized name. An unknown shape or an empty list is E008. The command exits 0
 unless configuration or assembly fails, and never writes files.
 
 All JSON commands use root-relative paths inside the repository and

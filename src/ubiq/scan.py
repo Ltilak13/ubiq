@@ -313,6 +313,21 @@ def inline_code(text: str) -> list[tuple[int, str]]:
     return out
 
 
+# One-line **strong** or __strong__ text; ***both*** is strong too. `__` that
+# touches a word character on the outside is literal (snake__case__).
+BOLD_RE = re.compile(r"\*\*(?!\s)([^*\n]+?)(?<!\s)\*\*"
+                     r"|(?<!\w)__(?!\s)([^_\n]+?)(?<!\s)__(?!\w)")
+
+
+def bold_spans(text: str) -> list[tuple[int, str]]:
+    """(line, content) of each bold span in prose: outside frontmatter, fences,
+    reference definitions, and inline code."""
+    prose = _interpret_markdown(text).prose
+    line_of = _line_index(prose)
+    return [(line_of(m.start()), m[1] or m[2]) for m in BOLD_RE.finditer(prose)
+            if not _escaped(prose, m.start())]
+
+
 def _reference_label(label: str) -> str:
     return " ".join(MD_ESCAPE_RE.sub(r"\1", label).split()).casefold()
 

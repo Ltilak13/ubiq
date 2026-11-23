@@ -67,6 +67,7 @@ Walk the repo for words that should be load-bearing:
 - Existing frontmatter that already names things (`name:` on `SKILL.md`, `title:`, …)
 - Slash-commands (`/tdd`) and wiki-links (`[[term]]`)
 - A human glossary (`CONTEXT.md` Language section, `GLOSSARY.md`)
+- Bold definitions (`**Term**:`) and other bold names that recur across files
 - JSON/YAML inventories (`.claude-plugin/plugin.json` `skills` arrays)
 
 **Done when:** each group has a source path, naming field or overlay strategy, namespace rationale, and inventory requirement. Unresolved domain boundaries remain explicit.
@@ -122,6 +123,7 @@ catalogs:
 - **`[[term]]`** — wiki-link; always explicit; typos fail. File-shaped targets (`[[GLOSSARY.md]]`, `[[dir/x]]`, `[[./x]]`) are not terms unless that name is a defined term (`[[SKILL.md]]` still counts if you named it). If the file exists in-repo, ubiq **follows** it into the scan — `docs:` are roots, not a closed list. A missing file (a teaching-workspace `[[MISSION.md]]`) is not an error. Relative markdown links (`[x](./a.md)`) are followed the same way. Do not rewrite `ubiq.yaml` to list every reachable file; widen `docs:` only for scan *roots* that nothing already links to.
 - **`/` delimiter** — slash-commands, including inside backticks. Default is strict (every `/slug` is a ref). `only_known: true` is quieter; `except` is only for tokens that *are* glossary names but must not count (`/plugin` vs a term named `plugin`).
 - **`historical`** — mentions and resolved refs still count; E002/E003/E004/E006 on unresolved refs do not.
+- **`candidate_shapes`** — markup that `ubiq candidates` reads as possible vocabulary. The default is `[code]`. Set `[code, bold]` only when the docs bold their terms (`**tracer bullet**`). Most bold text is emphasis.
 - **`catalogs`** — an inventory is not a glossary. Do not glob `plugin.json` as records (duplicate definition vs the real file). Missing entry → E006; a `cover` record not listed → E007. Coverage applies to registered records only. Compare discovery results with the inventory to find files without records.
 
 **Done when:** `ubiq.yaml` names every record family, the docs the linker should read, and any catalog/historical/delimiter rules.
