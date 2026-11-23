@@ -285,3 +285,7 @@ resolution, and errors that explain how to fix a broken reference.
 Later options include a code-symbol map, advisory semantic checks, external-doc
 adapters, and editor navigation. Each needs useful results on real repositories
 before it becomes a required check.
+
+For skill repositories, the [composable skills goal](docs/composable-skills-goal.md)
+describes shared parts, typed composition edges, and a report of text that
+several skills repeat.
