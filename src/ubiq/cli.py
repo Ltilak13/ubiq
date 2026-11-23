@@ -346,6 +346,9 @@ def cmd_check(args) -> int:
     diags = result.diagnostics + run_checks(
         glossary, refs, cfg.external_id_patterns,
         skip_unlinked=sidecars, unlinked_except=cfg.unlinked_except)
+    if cfg.schemas:
+        from .schemas import check_schemas
+        diags.extend(check_schemas(cfg, glossary))
     return _report(diags, root, args.json, len(glossary.terms), len(refs))
 
 

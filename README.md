@@ -71,8 +71,9 @@ Assets without a naming field get sidecar records whose paths mirror the source 
 Initialization preserves source files and refuses to overwrite existing configuration or metadata paths.
 
 The current schema proposals describe naming-field mappings and available metadata.
-Explicit per-type validation schemas and domain relationships are the next goal,
-defined in [domain-aware frontmatter and a knowledge tree](docs/domain-schema-goal.md).
+Opt-in [native schema validation](docs/schema-validation.md) checks typed frontmatter,
+structured inventories, record relationships, coverage, and evidence through `ubiq check`.
+The broader goal is [domain-aware frontmatter and a knowledge tree](docs/domain-schema-goal.md).
 
 For setup or maintenance, inspect the current structure without writing files:
 

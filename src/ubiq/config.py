@@ -58,6 +58,8 @@ DEFAULT_CONFIG = {
     # JSON/YAML inventories of terms. Each item must resolve (E006). Optional
     # `cover` globs: every matching record must appear in the inventory (E007).
     "catalogs": [],
+    # Explicit JSON Schema contracts for structured files or Markdown frontmatter.
+    "schemas": [],
     # Per-kind overrides: {kind: {severity: error|warn|off, scans: [...]}}.
     # Kinds: wiki, delimiter, markdown, id, field, catalog, mention.
     "references": {},
@@ -89,6 +91,13 @@ class CatalogSpec:
 
 
 @dataclass(frozen=True)
+class SchemaSpec:
+    schema: str
+    files: tuple[Glob, ...]
+    format: str
+
+
+@dataclass(frozen=True)
 class Config:
     root: Path
     glossary: tuple[GlossaryRule, ...]
@@ -103,6 +112,7 @@ class Config:
     external_id_patterns: tuple[re.Pattern, ...]
     delimiters: tuple[Delimiter, ...]
     catalogs: tuple[CatalogSpec, ...]
+    schemas: tuple[SchemaSpec, ...]
     policies: Policies
     unlinked_except: tuple[str, ...]
 
@@ -209,7 +219,7 @@ def load_config(root: Path) -> Config:
         raise InvalidConfig("term_field: expected at least one field")
     if cfg["frontmatter"] not in ("strict", "lenient"):
         raise InvalidConfig("frontmatter: expected strict or lenient")
-    for key in ("glossary", "catalogs", "delimiters"):
+    for key in ("glossary", "catalogs", "delimiters", "schemas"):
         if not isinstance(cfg[key], list):
             raise InvalidConfig(f"{key}: expected a list")
 
@@ -248,6 +258,24 @@ def load_config(root: Path) -> Config:
         cover = _strings(spec.get("cover", []), f"{field}.cover", scalar=True)
         catalogs.append(CatalogSpec(root / file, file, items, term, globs(cover)))
 
+    schemas = []
+    for i, spec in enumerate(cfg["schemas"]):
+        field = f"schemas[{i}]"
+        if not isinstance(spec, dict):
+            raise InvalidConfig(f"{field}: expected a mapping")
+        _known(spec, field, ("schema", "files", "format"))
+        schema = _string(spec.get("schema"), f"{field}.schema")
+        filename = schema.split("#", 1)[0]
+        if not filename or ":" in filename:
+            raise InvalidConfig(f"{field}.schema: expected a local schema file path")
+        patterns = _strings(spec.get("files"), f"{field}.files")
+        if not patterns:
+            raise InvalidConfig(f"{field}.files: expected at least one pattern")
+        mode = spec.get("format", "document")
+        if mode not in ("document", "frontmatter"):
+            raise InvalidConfig(f"{field}.format: expected document or frontmatter")
+        schemas.append(SchemaSpec(schema, globs(patterns), mode))
+
     delimiters = []
     for i, spec in enumerate(cfg["delimiters"]):
         field = f"delimiters[{i}]"
@@ -282,6 +310,7 @@ def load_config(root: Path) -> Config:
         external_id_patterns=_regexes(cfg["external_id_patterns"], "external_id_patterns"),
         delimiters=tuple(delimiters),
         catalogs=tuple(catalogs),
+        schemas=tuple(schemas),
         policies=_policies(cfg["references"], cfg["unlinked_mentions"]),
         unlinked_except=tuple(cfg["unlinked_except"]),
     )

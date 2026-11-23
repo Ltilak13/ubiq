@@ -6,9 +6,10 @@
 #       hooks:
 #         - id: ubiq-check
 - id: ubiq-check
-  name: ubiq vocabulary check
-  description: Fail the commit when doc terms don't resolve to a defining record.
+  name: ubiq vocabulary and schema check
+  description: Check explicit vocabulary references and configured schema contracts.
   entry: ubiq check
   language: python
   pass_filenames: false
+  always_run: true
   types_or: [markdown, yaml, json]

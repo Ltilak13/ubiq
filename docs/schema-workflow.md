@@ -1,8 +1,9 @@
 # Schema change workflow
 
 Use this workflow to develop a [[domain-schema]] through [[schema-staging]] and
-[[schema-promotion]]. These terms describe the target workflow. The current CLI
-provides discovery and linker checks; it does not yet enforce arbitrary type schemas.
+[[schema-promotion]]. The CLI provides discovery, linker checks, and
+[native schema validation](schema-validation.md) through `ubiq check`.
+Register active schema bindings in `ubiq.yaml`. Keep candidate bindings separate until promotion.
 
 ## Select the workflow
 

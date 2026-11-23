@@ -1,7 +1,8 @@
 # Goal: domain-aware frontmatter and a knowledge tree
 
-Status: planned. The current implementation discovers file groups and naming-field
-mappings. It does not validate arbitrary frontmatter against per-type schemas.
+Status: in progress. Discovery identifies file groups and naming-field mappings.
+[Native validation](schema-validation.md) enforces explicit type schemas and declared graph integrity.
+Domain inference and semantic completeness still require evidence and review.
 
 ## Objective
 

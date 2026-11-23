@@ -98,6 +98,8 @@ produce no references, and a plain-prose mention can never fail the build.
 - `E008` invalid configuration — invalid YAML, unknown settings, field shapes, regular
   expressions, delimiter or `references:` settings, conflicting glossary rules, or a setting
   that contradicts a guarantee. The message names the field or rules.
+- `E009` schema conformance failure — selected frontmatter or structured data violates its declared JSON Schema, or a target is missing.
+- `E010` graph integrity failure — declared record coverage, relationships, or source evidence is invalid.
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 - `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,
@@ -127,7 +129,7 @@ YAML keeps scalars as text: `No`, `007`, and `1.10` stay strings rather than
 becoming a boolean or numbers. Null still reads as absent. Plain-prose mentions of a defined [[term]] are
 indexed for search and orphan detection but can never fail the build — the
 error surface is exactly what the author explicitly marked (wiki-links, Markdown
-vocabulary links, delimiters, id patterns, `ref_fields`, and catalogs).
+vocabulary links, delimiters, id patterns, `ref_fields`, catalogs, and configured schemas).
 A mention matches a name as written: a name with no spaces (`grill-me`) needs a
 hyphen or underscore between its words, so the phrase "grill me" is prose; a
 spaced name (`issue tracker`) matches with any of space, hyphen, or underscore.
@@ -202,3 +204,11 @@ unless configuration or assembly fails, and never writes files.
 All JSON commands use root-relative paths inside the repository and
 absolute paths outside it. Configuration failures use the check diagnostic
 JSON envelope and exit 1.
+
+## Explicit type schemas
+
+The opt-in `schemas` list binds local Draft 2020-12 schemas to document or frontmatter globs.
+Invalid schemas and bindings report E008. Instance failures report E009.
+The optional `x-ubiq` extension checks graph integrity and registered source coverage with E010.
+These explicit contracts add validation without changing lexical vocabulary parsing or reference policies.
+See [native schema validation](schema-validation.md) for the contract and limits.
