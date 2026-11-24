@@ -243,7 +243,7 @@ ubiq explain                          # show why files were discovered
 ubiq explain --json                    # the same discovery evidence as JSON
 ubiq candidates                        # marked names in 2+ docs with no record
 ubiq candidates --json --min-files 3
-ubiq graph skill:ship                  # invoke and include edges from a record
+ubiq graph skill:ship                  # invoke, include, and route edges from a record
 ubiq graph part:checkout --callers     # who reuses a shared part
 ubiq overlap --unit line               # prose that several records repeat
 ```
@@ -297,14 +297,24 @@ copying them:
 ```yaml
 glossary:
   - {glob: "skills/*/SKILL.md", term_field: name, ns: skill}
-  - {glob: "skills/_shared/*.md", term_field: name, ns: part}
-ref_fields: [uses]
+  - {glob: "skills/*/parts/*.md", term_field: name, ns: part}
+ref_fields: [uses, routes]
 edges:
   invoke: {blocked_by: disable-model-invocation}  # W003 for an edge the model can't follow
+  route: {fields: [routes]}                       # "not for X; use Y" is not a dependency
   install: ["skills/*/SKILL.md"]                  # W004 for links that break once installed
+  external: [../upstream-skills]                  # another repository installed into the same root
+  drift: {ns: [skill]}                            # W005 when references and edges disagree
 ```
 
-`uses` declares invoke edges; a link to a `part:` record is an include edge.
-`ubiq graph` shows both, `ubiq overlap` finds text worth extracting, and
-`check` reports include cycles (E011). The
+`uses` declares invoke edges, `routes` declares route edges, and a link to a
+`part:` record is an include edge. Installers copy or link only skill
+directories, so keep a part in `parts/` inside the skill directory that owns its
+subject: a `../<skill>/parts/` link then resolves in the source tree and once
+installed. A part can list enumerated inputs, such as `inputs: {mode: [new,
+existing]}`; each include then names one after the link, as in ``Follow
+[checkout](../ship/parts/checkout.md) in `new` mode.`` (E012 otherwise).
+
+`ubiq graph` shows all three kinds, `ubiq overlap` finds text worth extracting,
+and `check` reports include cycles (E011). The
 [composable skills goal](docs/composable-skills-goal.md) covers what is still open.

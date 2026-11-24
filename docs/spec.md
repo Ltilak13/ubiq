@@ -112,10 +112,18 @@ produce no references, and a plain-prose mention can never fail the build.
   `unlinked_except` lists terms by name or qualified name.
 - `E011` include cycle — a [[shared part]] includes itself through Markdown links
   to other parts. The agent would read the same files forever.
+- `E012` part input — an include names no value, or an undeclared value, for an
+  input its part declares; or a part's `edges.include.inputs` field is not a
+  mapping of input names to lists of values.
 - `W003` blocked invoke — an invoke edge targets a record whose
   `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
 - `W004` install layout — a link that leaves an `edges.install` directory resolves
-  in the source tree or in the installed layout, but not both.
+  in the source tree or in the installed layout, but not both; a link into another
+  repository's installed directory resolves in neither; a `#fragment` names no
+  heading in the installed target; or an `edges.external` repository cannot be read.
+- `W005` drift — a record in an `edges.drift.ns` namespace explicitly references
+  another such record without an edge between them, or declares an invoke or
+  route edge to one its text never names.
 
 ## Composition edges
 
@@ -128,25 +136,55 @@ Documents with no owner contribute no edges.
 
 | Kind | Comes from | Constraint |
 | --- | --- | --- |
-| `invoke` | a value in an `edges.invoke.fields` field (default: `ref_fields`) | W003 when the target sets `blocked_by` |
-| `include` | a Markdown link to a record in an `edges.include.ns` namespace (default: `part`) | E011 on a cycle |
+| `invoke` | a value in an `edges.invoke.fields` field (default: `ref_fields` minus `edges.route.fields`) | W003 when the target sets `blocked_by` |
+| `route` | a value in an `edges.route.fields` field (default: none) | none |
+| `include` | a Markdown link to a record in an `edges.include.ns` namespace (default: `part`) | E011 on a cycle; E012 on a part input |
 
-Each `edges.invoke.fields` entry must also be in `ref_fields`, so every invoke
-edge resolves (E006); another field is E008. Unresolved and ambiguous references
-make no edge. Invoke cycles are allowed: two workflows can hand off to each other.
+Invoke and include edges are dependencies: the source needs the target to run.
+A route edge points elsewhere without depending on the target, as in "not for X;
+use Y". Each `edges.invoke.fields` and `edges.route.fields` entry must also be in
+`ref_fields`, so every edge resolves (E006), and no field may be in both; either
+mistake is E008. Unresolved and ambiguous references make no edge. Invoke cycles
+are allowed: two workflows can hand off to each other.
+
+A part lists enumerated inputs in its `edges.include.inputs` field (default
+`inputs`), such as `inputs: {mode: [new, existing]}`. Each include of that part
+names one value per input as a code span followed by the input name, after the
+link and before the next link or the end of the line: ``Follow
+[checkout](../_shared/checkout.md) in `existing` mode.`` A missing or undeclared
+value is E012.
+
+`edges.drift.ns` turns on W005 for records in those namespaces. Only wiki-links,
+delimiters, and Markdown links count as references for a missing edge; plain
+mentions satisfy a declared edge but never require one. An edge in either
+direction counts, so a skill may name its callers. Overlay prose describes edges,
+so it counts for neither direction.
 
 `edges.install` globs select files whose directory installs as a sibling under
 one root, keeping its name. A link leaving such a directory is resolved twice:
 in the source tree, and textually from the installed path, the way an agent
 normalizes `..`. Links inside the directory are the same in both layouts. W004
 covers every Markdown link to a Markdown document, part or not; links to scripts
-and other files are not checked. Two installed directories with the same name
-would install at one path, which is also W004.
+and other files, and paths written in code spans, are not checked. Two installed
+directories with the same name would install at one path, which is also W004.
+When such a link resolves once installed and has a `#fragment`, the fragment must
+match a heading slug (GitHub style) of the installed target.
+
+`edges.external` lists other repositories (paths relative to the root, absolute,
+or starting with `~`) whose own `edges.install` directories join the same install
+root. A local directory wins a name over an external one, the way installers let
+a personal skill override a clone. A relative link can reach another repository
+only once installed, so W004 checks links that land in an external directory
+instead of E002, and reports them only when they resolve in neither layout. An
+external repository that is missing, has invalid configuration, or installs
+nothing is one W004; while it is unreadable, links to directory names that nothing
+here installs are not checked, so CI without the other checkout does not fail.
 
 `graph --json` returns `target`, `view` (`dependencies` or `callers`), `count`,
 and `edges`, each with `kind`, `source`, `target`, `file`, and `line`. Without a
 target it lists every edge. `--callers` follows incoming edges; `--depth` limits
-hops; `--kind` filters by kind. A target that names no single record exits 1.
+hops; `--kind` filters by kind. A walk shows route edges where it reaches them
+but does not follow them. A target that names no single record exits 1.
 
 `overlap --json` returns `unit`, `min_similarity`, `count`, and `clusters`. Live
 documents with an owner split into paragraphs, or lines with `--unit line`,

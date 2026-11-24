@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from copy import deepcopy
 from dataclasses import dataclass
@@ -75,14 +76,20 @@ DEFAULT_CONFIG = {
     # that are hyphenated identifiers, and `bold` names for repos that bold
     # their terms. Bold is off by default because most bold is emphasis.
     "candidate_shapes": ["code"],
-    # Composition edges between records (`ubiq graph`, E011, W003, W004).
+    # Composition edges between records (`ubiq graph`, E011, E012, W003-W005).
     # invoke.fields: frontmatter fields whose values invoke another record
-    #   (default: ref_fields). invoke.blocked_by: a boolean field that, when true
-    #   on the target, means the model cannot invoke it (W003).
+    #   (default: ref_fields minus route.fields). invoke.blocked_by: a boolean
+    #   field that, when true on the target, means the model cannot invoke it (W003).
+    # route.fields: fields that point elsewhere without depending on the target
+    #   ("not for X; use Y"). Walks show route edges but don't follow them.
     # include.ns: namespaces of shared parts; a Markdown link to one is an include.
+    # include.inputs: the part field listing enumerated inputs ({mode: [new, existing]});
+    #   each include names one value as "`new` mode" after the link (E012).
     # install: globs of files whose directory installs as a sibling under one
     #   root (skills/*/SKILL.md); links that leave such a directory must resolve
     #   both there and in the source tree (W004).
+    # external: other repositories whose own edges.install joins the same root.
+    # drift.ns: namespaces whose explicit references and declared edges must agree (W005).
     "edges": {},
 }
 
@@ -136,30 +143,54 @@ class Config:
 @dataclass(frozen=True)
 class EdgeConfig:
     invoke_fields: tuple[str, ...]
+    route_fields: tuple[str, ...]
     blocked_by: str | None
     include_ns: tuple[str, ...]
+    inputs: str  # part frontmatter field: {input name: [allowed values]}
     install: tuple[Glob, ...]
+    external: tuple[Path, ...]  # other repositories that install into the same root
+    drift_ns: tuple[str, ...]  # namespaces whose mentions and edges must agree (W005)
+
+
+def _section(raw: dict, key: str, allowed) -> dict:
+    value = raw.get(key) or {}
+    if not isinstance(value, dict):
+        raise InvalidConfig(f"edges.{key}: expected a mapping")
+    _known(value, f"edges.{key}", allowed)
+    return value
 
 
 def _edges(raw, ref_fields: tuple[str, ...], root: Path) -> EdgeConfig:
     if not isinstance(raw, dict):
         raise InvalidConfig("edges: expected a mapping")
-    _known(raw, "edges", ("invoke", "include", "install"))
-    invoke, include = raw.get("invoke") or {}, raw.get("include") or {}
-    if not isinstance(invoke, dict) or not isinstance(include, dict):
-        raise InvalidConfig("edges.invoke and edges.include: expected mappings")
-    _known(invoke, "edges.invoke", ("fields", "blocked_by"))
-    _known(include, "edges.include", ("ns",))
-    fields = tuple(_strings(invoke.get("fields", list(ref_fields)), "edges.invoke.fields", scalar=True))
-    if set(fields) - set(ref_fields):
-        # An invoke edge must resolve, and only ref_fields are resolved (E006).
-        raise InvalidConfig("edges.invoke.fields: each field must also be in ref_fields")
+    _known(raw, "edges", ("invoke", "route", "include", "install", "external", "drift"))
+    invoke = _section(raw, "invoke", ("fields", "blocked_by"))
+    route = _section(raw, "route", ("fields",))
+    include = _section(raw, "include", ("ns", "inputs"))
+    drift = _section(raw, "drift", ("ns",))
+    routes = tuple(_strings(route.get("fields", []), "edges.route.fields", scalar=True))
+    default = [f for f in ref_fields if f not in routes]
+    fields = tuple(_strings(invoke.get("fields", default), "edges.invoke.fields", scalar=True))
+    # An edge must resolve, and only ref_fields are resolved (E006).
+    for name, values in (("invoke", fields), ("route", routes)):
+        if set(values) - set(ref_fields):
+            raise InvalidConfig(f"edges.{name}.fields: each field must also be in ref_fields")
+    if set(fields) & set(routes):
+        raise InvalidConfig("edges.route.fields: a field cannot both invoke and route")
     blocked = invoke.get("blocked_by")
+    external = []
+    for path in _strings(raw.get("external", []), "edges.external", scalar=True):
+        path = Path(os.path.expanduser(path))
+        external.append(path if path.is_absolute() else root / path)
     return EdgeConfig(
         invoke_fields=fields,
+        route_fields=routes,
         blocked_by=None if blocked is None else _string(blocked, "edges.invoke.blocked_by"),
         include_ns=tuple(_strings(include.get("ns", ["part"]), "edges.include.ns", scalar=True)),
+        inputs=_string(include.get("inputs", "inputs"), "edges.include.inputs"),
         install=tuple(Glob.parse(g, root) for g in _strings(raw.get("install", []), "edges.install")),
+        external=tuple(external),
+        drift_ns=tuple(_strings(drift.get("ns", []), "edges.drift.ns", scalar=True)),
     )
 
 

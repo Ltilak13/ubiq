@@ -19,17 +19,19 @@ SHARED = ("Read repository instructions, git status, remotes, and worktrees "
           "before you change the checkout or push anything.\n")
 
 
-def skill(name, body="", uses=(), user_only=False):
+def skill(name, body="", uses=(), user_only=False, routes=()):
     meta = f"name: {name}\n"
     if uses:
         meta += f"uses: [{', '.join(uses)}]\n"
+    if routes:
+        meta += f"routes: [{', '.join(routes)}]\n"
     if user_only:
         meta += "disable-model-invocation: true\n"
     return f"---\n{meta}---\n\n{body}\n"
 
 
-def part(name, body):
-    return f"---\nname: {name}\n---\n\n{body}\n"
+def part(name, body, inputs=""):
+    return f"---\nname: {name}\n{inputs}---\n\n{body}\n"
 
 
 def run(tmp_path, capsys, *argv):
@@ -71,7 +73,7 @@ def test_invoke_and_include_edges_with_callers(tmp_path, capsys):
 def check(tmp_path, capsys):
     status, out = run(tmp_path, capsys, "check")
     return status, [(d["code"], d["message"]) for d in out["diagnostics"]
-                    if d["code"] in ("E011", "W003", "W004")]
+                    if d["code"] in ("E011", "E012", "W003", "W004", "W005")]
 
 
 def test_include_cycle_fails(tmp_path, capsys):
@@ -169,3 +171,156 @@ def test_shared_folders_and_the_root_do_not_own_other_docs(tmp_path, capsys):
     status, out = run(tmp_path, capsys, "graph")
     assert status == 0
     assert out["edges"] == []
+
+
+ROUTED = CFG.replace("ref_fields: [uses]", "ref_fields: [uses, routes]").replace(
+    "edges:\n", "edges:\n  route: {fields: [routes]}\n")
+
+
+def test_route_edges_are_shown_but_not_followed(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/a/SKILL.md": skill("a", "Run b.", uses=["b"]),
+        "skills/b/SKILL.md": skill("b", "B."),
+        # c is not for this; it sends the reader to a.
+        "skills/c/SKILL.md": skill("c", "Not for that; use a.", routes=["a"]),
+        "skills/d/SKILL.md": skill("d", "Run c.", uses=["c"]),
+    }, cfg=ROUTED)
+    status, out = run(tmp_path, capsys, "graph")
+    assert status == 0
+    assert {(e["kind"], e["source"], e["target"]) for e in out["edges"]} == {
+        ("invoke", "skill:a", "skill:b"), ("route", "skill:c", "skill:a"),
+        ("invoke", "skill:d", "skill:c")}
+    _, out = run(tmp_path, capsys, "graph", "b", "--callers")
+    # c routes to a without calling it, so the walk stops at c and never reaches d.
+    assert [(e["source"], e["target"]) for e in out["edges"]] == [
+        ("skill:a", "skill:b"), ("skill:c", "skill:a")]
+    _, out = run(tmp_path, capsys, "graph", "--kind", "route")
+    assert [e["kind"] for e in out["edges"]] == ["route"]
+
+
+def test_a_field_cannot_both_invoke_and_route(tmp_path, capsys):
+    repo(tmp_path, {"skills/a/SKILL.md": skill("a")},
+         cfg=ROUTED.replace("{blocked_by: disable-model-invocation}",
+                            "{fields: [uses, routes]}"))
+    status, out = run(tmp_path, capsys, "check")
+    assert status == 1
+    assert out["diagnostics"][0]["code"] == "E008"
+    assert "both invoke and route" in out["diagnostics"][0]["message"]
+
+
+DRIFT = ROUTED.replace("edges:\n", "delimiters: [{pattern: /, only_known: true}]\n"
+                       'overlays: ["overlays/*.md"]\n'
+                       "edges:\n  drift: {ns: [skill]}\n")
+
+
+def test_drift_between_references_and_declared_edges(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/lead/SKILL.md": skill(
+            "lead",
+            "Run /tdd, then [[review]]. Write it [[test-first]].\n\n"
+            "Not for tickets; use [[tickets]].\n\n"
+            # Plain words never count as undeclared: "research" is prose here.
+            "Do some research first. Finish with the ship-it skill.\n",
+            uses=["tdd", "ship-it", "spec"], routes=["tickets"]),
+        "skills/lead/notes.md": "Also read [checkout](../_shared/checkout.md).\n",
+        # Overlay prose describes edges; it is not the skill's own text.
+        "overlays/lead.md": "---\nsource: skills/lead/SKILL.md\n---\n\n[[lead]] uses [[spec]].\n",
+        "skills/_shared/checkout.md": part("checkout", "Check out."),
+        "skills/tdd/SKILL.md": skill("tdd", "Test."),
+        "skills/review/SKILL.md": skill("review", "Review."),
+        "skills/tickets/SKILL.md": skill("tickets", "Tickets."),
+        "skills/research/SKILL.md": skill("research", "Research."),
+        "skills/ship-it/SKILL.md": skill("ship-it", "Ship."),
+        "skills/spec/SKILL.md": skill("spec", "Spec."),
+        # Naming a caller is not drift: ship-it's edge comes from lead.
+        "skills/ship-it/notes.md": "Called by [[lead]].\n",
+        # A glossary definition contrasting skills is not a skill.
+        "glossary/tdd-term.md": "---\nterm: test-first\nuses: [spec]\n---\n\nSee [[tdd]] and [[review]].\n",
+    }, cfg=DRIFT.replace("glossary:\n", 'glossary:\n  - "glossary/*.md"\n')
+                .replace('docs: ["skills/**/*.md"]', 'docs: ["skills/**/*.md", "glossary/*.md"]'))
+    status, found = check(tmp_path, capsys)
+    assert status == 0
+    assert [f for f in found if f[0] == "W005"] == [
+        ("W005", "skill:lead declares invoke skill:spec but never names it"),
+        ("W005", ("skill:lead references skill:review but declares no edge to it "
+                  "— add it to uses or routes")),
+    ]
+
+
+INPUTS = "inputs:\n  mode: [new, existing, branch]\n"
+
+
+def test_includes_name_a_declared_input(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/_shared/checkout.md": part("checkout", "Check out.", INPUTS),
+        "skills/_shared/bad.md": part("bad", "Bad.", "inputs: [new, existing]\n"),
+        "skills/_shared/scope.md": part("scope", "Scope."),
+        "skills/ok/SKILL.md": skill(
+            "ok", "1. Follow [checkout](../_shared/checkout.md) in `existing` mode.\n"
+                  "2. Apply [scope](../_shared/scope.md), then [checkout](../_shared/checkout.md)"
+                  " in `new` mode."),
+        "skills/typo/SKILL.md": skill(
+            "typo", "Follow [checkout](../_shared/checkout.md) in `exist` mode.\n"
+                    "Later, follow [checkout](../_shared/checkout.md) in `new` mode."),
+        # The mode after the next link belongs to that link, not this one.
+        "skills/none/SKILL.md": skill(
+            "none", "Follow [checkout](../_shared/checkout.md), then [bad](../_shared/bad.md) in `new` mode."),
+    })
+    status, found = check(tmp_path, capsys)
+    assert status == 1
+    assert sorted(f for f in found if f[0] == "E012") == [
+        ("E012", "part:bad inputs: expected a mapping of input names to lists of values"),
+        ("E012", ("skill:none includes part:checkout without a mode; write `<value>` mode "
+                  "after the link: new, existing, branch")),
+        ("E012", ("skill:typo includes part:checkout with mode `exist`; expected one of "
+                  "new, existing, branch")),
+    ]
+
+
+SECTION = "# To tickets\n\n### 3. Draft vertical slices\n\nSlice it.\n"
+UPSTREAM = 'glossary:\n  - {glob: "skills/*/*/SKILL.md", term_field: name, ns: skill}\n' \
+           'docs: ["skills/**/*.md"]\nedges:\n  install: ["skills/*/*/SKILL.md"]\n'
+
+
+def two_repos(tmp_path, external):
+    (tmp_path / "upstream").mkdir()
+    (tmp_path / "local").mkdir()
+    upstream = make_repo(tmp_path / "upstream", {}, {
+        "skills/engineering/to-tickets/SKILL.md": skill("to-tickets", SECTION),
+        "skills/engineering/review/SKILL.md": skill("review", "Upstream review."),
+    }, config=UPSTREAM)
+    local = repo(tmp_path / "local", {
+        "skills/breakdown/SKILL.md": skill(
+            "breakdown",
+            "Read [section 3](../to-tickets/SKILL.md#3-draft-vertical-slices).\n\n"
+            "Read [a lost section](../to-tickets/SKILL.md#4-quiz).\n\n"
+            # A local skill wins the installed name over the upstream one.
+            "Run [review](../review/SKILL.md#steps-1).\n\n"
+            "Read [gone](../gone/SKILL.md).\n"),
+        "skills/review/SKILL.md": skill("review", "Local review.\n\n## Steps\n\nGo.\n\n## Steps\n\nAgain."),
+    }, cfg=CFG.replace('install: ["skills/*/SKILL.md"]',
+                       f'install: ["skills/*/SKILL.md"]\n  external: [{external}]'))
+    return upstream, local
+
+
+def test_links_into_another_repository_resolve_once_installed(tmp_path, capsys):
+    two_repos(tmp_path, "../upstream")
+    status, out = run(tmp_path / "local", capsys, "check")
+    found = [(d["code"], d["message"]) for d in out["diagnostics"] if d["code"][0] in "EW"
+             and d["code"] != "W001"]
+    # Only the link to a name nobody installs is E002; links into the other
+    # repository are W004's to check, fragments included.
+    assert status == 1
+    assert found == [
+        ("E002", "unresolved reference [gone](../gone/SKILL.md) — no defining record"),
+        ("W004", "link ../to-tickets/SKILL.md#4-quiz names no heading in to-tickets/SKILL.md"),
+    ]
+
+
+def test_an_unreadable_external_repository_leaves_its_links_unchecked(tmp_path, capsys):
+    two_repos(tmp_path, "../missing")
+    status, out = run(tmp_path / "local", capsys, "check")
+    found = [(d["code"], d["message"]) for d in out["diagnostics"] if d["code"] != "W001"]
+    assert status == 0
+    assert found == [("W004", (f"external repository {tmp_path / 'local' / '../missing'} "
+                               "was not found; links into it are not checked"))]

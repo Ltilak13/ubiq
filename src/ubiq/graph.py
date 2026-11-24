@@ -3,22 +3,28 @@
 Edge kinds:
   invoke   — a configured frontmatter field (default: ref_fields) names a record
              to run as its own step. Declared in the record or its overlay.
+  route    — a configured field names a record the text points to without
+             depending on it ("not for X; use Y"). Walks show it but stop there.
   include  — a Markdown link to a record in a shared-part namespace. Derived from
              the link, so authors don't declare the dependency twice.
 """
 from __future__ import annotations
 
 import os
+import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from urllib.parse import unquote, urlsplit
 
 from .check import Diagnostic
 from .config import EdgeConfig
-from .records import Glossary, Term, parse_frontmatter
-from .scan import Ref, _doc_link_path, _interpret_markdown, _line_index
+from .records import Glossary, InvalidRecord, Term, parse_frontmatter
+from .scan import Ref, _blank_fences, _doc_link_path, _interpret_markdown, _line_index
 
-KINDS = ("invoke", "include")
+KINDS = ("invoke", "include", "route")
+# The source needs the target to run. Route edges only point elsewhere.
+DEPENDS = frozenset({"invoke", "include"})
 
 
 @dataclass(frozen=True)
@@ -64,8 +70,13 @@ def owners(glossary: Glossary, root: Path, installed: list[Path] = ()):
 
 
 def _kind(r: Ref, edges: EdgeConfig) -> str | None:
-    if r.kind == "field" and r.raw.split(":", 1)[0] in edges.invoke_fields:
-        return "invoke"
+    if r.kind == "field":
+        name = r.raw.split(":", 1)[0]
+        if name in edges.invoke_fields:
+            return "invoke"
+        if name in edges.route_fields:
+            return "route"
+        return None
     if r.kind == "markdown":
         return "include"
     return None
@@ -121,6 +132,13 @@ def _include_cycles(edges: list[Edge]) -> list[Diagnostic]:
     return diags
 
 
+def _meta(term: Term) -> dict:
+    try:
+        return parse_frontmatter(term.file, lenient=True)[0]
+    except (OSError, InvalidRecord):
+        return {}  # an unreadable record is already E005
+
+
 def _blocked_invokes(edges: list[Edge], cfg: EdgeConfig) -> list[Diagnostic]:
     """W003: an invoke edge to a record that the model cannot invoke."""
     if cfg.blocked_by is None:
@@ -129,11 +147,7 @@ def _blocked_invokes(edges: list[Edge], cfg: EdgeConfig) -> list[Diagnostic]:
     for e in edges:
         if e.kind != "invoke":
             continue
-        try:
-            meta, _ = parse_frontmatter(e.target.file, lenient=True)
-        except (OSError, ValueError):
-            continue
-        if str(meta.get(cfg.blocked_by)).lower() == "true":
+        if str(_meta(e.target).get(cfg.blocked_by)).lower() == "true":
             diags.append(Diagnostic(
                 "W003", f"{e.source.qualified} invokes {e.target.qualified}, which sets "
                 f"{cfg.blocked_by}: true — include its file or allow model invocation",
@@ -141,59 +155,258 @@ def _blocked_invokes(edges: list[Edge], cfg: EdgeConfig) -> list[Diagnostic]:
     return diags
 
 
-def _install_layout(docs: list[Path], installed: list[Path], root: Path) -> list[Diagnostic]:
-    """W004: a link that leaves an installed directory resolves in only one layout.
+def _drift(glossary: Glossary, refs: list[Ref], edges: list[Edge], cfg: EdgeConfig,
+           owner) -> list[Diagnostic]:
+    """W005: a record links another record without an edge, or declares one it never names.
 
-    Installed directories become siblings under one root, keeping their names.
-    Agents normalize `..` against the installed path, so the link must land in
-    another installed directory there and in a real file in the source tree.
+    Both records must be in a `drift.ns` namespace: a glossary definition that
+    contrasts two skills is not a skill depending on one. An edge in either
+    direction counts, so a skill may name the skills that call it. Only explicit
+    references (links, wiki-links, delimiters) count as undeclared: plain words
+    such as "research" match skill names too often. Any reference, plain mentions
+    included, satisfies a declared edge. Overlay prose describes the edges, so it
+    is not the record's own text and counts for neither.
     """
-    dirs = {f.resolve().parent for f in installed}
-    by_name: dict[str, Path] = {}
-    diags = []
-    for d in sorted(dirs):
-        if d.name in by_name:
-            # Both would install at the same path; links to that name are ambiguous.
-            diags.append(Diagnostic("W004", f"installed directories {by_name[d.name]} and {d} "
-                                    f"share the name {d.name}/", d))
-        by_name.setdefault(d.name, d)
+    if not cfg.drift_ns:
+        return []
+    sidecars = {Path(p).resolve() for p in glossary.overlay_sources.values()}
+    named: set[tuple[int, int]] = set()
+    linked: dict[tuple[int, int], tuple[Ref, Term, Term]] = {}
+    for r in refs:
+        if r.kind in ("field", "catalog") or r.historical or r.file.resolve() in sidecars:
+            continue
+        source = owner(r.file)
+        if source is None or source.ns not in cfg.drift_ns:
+            continue
+        matches = r.resolve(glossary)
+        named.update((id(source), id(t)) for t in matches)
+        if r.policy.links and len(matches) == 1:
+            target = matches[0]
+            if target is not source and target.ns in cfg.drift_ns:
+                linked.setdefault((id(source), id(target)), (r, source, target))
+    declared = {pair for e in edges for pair in ((id(e.source), id(e.target)),
+                                                (id(e.target), id(e.source)))}
+    fields = " or ".join((*cfg.invoke_fields, *cfg.route_fields)) or "an edge field"
+    diags = [Diagnostic("W005", f"{s.qualified} references {t.qualified} but declares no "
+                        f"edge to it — add it to {fields}", r.file, r.line)
+             for key, (r, s, t) in linked.items() if key not in declared]
+    diags += [Diagnostic("W005", f"{e.source.qualified} declares {e.kind} "
+                         f"{e.target.qualified} but never names it", e.file, e.line)
+              for e in edges if e.kind != "include" and e.source.ns in cfg.drift_ns
+              and e.target.ns in cfg.drift_ns
+              and (id(e.source), id(e.target)) not in named]
+    return sorted(diags, key=lambda d: (str(d.file), d.line, d.message))
+
+
+def _declared_inputs(term: Term, name: str) -> dict[str, list[str]] | None:
+    raw = _meta(term).get(name)
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not raw or any(
+            not isinstance(k, str) or not k.strip() or not isinstance(v, list) or not v
+            or any(not isinstance(x, str) or not x.strip() for x in v)
+            for k, v in raw.items()):
+        return None
+    return raw
+
+
+def _part_inputs(glossary: Glossary, edges: list[Edge], cfg: EdgeConfig) -> list[Diagnostic]:
+    """E012: an include names a declared value for each input of its part.
+
+    A part lists enumerated inputs in frontmatter (`inputs: {mode: [new, existing]}`).
+    The caller names a value as a code span followed by the input name, after the
+    link and before the next link or line end: "Follow [x](x.md) in `new` mode."
+    """
+    diags: list[Diagnostic] = []
+    declared: dict[int, dict[str, list[str]]] = {}
+    for t in glossary.terms:
+        if t.ns not in cfg.include_ns:
+            continue
+        inputs = _declared_inputs(t, cfg.inputs)
+        if inputs is None:
+            diags.append(Diagnostic("E012", f"{t.qualified} {cfg.inputs}: expected a mapping "
+                                    "of input names to lists of values", t.file))
+        elif inputs:
+            declared[id(t)] = inputs
+    docs: dict[Path, tuple] = {}
+    for e in edges:
+        inputs = declared.get(id(e.target))
+        if e.kind != "include" or not inputs:
+            continue
+        if e.file not in docs:
+            text = e.file.read_text(encoding="utf-8")
+            docs[e.file] = (text, _interpret_markdown(text).links, _line_index(text))
+        text, links, line_of = docs[e.file]
+        target = e.target.file.resolve()
+        for start, end, spec in links:
+            dest = _doc_link_path(e.file, spec)
+            if line_of(start) != e.line or dest is None or dest.resolve() != target:
+                continue
+            stop = min([s for s, _, _ in links if s >= end]
+                       + [i if (i := text.find("\n", end)) >= 0 else len(text)])
+            tail = text[end:stop]
+            for name, values in inputs.items():
+                m = re.search(rf"`([^`\n]+)`\s+{re.escape(name)}(?!\w)", tail)
+                choices = ", ".join(values)
+                if m is None:
+                    diags.append(Diagnostic(
+                        "E012", f"{e.source.qualified} includes {e.target.qualified} without "
+                        f"a {name}; write `<value>` {name} after the link: {choices}",
+                        e.file, e.line))
+                elif m.group(1) not in values:
+                    diags.append(Diagnostic(
+                        "E012", f"{e.source.qualified} includes {e.target.qualified} with "
+                        f"{name} `{m.group(1)}`; expected one of {choices}", e.file, e.line))
+    return diags
+
+
+@dataclass
+class Layout:
+    """Where links land once installed.
+
+    Each installed directory becomes a sibling under one root, keeping its name.
+    Directories from `edges.external` repositories join the same root; a local
+    directory wins a name, the way installers let a personal skill override a clone.
+    """
+    local: list[Path]  # installed record files in this repository
+    homes: set[Path] = field(default_factory=set)
+    by_name: dict[str, Path] = field(default_factory=dict)
+    external: set[Path] = field(default_factory=set)
+    # An external repository could not be read, so unknown names may live there.
+    partial: bool = False
+    problems: list[Diagnostic] = field(default_factory=list)
+
+    @classmethod
+    def build(cls, local: list[Path], external: list[Path] = (),
+              unread: list[tuple[Path, str]] = ()) -> Layout:
+        layout = cls(list(local))
+        for d in sorted({f.resolve().parent for f in local}):
+            if d.name in layout.by_name:
+                # Both would install at the same path; links to that name are ambiguous.
+                layout.problems.append(Diagnostic(
+                    "W004", f"installed directories {layout.by_name[d.name]} and {d} "
+                    f"share the name {d.name}/", d))
+            layout.by_name.setdefault(d.name, d)
+            layout.homes.add(d)
+        for d in sorted({f.resolve().parent for f in external}):
+            if d.name not in layout.by_name:
+                layout.by_name[d.name] = d
+                layout.external.add(d)
+        layout.problems += [Diagnostic("W004", f"external repository {repo} {reason}; "
+                                       "links into it are not checked", repo)
+                            for repo, reason in unread]
+        layout.partial = bool(unread)
+        return layout
+
+    def home(self, doc: Path) -> Path | None:
+        return next((d for d in doc.parents if d in self.homes), None)
+
+    def land(self, doc: Path, home: Path, source: Path) -> tuple[Path | None, Path | None]:
+        """The file a link from `doc` reaches once installed, and its installed directory.
+
+        Agents normalize `..` against the installed path, so the link is resolved
+        textually from `<root>/<home name>/...`.
+        """
+        rel = os.path.relpath(source, doc.parent)
+        within = PurePosixPath(home.name) / doc.parent.relative_to(home).as_posix()
+        # ("/", "<install root>", "<directory name>", ...rest)
+        parts = PurePosixPath(os.path.normpath(str(PurePosixPath("/i") / within / rel))).parts
+        target = self.by_name.get(parts[2]) if len(parts) > 3 and parts[1] == "i" else None
+        return (target.joinpath(*parts[3:]) if target else None), target
+
+
+def _slugs(path: Path) -> set[str]:
+    """GitHub-style anchors for the ATX headings of a Markdown file."""
+    seen: Counter[str] = Counter()
+    slugs = set()
+    for line in _blank_fences(path.read_text(encoding="utf-8")).splitlines():
+        m = re.match(r" {0,3}#{1,6}\s+(.*?)\s*#*\s*$", line)
+        if not m:
+            continue
+        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", m.group(1)).strip().lower()
+        slug = re.sub(r"[^\w\- ]", "", text).replace(" ", "-")
+        slugs.add(f"{slug}-{seen[slug]}" if seen[slug] else slug)
+        seen[slug] += 1
+    return slugs
+
+
+def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
+    """W004: a link that leaves an installed directory must land on a file in both
+    layouts, or, for another repository's directory, in the installed one. A
+    `#fragment` must name a heading in the file the agent reads once installed.
+    """
+    diags = list(layout.problems)
     for doc in docs:
         doc = doc.resolve()
-        home = next((d for d in doc.parents if d in dirs), None)
+        home = layout.home(doc)
         if home is None:
             continue
         text = doc.read_text(encoding="utf-8")
         line_of = _line_index(text)
         for start, _, spec in _interpret_markdown(text).links:
             source = _doc_link_path(doc, spec)
-            if source is None:
-                continue
-            if source.is_relative_to(home):
+            if source is None or source.is_relative_to(home):
                 continue  # same file in both layouts
-            rel = os.path.relpath(source, doc.parent)
-            within = PurePosixPath(home.name) / doc.parent.relative_to(home).as_posix()
-            # ("/", "<install root>", "<directory name>", ...rest)
-            parts = PurePosixPath(os.path.normpath(str(PurePosixPath("/i") / within / rel))).parts
-            target = by_name.get(parts[2]) if len(parts) > 3 and parts[1] == "i" else None
-            in_install = target is not None and target.joinpath(*parts[3:]).is_file()
+            landed, target = layout.land(doc, home, source)
+            in_install = landed is not None and landed.is_file()
             in_source = source.is_file()
-            if in_install != in_source:
-                where = "the source tree" if in_source else "the installed layout"
-                diags.append(Diagnostic(
-                    "W004", f"link {spec} leaves {home.name}/ and resolves only in {where}",
-                    doc, line_of(start)))
+            where = None
+            if target in layout.external:
+                # A relative link can reach another repository only once installed.
+                if not in_install:
+                    where = "resolves in neither layout"
+            elif in_install != in_source:
+                where = f"resolves only in {'the source tree' if in_source else 'the installed layout'}"
+            if where:
+                diags.append(Diagnostic("W004", f"link {spec} leaves {home.name}/ and {where}",
+                                        doc, line_of(start)))
+                continue
+            fragment = unquote(urlsplit(spec.strip().strip("<>")).fragment)
+            if fragment and in_install and fragment.lower() not in _slugs(landed):
+                diags.append(Diagnostic("W004", f"link {spec} names no heading in "
+                                        f"{target.name}/{landed.relative_to(target).as_posix()}",
+                                        doc, line_of(start)))
     return diags
 
 
+def across_repositories(refs: list[Ref], layout: Layout) -> list[Ref]:
+    """`refs` without Markdown links that only another repository resolves.
+
+    The source tree cannot resolve a relative link into another repository, so
+    W004 checks those links instead of E002. While an external repository is
+    unreadable, a link to a directory name nobody here installs is unchecked too.
+    """
+    if not layout.external and not layout.partial:
+        return refs
+    kept = []
+    for r in refs:
+        if r.kind == "markdown" and r.destination is not None and not r.destination.exists():
+            doc = r.file.resolve()
+            home = layout.home(doc)
+            source = _doc_link_path(doc, r.target) if home else None
+            if source is not None and not source.is_relative_to(home):
+                _, target = layout.land(doc, home, source)
+                if target in layout.external or (target is None and layout.partial):
+                    continue
+        kept.append(r)
+    return kept
+
+
 def check_edges(glossary: Glossary, refs: list[Ref], cfg: EdgeConfig, root: Path,
-                docs: list[Path], installed: list[Path]) -> list[Diagnostic]:
-    edges = build_edges(glossary, refs, cfg, root, installed)
-    return (_include_cycles(edges) + _blocked_invokes(edges, cfg)
-            + _install_layout(docs, installed, root))
+                docs: list[Path], layout: Layout) -> list[Diagnostic]:
+    edges = build_edges(glossary, refs, cfg, root, layout.local)
+    owner = owners(glossary, root, layout.local)
+    return (_include_cycles(edges) + _part_inputs(glossary, edges, cfg)
+            + _blocked_invokes(edges, cfg) + _install_layout(docs, layout)
+            + _drift(glossary, refs, edges, cfg, owner))
 
 
 def walk(edges: list[Edge], start: Term | None, callers: bool, depth: int | None) -> list[Edge]:
-    """Edges reachable from `start` (all edges when None), following callers when asked."""
+    """Edges reachable from `start` (all edges when None), following callers when asked.
+
+    Route edges are shown where the walk reaches them but not followed: a record
+    that routes elsewhere does not depend on, or call, the other record.
+    """
     if start is None:
         return edges
     step = (lambda e: id(e.target)) if callers else (lambda e: id(e.source))
@@ -206,7 +419,7 @@ def walk(edges: list[Edge], start: Term | None, callers: bool, depth: int | None
         shown += hop
         frontier = []
         for e in hop:
-            if id(nxt(e)) not in seen:
+            if e.kind in DEPENDS and id(nxt(e)) not in seen:
                 seen.add(id(nxt(e)))
                 frontier.append(nxt(e))
         level += 1

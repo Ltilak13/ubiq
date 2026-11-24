@@ -27,7 +27,7 @@ from .config import Config, InvalidConfig, load_config
 from .discovery import discover, init_assets
 from .globs import Glob, first_match
 from .graph import KINDS as GRAPH_KINDS
-from .graph import build_edges, check_edges, owners, walk
+from .graph import Layout, across_repositories, build_edges, check_edges, owners, walk
 from .kinds import KINDS
 from .overlap import find_overlap
 from .records import (
@@ -344,7 +344,9 @@ def _assembly_errors(glossary, extra) -> list[Diagnostic]:
 def cmd_check(args) -> int:
     root = Path(args.root).resolve()
     result = build(root)
-    glossary, refs, cfg = result.glossary, result.refs, result.config
+    glossary, cfg = result.glossary, result.config
+    layout = _layout(cfg)
+    refs = across_repositories(result.refs, layout)
     sidecars = {path.resolve() for path in glossary.overlay_sources.values()}
     diags = result.diagnostics + run_checks(
         glossary, refs, cfg.external_id_patterns,
@@ -352,14 +354,32 @@ def cmd_check(args) -> int:
     if cfg.schemas:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))
-    installed = _installed(cfg)
     live = [path for path in result.docs if path not in result.historical]
-    diags.extend(check_edges(glossary, refs, cfg.edges, root, live, installed))
-    return _report(diags, root, args.json, len(glossary.terms), len(refs))
+    diags.extend(check_edges(glossary, refs, cfg.edges, root, live, layout))
+    return _report(diags, root, args.json, len(glossary.terms), len(result.refs))
 
 
 def _installed(cfg: Config) -> list[Path]:
     return _expand(cfg.edges.install, cfg.ignore, None, "install")
+
+
+def _layout(cfg: Config) -> Layout:
+    """This repository's installed files plus those of each edges.external repository."""
+    external, unread = [], []
+    for repo in cfg.edges.external:
+        if not repo.is_dir():
+            unread.append((repo, "was not found"))
+            continue
+        try:
+            other = load_config(repo)
+        except InvalidConfig as exc:
+            unread.append((repo, f"has invalid configuration ({exc})"))
+            continue
+        files = _installed(other)
+        if not files:
+            unread.append((repo, "installs nothing (no edges.install match)"))
+        external += files
+    return Layout.build(_installed(cfg), external, unread)
 
 
 def _resolve_one(glossary, query: str):
@@ -612,7 +632,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="report names used in at least this many docs (default 2)")
     k.set_defaults(fn=cmd_candidates)
 
-    g = sub.add_parser("graph", help="show composition edges: invoke and include")
+    g = sub.add_parser("graph", help="show composition edges: invoke, include, and route")
     g.add_argument("target", nargs="?", help="start from this record (default: all edges)")
     g.add_argument("--root", default=".")
     g.add_argument("--json", action="store_true")
