@@ -1,0 +1,522 @@
+{
+ "paragraph": [
+  {
+   "records": [
+    "rule:ask vs agent.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/ask-vs-agent.mdc:8",
+    "cursor/rules/ask-vs-agent.mdc:12",
+    "cursor/rules/ask-vs-agent.mdc:17",
+    "cursor/rules/ask-vs-agent.mdc:20",
+    "cursor/rules/ask-vs-agent.mdc:25",
+    "cursor/rules/ask-vs-agent.mdc:30",
+    "cursor/rules/ask-vs-agent.mdc:35",
+    "cursor/rules/ask-vs-agent.mdc:41",
+    "cursor/rules/ask-vs-agent.mdc:43",
+    "cursor/rules/ask-vs-agent.mdc:49",
+    "cursor/rules/ask-vs-agent.mdc:53",
+    "cursor/rules/ask-vs-agent.mdc:57",
+    "rules/universal-always-on.md:42",
+    "rules/universal-always-on.md:46",
+    "rules/universal-always-on.md:51",
+    "rules/universal-always-on.md:54",
+    "rules/universal-always-on.md:59",
+    "rules/universal-always-on.md:64",
+    "rules/universal-always-on.md:69",
+    "rules/universal-always-on.md:75",
+    "rules/universal-always-on.md:77",
+    "rules/universal-always-on.md:83",
+    "rules/universal-always-on.md:87",
+    "rules/universal-always-on.md:91"
+   ]
+  },
+  {
+   "records": [
+    "rule:ponytail.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/ponytail.mdc:9",
+    "cursor/rules/ponytail.mdc:11",
+    "cursor/rules/ponytail.mdc:13",
+    "cursor/rules/ponytail.mdc:21",
+    "cursor/rules/ponytail.mdc:23",
+    "cursor/rules/ponytail.mdc:27",
+    "cursor/rules/ponytail.mdc:40",
+    "rules/universal-always-on.md:7",
+    "rules/universal-always-on.md:9",
+    "rules/universal-always-on.md:11",
+    "rules/universal-always-on.md:19",
+    "rules/universal-always-on.md:21",
+    "rules/universal-always-on.md:25",
+    "rules/universal-always-on.md:38"
+   ]
+  },
+  {
+   "records": [
+    "rule:context discipline.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/context-discipline.mdc:8",
+    "cursor/rules/context-discipline.mdc:12",
+    "cursor/rules/context-discipline.mdc:19",
+    "cursor/rules/context-discipline.mdc:24",
+    "cursor/rules/context-discipline.mdc:28",
+    "rules/universal-always-on.md:120",
+    "rules/universal-always-on.md:124",
+    "rules/universal-always-on.md:131",
+    "rules/universal-always-on.md:136",
+    "rules/universal-always-on.md:140"
+   ]
+  },
+  {
+   "records": [
+    "rule:scoped prompt.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/scoped-prompt.mdc:8",
+    "cursor/rules/scoped-prompt.mdc:12",
+    "cursor/rules/scoped-prompt.mdc:15",
+    "cursor/rules/scoped-prompt.mdc:18",
+    "cursor/rules/scoped-prompt.mdc:23",
+    "rules/universal-always-on.md:99",
+    "rules/universal-always-on.md:103",
+    "rules/universal-always-on.md:106",
+    "rules/universal-always-on.md:109",
+    "rules/universal-always-on.md:114"
+   ]
+  },
+  {
+   "records": [
+    "rule:project memory.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/project-memory.mdc:8",
+    "cursor/rules/project-memory.mdc:10",
+    "cursor/rules/project-memory.mdc:15",
+    "rules/universal-always-on.md:169",
+    "rules/universal-always-on.md:171",
+    "rules/universal-always-on.md:176"
+   ]
+  },
+  {
+   "records": [
+    "rule:universal agents.mdc",
+    "rule:write external.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/write-external.mdc:8",
+    "cursor/rules/write-external.mdc:13",
+    "rules/universal-always-on.md:149",
+    "rules/universal-always-on.md:154"
+   ]
+  },
+  {
+   "records": [
+    "rule:asd ste100.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/asd-ste100.mdc:8",
+    "rules/universal-always-on.md:161"
+   ]
+  },
+  {
+   "records": [
+    "rule:self reflection.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/self-reflection.mdc:8",
+    "rules/universal-always-on.md:144"
+   ]
+  }
+ ],
+ "line": [
+  {
+   "records": [
+    "rule:scoped prompt.mdc",
+    "rule:universal agents.mdc",
+    "skill:agent persona"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/scoped-prompt.mdc:10",
+    "rules/universal-always-on.md:101",
+    "skills/agent-persona/SKILL.md:42"
+   ]
+  },
+  {
+   "records": [
+    "rule:ask vs agent.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/ask-vs-agent.mdc:8",
+    "cursor/rules/ask-vs-agent.mdc:12",
+    "cursor/rules/ask-vs-agent.mdc:13",
+    "cursor/rules/ask-vs-agent.mdc:14",
+    "cursor/rules/ask-vs-agent.mdc:15",
+    "cursor/rules/ask-vs-agent.mdc:17",
+    "cursor/rules/ask-vs-agent.mdc:18",
+    "cursor/rules/ask-vs-agent.mdc:20",
+    "cursor/rules/ask-vs-agent.mdc:21",
+    "cursor/rules/ask-vs-agent.mdc:22",
+    "cursor/rules/ask-vs-agent.mdc:23",
+    "cursor/rules/ask-vs-agent.mdc:25",
+    "cursor/rules/ask-vs-agent.mdc:26",
+    "cursor/rules/ask-vs-agent.mdc:27",
+    "cursor/rules/ask-vs-agent.mdc:28",
+    "cursor/rules/ask-vs-agent.mdc:30",
+    "cursor/rules/ask-vs-agent.mdc:31",
+    "cursor/rules/ask-vs-agent.mdc:32",
+    "cursor/rules/ask-vs-agent.mdc:33",
+    "cursor/rules/ask-vs-agent.mdc:35",
+    "cursor/rules/ask-vs-agent.mdc:36",
+    "cursor/rules/ask-vs-agent.mdc:37",
+    "cursor/rules/ask-vs-agent.mdc:41",
+    "cursor/rules/ask-vs-agent.mdc:43",
+    "cursor/rules/ask-vs-agent.mdc:44",
+    "cursor/rules/ask-vs-agent.mdc:45",
+    "cursor/rules/ask-vs-agent.mdc:49",
+    "cursor/rules/ask-vs-agent.mdc:53",
+    "cursor/rules/ask-vs-agent.mdc:59",
+    "cursor/rules/ask-vs-agent.mdc:60",
+    "cursor/rules/ask-vs-agent.mdc:61",
+    "rules/universal-always-on.md:42",
+    "rules/universal-always-on.md:46",
+    "rules/universal-always-on.md:47",
+    "rules/universal-always-on.md:48",
+    "rules/universal-always-on.md:49",
+    "rules/universal-always-on.md:51",
+    "rules/universal-always-on.md:52",
+    "rules/universal-always-on.md:54",
+    "rules/universal-always-on.md:55",
+    "rules/universal-always-on.md:56",
+    "rules/universal-always-on.md:57",
+    "rules/universal-always-on.md:59",
+    "rules/universal-always-on.md:60",
+    "rules/universal-always-on.md:61",
+    "rules/universal-always-on.md:62",
+    "rules/universal-always-on.md:64",
+    "rules/universal-always-on.md:65",
+    "rules/universal-always-on.md:66",
+    "rules/universal-always-on.md:67",
+    "rules/universal-always-on.md:69",
+    "rules/universal-always-on.md:70",
+    "rules/universal-always-on.md:71",
+    "rules/universal-always-on.md:75",
+    "rules/universal-always-on.md:77",
+    "rules/universal-always-on.md:78",
+    "rules/universal-always-on.md:79",
+    "rules/universal-always-on.md:83",
+    "rules/universal-always-on.md:87",
+    "rules/universal-always-on.md:93",
+    "rules/universal-always-on.md:94",
+    "rules/universal-always-on.md:95"
+   ]
+  },
+  {
+   "records": [
+    "rule:ponytail.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/ponytail.mdc:9",
+    "cursor/rules/ponytail.mdc:11",
+    "cursor/rules/ponytail.mdc:13",
+    "cursor/rules/ponytail.mdc:14",
+    "cursor/rules/ponytail.mdc:15",
+    "cursor/rules/ponytail.mdc:16",
+    "cursor/rules/ponytail.mdc:17",
+    "cursor/rules/ponytail.mdc:18",
+    "cursor/rules/ponytail.mdc:19",
+    "cursor/rules/ponytail.mdc:21",
+    "cursor/rules/ponytail.mdc:23",
+    "cursor/rules/ponytail.mdc:27",
+    "cursor/rules/ponytail.mdc:29",
+    "cursor/rules/ponytail.mdc:30",
+    "cursor/rules/ponytail.mdc:32",
+    "cursor/rules/ponytail.mdc:34",
+    "cursor/rules/ponytail.mdc:35",
+    "cursor/rules/ponytail.mdc:36",
+    "cursor/rules/ponytail.mdc:37",
+    "cursor/rules/ponytail.mdc:38",
+    "cursor/rules/ponytail.mdc:40",
+    "rules/universal-always-on.md:7",
+    "rules/universal-always-on.md:9",
+    "rules/universal-always-on.md:11",
+    "rules/universal-always-on.md:12",
+    "rules/universal-always-on.md:13",
+    "rules/universal-always-on.md:14",
+    "rules/universal-always-on.md:15",
+    "rules/universal-always-on.md:16",
+    "rules/universal-always-on.md:17",
+    "rules/universal-always-on.md:19",
+    "rules/universal-always-on.md:21",
+    "rules/universal-always-on.md:25",
+    "rules/universal-always-on.md:27",
+    "rules/universal-always-on.md:28",
+    "rules/universal-always-on.md:30",
+    "rules/universal-always-on.md:32",
+    "rules/universal-always-on.md:33",
+    "rules/universal-always-on.md:34",
+    "rules/universal-always-on.md:35",
+    "rules/universal-always-on.md:36",
+    "rules/universal-always-on.md:38"
+   ]
+  },
+  {
+   "records": [
+    "rule:scoped prompt.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/scoped-prompt.mdc:8",
+    "cursor/rules/scoped-prompt.mdc:9",
+    "cursor/rules/scoped-prompt.mdc:12",
+    "cursor/rules/scoped-prompt.mdc:13",
+    "cursor/rules/scoped-prompt.mdc:15",
+    "cursor/rules/scoped-prompt.mdc:16",
+    "cursor/rules/scoped-prompt.mdc:18",
+    "cursor/rules/scoped-prompt.mdc:19",
+    "cursor/rules/scoped-prompt.mdc:20",
+    "cursor/rules/scoped-prompt.mdc:21",
+    "cursor/rules/scoped-prompt.mdc:23",
+    "rules/universal-always-on.md:99",
+    "rules/universal-always-on.md:100",
+    "rules/universal-always-on.md:103",
+    "rules/universal-always-on.md:104",
+    "rules/universal-always-on.md:106",
+    "rules/universal-always-on.md:107",
+    "rules/universal-always-on.md:109",
+    "rules/universal-always-on.md:110",
+    "rules/universal-always-on.md:111",
+    "rules/universal-always-on.md:112",
+    "rules/universal-always-on.md:114"
+   ]
+  },
+  {
+   "records": [
+    "rule:context discipline.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/context-discipline.mdc:8",
+    "cursor/rules/context-discipline.mdc:12",
+    "cursor/rules/context-discipline.mdc:13",
+    "cursor/rules/context-discipline.mdc:14",
+    "cursor/rules/context-discipline.mdc:15",
+    "cursor/rules/context-discipline.mdc:19",
+    "cursor/rules/context-discipline.mdc:20",
+    "cursor/rules/context-discipline.mdc:24",
+    "cursor/rules/context-discipline.mdc:28",
+    "rules/universal-always-on.md:120",
+    "rules/universal-always-on.md:124",
+    "rules/universal-always-on.md:125",
+    "rules/universal-always-on.md:126",
+    "rules/universal-always-on.md:127",
+    "rules/universal-always-on.md:131",
+    "rules/universal-always-on.md:132",
+    "rules/universal-always-on.md:136",
+    "rules/universal-always-on.md:140"
+   ]
+  },
+  {
+   "records": [
+    "rule:universal agents.mdc",
+    "rule:write external.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/write-external.mdc:8",
+    "cursor/rules/write-external.mdc:9",
+    "cursor/rules/write-external.mdc:10",
+    "cursor/rules/write-external.mdc:11",
+    "cursor/rules/write-external.mdc:13",
+    "cursor/rules/write-external.mdc:14",
+    "cursor/rules/write-external.mdc:15",
+    "cursor/rules/write-external.mdc:16",
+    "rules/universal-always-on.md:149",
+    "rules/universal-always-on.md:150",
+    "rules/universal-always-on.md:151",
+    "rules/universal-always-on.md:152",
+    "rules/universal-always-on.md:154",
+    "rules/universal-always-on.md:155",
+    "rules/universal-always-on.md:156",
+    "rules/universal-always-on.md:157"
+   ]
+  },
+  {
+   "records": [
+    "rule:project memory.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/project-memory.mdc:8",
+    "cursor/rules/project-memory.mdc:10",
+    "cursor/rules/project-memory.mdc:11",
+    "cursor/rules/project-memory.mdc:12",
+    "cursor/rules/project-memory.mdc:13",
+    "cursor/rules/project-memory.mdc:15",
+    "cursor/rules/project-memory.mdc:16",
+    "rules/universal-always-on.md:169",
+    "rules/universal-always-on.md:171",
+    "rules/universal-always-on.md:172",
+    "rules/universal-always-on.md:173",
+    "rules/universal-always-on.md:174",
+    "rules/universal-always-on.md:176",
+    "rules/universal-always-on.md:177"
+   ]
+  },
+  {
+   "records": [
+    "rule:asd ste100.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/asd-ste100.mdc:8",
+    "cursor/rules/asd-ste100.mdc:9",
+    "cursor/rules/asd-ste100.mdc:10",
+    "cursor/rules/asd-ste100.mdc:11",
+    "rules/universal-always-on.md:161",
+    "rules/universal-always-on.md:162",
+    "rules/universal-always-on.md:163",
+    "rules/universal-always-on.md:164"
+   ]
+  },
+  {
+   "records": [
+    "rule:self reflection.mdc",
+    "rule:universal agents.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/self-reflection.mdc:8",
+    "cursor/rules/self-reflection.mdc:9",
+    "rules/universal-always-on.md:144",
+    "rules/universal-always-on.md:145"
+   ]
+  },
+  {
+   "records": [
+    "skill:idea to pr",
+    "skill:triage pr comments"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "skills/idea-to-pr/SKILL.md:143",
+    "skills/idea-to-pr/examples/shipped-run.md:35",
+    "skills/triage-pr-comments/SKILL.md:280",
+    "skills/triage-pr-comments/examples/triaged-thread.md:13"
+   ]
+  },
+  {
+   "records": [
+    "repo:to tickets",
+    "repo:wayfinder"
+   ],
+   "restates_include": false,
+   "blocks": [
+    ".ubiq/glossary/to-tickets.md:9",
+    ".ubiq/glossary/wayfinder.md:9"
+   ]
+  },
+  {
+   "records": [
+    "rule:agent roles.mdc",
+    "rule:workflow phases.mdc"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "cursor/rules/agent-roles.mdc:8",
+    "cursor/rules/workflow-phases.mdc:8"
+   ]
+  },
+  {
+   "records": [
+    "skill:author skill",
+    "skill:skill guide"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "skills/author-skill/SKILL.md:26",
+    "skills/skill-guide/SKILL.md:82"
+   ]
+  },
+  {
+   "records": [
+    "skill:code review",
+    "skill:resolving merge conflicts"
+   ],
+   "restates_include": false,
+   "blocks": [
+    ".ubiq/overlays/code-review.md:6",
+    ".ubiq/overlays/resolving-merge-conflicts.md:6"
+   ]
+  },
+  {
+   "records": [
+    "skill:idea to pr",
+    "skill:publish pr"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "skills/idea-to-pr/examples/shipped-run.md:30",
+    "skills/publish-pr/examples/published-pr.md:5"
+   ]
+  },
+  {
+   "records": [
+    "skill:publish pr",
+    "skill:validate change"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "skills/publish-pr/examples/published-pr.md:3",
+    "skills/validate-change/examples/validated-change.md:3"
+   ]
+  },
+  {
+   "records": [
+    "skill:push branch",
+    "skill:push slices"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "skills/push-branch/SKILL.md:19",
+    "skills/push-slices/SKILL.md:16"
+   ]
+  },
+  {
+   "records": [
+    "skill:triage pr comments",
+    "skill:write external"
+   ],
+   "restates_include": false,
+   "blocks": [
+    "skills/triage-pr-comments/SKILL.md:155",
+    "skills/write-external/SKILL.md:45"
+   ]
+  }
+ ]
+}

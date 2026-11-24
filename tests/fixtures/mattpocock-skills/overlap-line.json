@@ -1,0 +1,294 @@
+{
+  "unit": "line",
+  "min_similarity": 0.5,
+  "count": 8,
+  "clusters": [
+    {
+      "records": [
+        "skill:code review",
+        "skill:implement spec",
+        "skill:to spec",
+        "skill:to tickets",
+        "skill:triage",
+        "skill:wayfinder"
+      ],
+      "restates_include": false,
+      "blocks": [
+        {
+          "record": "skill:code review",
+          "file": "skills/engineering/code-review/SKILL.md",
+          "line": 13,
+          "text": "The issue tracker should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`."
+        },
+        {
+          "record": "skill:implement spec",
+          "file": "skills/engineering/implement-spec/SKILL.md",
+          "line": 9,
+          "text": "The issue tracker should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`."
+        },
+        {
+          "record": "skill:to spec",
+          "file": "skills/engineering/to-spec/SKILL.md",
+          "line": 9,
+          "text": "The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`."
+        },
+        {
+          "record": "skill:to tickets",
+          "file": "skills/engineering/to-tickets/SKILL.md",
+          "line": 11,
+          "text": "The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`."
+        },
+        {
+          "record": "skill:triage",
+          "file": "skills/engineering/triage/SKILL.md",
+          "line": 43,
+          "text": "These are canonical role names. The actual label strings used in the issue tracker may differ. The mapping should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`."
+        },
+        {
+          "record": "skill:wayfinder",
+          "file": "skills/engineering/wayfinder/SKILL.md",
+          "line": 25,
+          "text": "**Where the map, its child tickets, blocking, and frontier queries physically live is tracker-specific.** The issue tracker should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`. Consult the tracker doc's \"Wayfinding operations\" section for how _this_ repo expresses them. If no tracker has been provided, default to the local-markdown tracker."
+        }
+      ]
+    },
+    {
+      "records": [
+        "skill:grill with docs",
+        "skill:triage",
+        "skill:wayfinder"
+      ],
+      "restates_include": false,
+      "blocks": [
+        {
+          "record": "skill:grill with docs",
+          "file": "skills/engineering/grill-with-docs/SKILL.md",
+          "line": 7,
+          "text": "Call the Skill tool twice, for \"grilling\" and \"domain-modeling\"."
+        },
+        {
+          "record": "skill:triage",
+          "file": "skills/engineering/triage/SKILL.md",
+          "line": 76,
+          "text": "4. **Grill (if needed).** If the request needs fleshing out, call the Skill tool twice, for \"grilling\" and \"domain-modeling\", and grill it into shape a round of questions at a time, sharpening domain terms and updating `GLOSSARY.md`/ADRs inline as decisions land."
+        },
+        {
+          "record": "skill:wayfinder",
+          "file": "skills/engineering/wayfinder/SKILL.md",
+          "line": 79,
+          "text": "- **Grilling** (HITL): Conversation. The default case. Always call the Skill tool twice, for \"grilling\" and \"domain-modeling\"."
+        },
+        {
+          "record": "skill:wayfinder",
+          "file": "skills/engineering/wayfinder/SKILL.md",
+          "line": 111,
+          "text": "1. **Name the destination.** Call the Skill tool twice, for \"grilling\" and \"domain-modeling\", to pin down what this map is finding its way to: the spec, decision, or change. The destination fixes the scope, so it's settled first."
+        },
+        {
+          "record": "skill:wayfinder",
+          "file": "skills/engineering/wayfinder/SKILL.md",
+          "line": 124,
+          "text": "3. Resolve it as the type its `wayfinder:<type>` label names (see [Ticket Types](#ticket-types)). Read the label, not just the body: the body never states the type. **Zoom as needed**: fetch the full body of any related or closed ticket on demand; call the Skill tool for whichever skills the `## Notes` block names. If in doubt, call the Skill tool twice, for \"grilling\" and \"domain-modeling\"."
+        }
+      ]
+    },
+    {
+      "records": [
+        "skill:claude handoff",
+        "skill:handoff"
+      ],
+      "restates_include": false,
+      "blocks": [
+        {
+          "record": "skill:claude handoff",
+          "file": "skills/in-progress/claude-handoff/SKILL.md",
+          "line": 12,
+          "text": "Include a \"suggested skills\" section in the summary, naming which skills the next agent should call the Skill tool for."
+        },
+        {
+          "record": "skill:claude handoff",
+          "file": "skills/in-progress/claude-handoff/SKILL.md",
+          "line": 14,
+          "text": "Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead."
+        },
+        {
+          "record": "skill:claude handoff",
+          "file": "skills/in-progress/claude-handoff/SKILL.md",
+          "line": 16,
+          "text": "Redact any sensitive information, such as API keys, passwords, or personally identifiable information, since the summary becomes the agent's prompt."
+        },
+        {
+          "record": "skill:claude handoff",
+          "file": "skills/in-progress/claude-handoff/SKILL.md",
+          "line": 18,
+          "text": "If the user passed arguments, treat them as a description of what the next session will focus on and tailor the summary accordingly."
+        },
+        {
+          "record": "skill:handoff",
+          "file": "skills/productivity/handoff/SKILL.md",
+          "line": 10,
+          "text": "Include a \"suggested skills\" section in the document, naming which skills the next agent should call the Skill tool for."
+        },
+        {
+          "record": "skill:handoff",
+          "file": "skills/productivity/handoff/SKILL.md",
+          "line": 12,
+          "text": "Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead."
+        },
+        {
+          "record": "skill:handoff",
+          "file": "skills/productivity/handoff/SKILL.md",
+          "line": 14,
+          "text": "Redact any sensitive information, such as API keys, passwords, or personally identifiable information."
+        },
+        {
+          "record": "skill:handoff",
+          "file": "skills/productivity/handoff/SKILL.md",
+          "line": 16,
+          "text": "If the user passed arguments, treat them as a description of what the next session will focus on and tailor the doc accordingly."
+        }
+      ]
+    },
+    {
+      "records": [
+        "skill:writing beats",
+        "skill:writing shape"
+      ],
+      "restates_include": false,
+      "blocks": [
+        {
+          "record": "skill:writing beats",
+          "file": "skills/in-progress/writing-beats/SKILL.md",
+          "line": 11,
+          "text": "If the user did not say where to save the article, ask once and remember the path."
+        },
+        {
+          "record": "skill:writing beats",
+          "file": "skills/in-progress/writing-beats/SKILL.md",
+          "line": 27,
+          "text": "Every **concept** has to be **grounded** before a beat can lean on it: the audience either walked in knowing it or met it in an earlier beat. A beat that reaches for an ungrounded concept loses the reader; that is the one move the journey can't make. The unit is the concept, not the word for it: a beat can lean on an idea the reader lacks even with no jargon in sight. Where a concept has a name (a **term**), grounding it means landing the idea and the term together."
+        },
+        {
+          "record": "skill:writing beats",
+          "file": "skills/in-progress/writing-beats/SKILL.md",
+          "line": 29,
+          "text": "A concept gets grounded one of two ways:"
+        },
+        {
+          "record": "skill:writing shape",
+          "file": "skills/in-progress/writing-shape/SKILL.md",
+          "line": 13,
+          "text": "If the user did not say where to save the article, ask once and remember the path."
+        },
+        {
+          "record": "skill:writing shape",
+          "file": "skills/in-progress/writing-shape/SKILL.md",
+          "line": 30,
+          "text": "Every **concept** has to be **grounded** before a block can lean on it: the reader either walked in knowing it or met it in an earlier block. A block that reaches for an ungrounded concept loses the reader. The unit is the concept, not the word for it: a block can lean on an idea the reader lacks even with no jargon in sight. Where a concept has a name (a **term**), grounding it means landing the idea and the term together."
+        },
+        {
+          "record": "skill:writing shape",
+          "file": "skills/in-progress/writing-shape/SKILL.md",
+          "line": 32,
+          "text": "A concept gets grounded one of two ways:"
+        }
+      ]
+    },
+    {
+      "records": [
+        "skill:setup matt pocock skills",
+        "skill:triage"
+      ],
+      "restates_include": false,
+      "blocks": [
+        {
+          "record": "skill:setup matt pocock skills",
+          "file": "skills/engineering/setup-matt-pocock-skills/triage-labels.md",
+          "line": 8,
+          "text": "| `needs-info`               | `needs-info`         | Waiting on reporter for more information |"
+        },
+        {
+          "record": "skill:setup matt pocock skills",
+          "file": "skills/engineering/setup-matt-pocock-skills/triage-labels.md",
+          "line": 9,
+          "text": "| `ready-for-agent`          | `ready-for-agent`    | Fully specified, ready for an AFK agent  |"
+        },
+        {
+          "record": "skill:triage",
+          "file": "skills/engineering/triage/SKILL.md",
+          "line": 34,
+          "text": "- `needs-info`: waiting on reporter for more information"
+        },
+        {
+          "record": "skill:triage",
+          "file": "skills/engineering/triage/SKILL.md",
+          "line": 35,
+          "text": "- `ready-for-agent`: fully specified, ready for an AFK agent"
+        }
+      ]
+    },
+    {
+      "records": [
+        "skill:chief of staff",
+        "skill:implement spec"
+      ],
+      "restates_include": false,
+      "blocks": [
+        {
+          "record": "skill:implement spec",
+          "file": "skills/engineering/implement-spec/SKILL.md",
+          "line": 15,
+          "text": "Start every subagent with a fresh context window."
+        },
+        {
+          "record": "skill:chief of staff",
+          "file": "skills/in-progress/chief-of-staff/SKILL.md",
+          "line": 22,
+          "text": "Use background agents so you can stay in active dialogue with the user. Start every subagent with a fresh context window."
+        }
+      ]
+    },
+    {
+      "records": [
+        "skill:domain modeling",
+        "skill:teach"
+      ],
+      "restates_include": false,
+      "blocks": [
+        {
+          "record": "skill:domain modeling",
+          "file": "skills/engineering/domain-modeling/ADR-FORMAT.md",
+          "line": 27,
+          "text": "Scan `docs/adr/` for the highest existing number and increment by one."
+        },
+        {
+          "record": "skill:teach",
+          "file": "skills/productivity/teach/LEARNING-RECORD-FORMAT.md",
+          "line": 27,
+          "text": "Scan `./learning-records/` for the highest existing number and increment by one."
+        }
+      ]
+    },
+    {
+      "records": [
+        "skill:to spec",
+        "skill:to tickets"
+      ],
+      "restates_include": false,
+      "blocks": [
+        {
+          "record": "skill:to spec",
+          "file": "skills/engineering/to-spec/SKILL.md",
+          "line": 57,
+          "text": "Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it within the relevant decision and note briefly that it came from a prototype. Trim to the decision-rich parts, not a working demo, just the important bits."
+        },
+        {
+          "record": "skill:to tickets",
+          "file": "skills/engineering/to-tickets/SKILL.md",
+          "line": 105,
+          "text": "In either form, avoid specific file paths or code snippets: they go stale fast. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it and note briefly that it came from a prototype. Trim to the decision-rich parts, not a working demo, just the important bits."
+        }
+      ]
+    }
+  ]
+}

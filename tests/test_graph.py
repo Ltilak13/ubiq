@@ -326,6 +326,55 @@ def test_an_unreadable_external_repository_leaves_its_links_unchecked(tmp_path, 
                                "was not found; links into it are not checked"))]
 
 
+def test_an_invoke_cycle_is_allowed_and_walks_end(tmp_path, capsys):
+    # Two workflows that hand off to each other.
+    repo(tmp_path, {
+        "skills/plan/SKILL.md": skill("plan", "Hand off to build.", uses=["build"]),
+        "skills/build/SKILL.md": skill("build", "Hand back to plan.", uses=["plan"]),
+    })
+    status, found = check(tmp_path, capsys)
+    assert status == 0 and found == []
+    for view in ([], ["--callers"]):
+        status, out = run(tmp_path, capsys, "graph", "plan", *view)
+        assert sorted((e["source"], e["target"]) for e in out["edges"]) == [
+            ("skill:build", "skill:plan"), ("skill:plan", "skill:build")]
+
+
+def test_nested_includes(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/ship/SKILL.md": skill("ship", "Follow [publish](../_shared/publish.md)."),
+        "skills/_shared/publish.md": part(
+            "publish", "Follow [checkout](checkout.md) in `existing` mode, then push."),
+        "skills/_shared/checkout.md": part("checkout", "Check out.", INPUTS),
+    })
+    status, found = check(tmp_path, capsys)
+    # A part that includes a part is no cycle, and its include names an input too.
+    assert status == 0
+    assert [f for f in found if f[0] != "W004"] == []
+    status, out = run(tmp_path, capsys, "graph", "ship")
+    assert [(e["source"], e["target"]) for e in out["edges"]] == [
+        ("skill:ship", "part:publish"), ("part:publish", "part:checkout")]
+    status, out = run(tmp_path, capsys, "graph", "ship", "--depth", "1")
+    assert [e["target"] for e in out["edges"]] == ["part:publish"]
+    status, out = run(tmp_path, capsys, "graph", "checkout", "--callers")
+    assert [e["source"] for e in out["edges"]] == ["part:publish", "skill:ship"]
+
+
+def test_overlap_threshold_boundary(tmp_path, capsys):
+    words = [f"word{i}" for i in range(20)]
+    near = [*words[:10], "other", *words[11:]]
+    repo(tmp_path, {
+        "skills/a/SKILL.md": skill("a", " ".join(words)),
+        "skills/b/SKILL.md": skill("b", " ".join(near)),
+    })
+    # 17 shingles each; changing one word changes 4, so Jaccard is 13/21 = 0.619
+    # and containment 13/17 = 0.76 stays under its own 0.8 bar.
+    _, out = run(tmp_path, capsys, "overlap", "--min-similarity", "0.61")
+    assert out["count"] == 1
+    _, out = run(tmp_path, capsys, "overlap", "--min-similarity", "0.62")
+    assert out["count"] == 0
+
+
 def test_callers_of_one_part_are_not_overlap(tmp_path, capsys):
     label = "the shared repository checkout procedure for pull requests"
     repo(tmp_path, {

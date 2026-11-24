@@ -11,6 +11,7 @@ import io
 import sys
 import tempfile
 import traceback
+import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -56,6 +57,8 @@ def run():
             try:
                 fn(**kwargs)
                 status = "ok"
+            except unittest.SkipTest as exc:
+                status = f"skip ({exc})"
             except Exception:  # noqa: BLE001 — a runner reports every failure
                 status = "FAIL"
                 failed += 1

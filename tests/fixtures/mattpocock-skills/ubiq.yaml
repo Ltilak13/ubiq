@@ -1,0 +1,7 @@
+# Snapshot of skills/**/*.md and LICENSE from mattpocock/skills at abeeaf9
+# (MIT, see LICENSE), surveyed for the composable skills goal. The pinned
+# overlap results in tests/test_survey.py come from this input. The bucket
+# READMEs are left out: no skill owns them, so overlap never reads them.
+glossary:
+  - {glob: "skills/**/SKILL.md", term_field: name, ns: skill}
+docs: ["skills/**/*.md"]
