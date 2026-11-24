@@ -240,8 +240,16 @@ contains 80% of the other's shingles. Clusters with the same set of owners merge
 Links to shared parts are blanked before comparison: an include is the call,
 not repeated prose, so callers of one part do not cluster with each other.
 Each cluster has `records`, `restates_include` (one owner includes another
-owner's part), and `blocks` with `record`, `file`, `line`, and `text`. The
-command exits 0 unless configuration or assembly fails, and never writes files.
+owner's part), `restates_composite`, and `blocks` with `record`, `file`, `line`,
+and `text`. `restates_composite` lists the composites in the cluster: owners with
+invoke edges whose compared blocks are all in the cluster. Each suggested caller
+must directly match every compared block of the composite. Each entry has `composite`, `records` (the other owners whose
+invoke edges contain all of the composite's and that do not invoke it yet, so
+they could invoke it instead), and `blocked`. `blocked` is true when the
+composite sets its `edges.invoke.blocked_by` field, so an invoke edge to it
+would report W003 and the fix is the author's call. The list is empty when no
+composite applies. The command exits 0 unless configuration or assembly fails,
+and never writes files.
 
 ## Invariants
 

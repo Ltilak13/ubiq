@@ -280,7 +280,6 @@ reviewed refactor above.
 
 Open: a field such as `uses` cannot name another repository's record, so
 invoking an upstream skill still needs a glossary stub here, and E012 does not
-read the inputs of another repository's parts. Labeling a skill that restates a
-composite it could invoke remains open. Paths written in code spans, such
+read the inputs of another repository's parts. Paths written in code spans, such
 as the public collection's `` `../retro/SKILL.md` ``, are not links, so W004 does
 not check them.

@@ -513,3 +513,62 @@ def test_callers_of_one_part_are_not_overlap(tmp_path, capsys):
     # the label as prose, and no other block shares it.
     _, out = run(tmp_path, capsys, "overlap", "--unit", "line", "--min-similarity", "0.3")
     assert out["count"] == 0
+
+
+GRILL = 'Call the Skill tool twice, for "grilling" and "domain-modeling".'
+BOTH = ["grilling", "domain-modeling"]
+
+
+def test_composite_suggestion_requires_each_callers_full_coverage(tmp_path, capsys):
+    first = "Read repository instructions and inspect every changed source file before writing code."
+    second = "Publish the release artifact after verifying its checksum against the signed manifest."
+    repo(tmp_path, {
+        "skills/step/SKILL.md": skill("step", "Work."),
+        "skills/composite/SKILL.md": skill("composite", first + "\n\n" + second, uses=["step"]),
+        "skills/full/SKILL.md": skill("full", first + " " + second, uses=["step"]),
+        "skills/partial/SKILL.md": skill("partial", first, uses=["step"]),
+    })
+    _, out = run(tmp_path, capsys, "overlap")
+    suggestion = next(r for c in out["clusters"] for r in c["restates_composite"]
+                      if r["composite"] == "skill:composite")
+    assert suggestion["records"] == ["skill:full"]
+
+
+def test_overlap_labels_a_restated_composite(tmp_path, capsys):
+    gwd = tmp_path / "skills/grill-with-docs/SKILL.md"
+    repo(tmp_path, {
+        "skills/grilling/SKILL.md": skill("grilling", "Ask."),
+        "skills/domain-modeling/SKILL.md": skill("domain-modeling", "Name."),
+        "skills/grill-with-docs/SKILL.md": skill("grill-with-docs", GRILL, uses=BOTH,
+                                                 user_only=True),
+        # They hold every edge of grill-with-docs and restate all of its text.
+        "skills/triage/SKILL.md": skill("triage", "Grill if needed: " + GRILL + "\n\n"
+                                        "Move issues through a small state machine of triage "
+                                        "roles and their labels.", uses=BOTH),
+        "skills/wayfinder/SKILL.md": skill("wayfinder", "Always " + GRILL + "\n\n"
+                                           "Chart a map of open decisions before any ticket is "
+                                           "worked by an agent.", uses=BOTH),
+        # Holds only one of its edges.
+        "skills/teach/SKILL.md": skill("teach", GRILL + "\n\nExplain one concept at a time and "
+                                       "check what the learner already knows first.",
+                                       uses=["grilling"]),
+        # Already invokes it.
+        "skills/lead/SKILL.md": skill("lead", GRILL, uses=["grill-with-docs", *BOTH]),
+        # Restated in full but invokes nothing, so it is not a composite.
+        "skills/echo/SKILL.md": skill("echo", GRILL),
+    })
+    _, out = run(tmp_path, capsys, "overlap")
+    assert out["count"] == 1
+    cluster = out["clusters"][0]
+    assert len(cluster["records"]) == 6
+    assert cluster["restates_composite"] == [
+        {"composite": "skill:grill with docs", "records": ["skill:triage", "skill:wayfinder"],
+         "blocked": True}]
+
+    assert main(["overlap", "--root", str(tmp_path)]) == 0
+    assert ("(skill:triage, skill:wayfinder could invoke skill:grill with docs, but it sets "
+            "disable-model-invocation: true (W003))") in capsys.readouterr().out
+
+    gwd.write_text(skill("grill-with-docs", GRILL, uses=BOTH), encoding="utf-8")
+    _, out = run(tmp_path, capsys, "overlap")
+    assert [c["blocked"] for c in out["clusters"][0]["restates_composite"]] == [False]
