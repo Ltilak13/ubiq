@@ -13,7 +13,7 @@ def test_installed_skill_documentation_links(tmp_path):
         shutil.copytree(source / name, installed / name)
 
     for document in installed.rglob("*.md"):
-        for _, _, link in _interpret_markdown(document.read_text()).links:
+        for _, _, link in _interpret_markdown(document.read_text(encoding="utf-8")).links:
             target = _doc_link_path(document, link)
             if target is not None:
                 assert target.is_relative_to(installed), (document, link)
