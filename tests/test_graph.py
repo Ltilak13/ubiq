@@ -93,8 +93,9 @@ def test_invoking_a_user_only_skill_warns(tmp_path, capsys):
     })
     status, found = check(tmp_path, capsys)
     assert status == 0
-    assert found == [("W003", "skill:lead invokes skill:spec, which sets "
-                      "disable-model-invocation: true — include its file or allow model invocation")]
+    assert found == [("W003", ("skill:lead invokes skill:spec, which sets "
+                               "disable-model-invocation: true — include its file or allow "
+                               "model invocation"))]
 
 
 def test_links_that_resolve_in_only_one_layout_warn(tmp_path, capsys):

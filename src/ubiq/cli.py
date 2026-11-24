@@ -26,7 +26,10 @@ from .check import Diagnostic, run_checks
 from .config import Config, InvalidConfig, load_config
 from .discovery import discover, init_assets
 from .globs import Glob, first_match
+from .graph import KINDS as GRAPH_KINDS
+from .graph import build_edges, check_edges, owners, walk
 from .kinds import KINDS
+from .overlap import find_overlap
 from .records import (
     ConflictingGlossary,
     Glossary,
@@ -35,8 +38,6 @@ from .records import (
     normalize,
 )
 from .scan import Ref, file_link_targets, scan_docs
-from .graph import KINDS as GRAPH_KINDS, build_edges, check_edges, owners, walk
-from .overlap import find_overlap
 
 
 def _display_path(path: Path, root: Path) -> str:

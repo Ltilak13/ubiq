@@ -130,7 +130,7 @@ class Config:
     policies: Policies
     unlinked_except: tuple[str, ...]
     candidate_shapes: Shape
-    edges: "EdgeConfig"
+    edges: EdgeConfig
 
 
 @dataclass(frozen=True)
