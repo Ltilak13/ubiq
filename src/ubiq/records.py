@@ -60,10 +60,13 @@ class Term:
     definition: str = ""
     # Term and aliases as written, before normalize: `grill-me` vs `grill me`.
     spellings: list[str] = field(default_factory=list)
+    # Set on another repository's records (edges.external): that repository's name.
+    repository: str | None = None
 
     @property
     def qualified(self) -> str:
-        return f"{self.ns}:{self.term}"
+        here = f"{self.ns}:{self.term}"
+        return f"{self.repository}/{here}" if self.repository else here
 
     def names(self) -> list[str]:
         # dedupe: an alias that normalizes to the term itself isn't a second claim

@@ -138,7 +138,7 @@ Documents with no owner contribute no edges.
 | --- | --- | --- |
 | `invoke` | a value in an `edges.invoke.fields` field (default: `ref_fields` minus `edges.route.fields`) | W003 when the target sets `blocked_by` |
 | `route` | a value in an `edges.route.fields` field (default: none) | none |
-| `include` | a Markdown link to a record in an `edges.include.ns` namespace (default: `part`) | E011 on a cycle; E012 on a part input |
+| `include` | a Markdown link to a record in an `edges.include.ns` namespace (default: `part`), or one that lands on another repository's record once installed | E011 on a cycle; E012 on a part input |
 
 Invoke and include edges are dependencies: the source needs the target to run.
 A route edge points elsewhere without depending on the target, as in "not for X;
@@ -180,11 +180,35 @@ external repository that is missing, has invalid configuration, or installs
 nothing is one W004; while it is unreadable, links to directory names that nothing
 here installs are not checked, so CI without the other checkout does not fail.
 
+A link that lands, once installed, on a file that another repository's record
+owns (by that repository's own owner rules) is an include edge to that record,
+with or without a `#fragment`. No field here can name that record, so the link
+is the only declaration, and it resolves only once installed, where the agent
+reads the text in place. Because it is an include, the target's `blocked_by`
+setting does not apply. Inside one repository, a link to a record outside
+`edges.include.ns` stays a reference even with a `#fragment`: files often link
+each other's sections without a loop, and a record-level edge cannot tell which
+section the agent reads, so E011 and overlap's `restates_include` would report
+relations that do not hold. Another repository's records are named
+`<repository>/<ns>:<term>`, where `<repository>` is its directory name, or its
+full path when two `edges.external` entries share one, so they never collide with
+a record here. Ubiq reads only that repository's glossary rules and overlays, one
+frontmatter per record: not its other documents, and not its edges, so a walk
+ends at its record. E011 therefore finds no cycle through it, and E012 checks the
+inputs of parts here only. W005 counts the edge as declared, but references here
+resolve only to records here, so it never asks for an edge to another
+repository's record; a glossary stub that stands for an upstream skill is a
+separate record. While a repository is unreadable, links into it make no edge.
+
 `graph --json` returns `target`, `view` (`dependencies` or `callers`), `count`,
 and `edges`, each with `kind`, `source`, `target`, `file`, and `line`. Without a
 target it lists every edge. `--callers` follows incoming edges; `--depth` limits
 hops; `--kind` filters by kind. A walk shows route edges where it reaches them
-but does not follow them. A target that names no single record exits 1.
+but does not follow them. A target that names no single record exits 1. A name
+defined here wins, the way a local directory wins once installed; a name nothing
+here defines resolves in `edges.external` repositories, and `<repository>/<name>`
+names a record there directly. `--callers` from such a record lists the records
+here that include it, then their callers.
 
 `overlap --json` returns `unit`, `min_similarity`, `count`, and `clusters`. Live
 documents with an owner split into paragraphs, or lines with `--unit line`,

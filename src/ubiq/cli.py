@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,7 +28,16 @@ from .config import Config, InvalidConfig, load_config
 from .discovery import discover, init_assets
 from .globs import Glob, first_match
 from .graph import KINDS as GRAPH_KINDS
-from .graph import Layout, across_repositories, build_edges, check_edges, owners, walk
+from .graph import (
+    Layout,
+    Repository,
+    across_repositories,
+    build_edges,
+    check_edges,
+    cross_edges,
+    owners,
+    walk,
+)
 from .kinds import KINDS
 from .overlap import find_overlap
 from .records import (
@@ -139,17 +149,22 @@ class Build:
     historical: set[Path]          # the historical subset of `docs`
 
 
-def build(root: Path, trace: ScanTrace | None = None) -> Build:
-    root = root.resolve()
-    cfg = load_config(root)
+def _glossary(cfg: Config, trace: ScanTrace | None = None) -> tuple[Glossary, list[Path]]:
+    """The records that the glossary rules and overlays define, and the overlay files."""
     overlay_files = _expand(cfg.overlays, cfg.ignore, trace, "overlay")
     sources = [
         (path, rule.term_field, rule.ns, rule.label)
         for rule in cfg.glossary
         for path in _expand((rule.glob,), cfg.ignore, trace, "glossary")
     ]
-    glossary = assemble_glossary(root, sources, overlay_files, cfg.term_field, cfg.lenient,
-                                 ref_fields=cfg.ref_fields)
+    return assemble_glossary(cfg.root, sources, overlay_files, cfg.term_field, cfg.lenient,
+                             ref_fields=cfg.ref_fields), overlay_files
+
+
+def build(root: Path, trace: ScanTrace | None = None) -> Build:
+    root = root.resolve()
+    cfg = load_config(root)
+    glossary, overlay_files = _glossary(cfg, trace)
 
     if trace is not None:
         for term in glossary.terms:
@@ -364,27 +379,42 @@ def _installed(cfg: Config) -> list[Path]:
 
 
 def _layout(cfg: Config) -> Layout:
-    """This repository's installed files plus those of each edges.external repository."""
+    """This repository's installed files, plus each edges.external repository's
+    installed files and records. Only that repository's glossary is read: one
+    frontmatter per record, none of its other documents."""
     external, unread = [], []
+    names = Counter(repo.resolve().name for repo in cfg.edges.external)
     for repo in cfg.edges.external:
         if not repo.is_dir():
             unread.append((repo, "was not found"))
             continue
         try:
             other = load_config(repo)
-        except InvalidConfig as exc:
+            glossary, _ = _glossary(other)
+        except (InvalidConfig, ConflictingGlossary) as exc:
             unread.append((repo, f"has invalid configuration ({exc})"))
             continue
         files = _installed(other)
         if not files:
             unread.append((repo, "installs nothing (no edges.install match)"))
-        external += files
+        # Records take the directory name, or the full path when two repositories share it.
+        name = repo.resolve().name
+        external.append(Repository(name if names[name] == 1 else str(repo.resolve()),
+                                   repo, files, glossary))
     return Layout.build(_installed(cfg), external, unread)
 
 
-def _resolve_one(glossary, query: str):
-    ns, name = glossary.split(query)
-    matches = list({id(t): t for t in glossary.resolve(name, ns)}.values())
+def _resolve_one(glossary, query: str, others: list[Repository] = ()):
+    """The one record `query` names. A name defined here wins, as its directory
+    does once installed; `<repository>/<name>` names another repository's record."""
+    def find(g: Glossary, q: str) -> list:
+        ns, name = g.split(q)
+        return g.resolve(name, ns)
+    prefixed = [(r.glossary, query[len(r.name) + 1:]) for r in others
+                if query.startswith(f"{r.name}/")]
+    matches = find(*prefixed[0]) if prefixed else (
+        find(glossary, query) or [t for r in others for t in find(r.glossary, query)])
+    matches = list({id(t): t for t in matches}.values())
     if len(matches) != 1:
         found = ", ".join(t.qualified for t in matches) or "no record"
         raise LookupError(f"{query!r} must name one record ({found})")
@@ -397,12 +427,15 @@ def cmd_graph(args) -> int:
     errors = _assembly_errors(built.glossary, built.diagnostics)
     if errors:
         return _report(errors, root, args.json)
-    installed = _installed(built.config)
-    edges = build_edges(built.glossary, built.refs, built.config.edges, root, installed)
+    layout = _layout(built.config)
+    live = [path for path in built.docs if path not in built.historical]
+    edges = (build_edges(built.glossary, built.refs, built.config.edges, root, layout.local)
+             + cross_edges(live, layout, owners(built.glossary, root, layout.local)))
     if args.kind:
         edges = [e for e in edges if e.kind in args.kind]
     try:
-        start = _resolve_one(built.glossary, args.target) if args.target else None
+        start = (_resolve_one(built.glossary, args.target, layout.repositories)
+                 if args.target else None)
     except LookupError as exc:
         print(json.dumps({"error": str(exc)}) if args.json else f"error: {exc}")
         return 1

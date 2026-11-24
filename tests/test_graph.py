@@ -282,11 +282,12 @@ UPSTREAM = 'glossary:\n  - {glob: "skills/*/*/SKILL.md", term_field: name, ns: s
            'docs: ["skills/**/*.md"]\nedges:\n  install: ["skills/*/*/SKILL.md"]\n'
 
 
-def two_repos(tmp_path, external):
-    (tmp_path / "upstream").mkdir()
-    (tmp_path / "local").mkdir()
+def two_repos(tmp_path, external, cfg=CFG):
+    (tmp_path / "upstream").mkdir(exist_ok=True)
+    (tmp_path / "local").mkdir(exist_ok=True)
     upstream = make_repo(tmp_path / "upstream", {}, {
-        "skills/engineering/to-tickets/SKILL.md": skill("to-tickets", SECTION),
+        # Users invoke to-tickets themselves, so breakdown reads one of its sections.
+        "skills/engineering/to-tickets/SKILL.md": skill("to-tickets", SECTION, user_only=True),
         "skills/engineering/review/SKILL.md": skill("review", "Upstream review."),
     }, config=UPSTREAM)
     local = repo(tmp_path / "local", {
@@ -298,7 +299,8 @@ def two_repos(tmp_path, external):
             "Run [review](../review/SKILL.md#steps-1).\n\n"
             "Read [gone](../gone/SKILL.md).\n"),
         "skills/review/SKILL.md": skill("review", "Local review.\n\n## Steps\n\nGo.\n\n## Steps\n\nAgain."),
-    }, cfg=CFG.replace('install: ["skills/*/SKILL.md"]',
+        "skills/plan/SKILL.md": skill("plan", "Run [[breakdown]].", uses=["breakdown"]),
+    }, cfg=cfg.replace('install: ["skills/*/SKILL.md"]',
                        f'install: ["skills/*/SKILL.md"]\n  external: [{external}]'))
     return upstream, local
 
@@ -324,6 +326,58 @@ def test_an_unreadable_external_repository_leaves_its_links_unchecked(tmp_path, 
     assert status == 0
     assert found == [("W004", (f"external repository {tmp_path / 'local' / '../missing'} "
                                "was not found; links into it are not checked"))]
+    status, out = run(tmp_path / "local", capsys, "graph")
+    assert status == 0
+    assert [(e["source"], e["target"]) for e in out["edges"]] == [("skill:plan", "skill:breakdown")]
+
+
+def test_a_link_into_another_repository_is_an_include_edge(tmp_path, capsys):
+    two_repos(tmp_path, "../upstream")
+    local = tmp_path / "local"
+    status, out = run(local, capsys, "graph")
+    assert status == 0
+    # The link to review lands on the local skill, and a link to a skill here is
+    # a reference, so neither review makes an edge.
+    assert [(e["kind"], e["source"], e["target"], e["file"], e["line"]) for e in out["edges"]] == [
+        ("invoke", "skill:plan", "skill:breakdown", "skills/plan/SKILL.md", 3),
+        ("include", "skill:breakdown", "upstream/skill:to tickets", "skills/breakdown/SKILL.md", 5),
+        ("include", "skill:breakdown", "upstream/skill:to tickets", "skills/breakdown/SKILL.md", 7)]
+    assert main(["graph", "breakdown", "--root", str(local)]) == 0
+    assert ("skill:breakdown -include-> upstream/skill:to tickets  skills/breakdown/SKILL.md:5"
+            in capsys.readouterr().out)
+
+    # Nothing here defines to-tickets, so the name reaches the other repository.
+    _, out = run(local, capsys, "graph", "to-tickets", "--callers")
+    assert out["target"] == "upstream/skill:to tickets"
+    assert sorted({(e["source"], e["target"]) for e in out["edges"]}) == [
+        ("skill:breakdown", "upstream/skill:to tickets"), ("skill:plan", "skill:breakdown")]
+    # A name defined here wins, as its directory does once installed.
+    _, out = run(local, capsys, "graph", "review")
+    assert out["target"] == "skill:review"
+    _, out = run(local, capsys, "graph", "upstream/review")
+    assert out["target"] == "upstream/skill:review"
+
+    # It is an include, not an invoke: to-tickets being user-only is no W003, and
+    # the link names the record, so drift has nothing to report about it. Only
+    # the section link to the local review is a reference without an edge.
+    drift = CFG.replace("edges:\n", "edges:\n  drift: {ns: [skill]}\n")
+    review = "skill:breakdown references skill:review but declares no edge to it — add it to uses"
+    for cfg, found in ((CFG, []), (drift, [("W005", review)])):
+        two_repos(tmp_path, "../upstream", cfg)
+        _, out = run(local, capsys, "check")
+        assert [(d["code"], d["message"]) for d in out["diagnostics"]
+                if d["code"] in ("W003", "W005")] == found
+
+
+def test_external_repositories_with_one_directory_name_keep_distinct_records(tmp_path, capsys):
+    two_repos(tmp_path, "../upstream, ../other/upstream")
+    (tmp_path / "other/upstream").mkdir(parents=True)
+    other = make_repo(tmp_path / "other/upstream", {}, {
+        "skills/engineering/extra/SKILL.md": skill("extra", "# Extra")}, config=UPSTREAM)
+    (tmp_path / "local/skills/breakdown/notes.md").write_text("Read [extra](../extra/SKILL.md).\n")
+    _, out = run(tmp_path / "local", capsys, "graph", "--kind", "include")
+    assert {e["target"] for e in out["edges"]} == {
+        f"{tmp_path.resolve()}/upstream/skill:to tickets", f"{other.resolve()}/skill:extra"}
 
 
 def test_an_invoke_cycle_is_allowed_and_walks_end(tmp_path, capsys):

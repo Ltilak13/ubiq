@@ -5,7 +5,8 @@ Edge kinds:
              to run as its own step. Declared in the record or its overlay.
   route    — a configured field names a record the text points to without
              depending on it ("not for X; use Y"). Walks show it but stop there.
-  include  — a Markdown link to a record in a shared-part namespace. Derived from
+  include  — a Markdown link to a record in a shared-part namespace, or one that
+             lands, once installed, on another repository's record. Derived from
              the link, so authors don't declare the dependency twice.
 """
 from __future__ import annotations
@@ -13,8 +14,10 @@ from __future__ import annotations
 import os
 import re
 from collections import Counter
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from typing import NamedTuple
 from urllib.parse import unquote, urlsplit
 
 from .check import Diagnostic
@@ -261,6 +264,23 @@ def _part_inputs(glossary: Glossary, edges: list[Edge], cfg: EdgeConfig) -> list
 
 
 @dataclass
+class Repository:
+    """An `edges.external` repository: its installed record files and its records.
+
+    Its records are named `<name>/<ns>:<term>`, so they never collide with
+    records here. Only its glossary is read, not its documents or edges.
+    """
+    name: str
+    root: Path
+    installed: list[Path]
+    glossary: Glossary
+
+    def __post_init__(self):
+        for t in self.glossary.terms:
+            t.repository = self.name
+
+
+@dataclass
 class Layout:
     """Where links land once installed.
 
@@ -271,15 +291,17 @@ class Layout:
     local: list[Path]  # installed record files in this repository
     homes: set[Path] = field(default_factory=set)
     by_name: dict[str, Path] = field(default_factory=dict)
-    external: set[Path] = field(default_factory=set)
+    # Another repository's installed directory -> the owner of its files there.
+    external: dict[Path, Callable[[Path], Term | None]] = field(default_factory=dict)
+    repositories: list[Repository] = field(default_factory=list)
     # An external repository could not be read, so unknown names may live there.
     partial: bool = False
     problems: list[Diagnostic] = field(default_factory=list)
 
     @classmethod
-    def build(cls, local: list[Path], external: list[Path] = (),
+    def build(cls, local: list[Path], external: list[Repository] = (),
               unread: list[tuple[Path, str]] = ()) -> Layout:
-        layout = cls(list(local))
+        layout = cls(list(local), repositories=list(external))
         for d in sorted({f.resolve().parent for f in local}):
             if d.name in layout.by_name:
                 # Both would install at the same path; links to that name are ambiguous.
@@ -288,10 +310,15 @@ class Layout:
                     f"share the name {d.name}/", d))
             layout.by_name.setdefault(d.name, d)
             layout.homes.add(d)
-        for d in sorted({f.resolve().parent for f in external}):
+        dirs = {}
+        for repo in external:
+            owner = owners(repo.glossary, repo.root, repo.installed)
+            for f in repo.installed:
+                dirs.setdefault(f.resolve().parent, owner)
+        for d in sorted(dirs):
             if d.name not in layout.by_name:
                 layout.by_name[d.name] = d
-                layout.external.add(d)
+                layout.external[d] = dirs[d]
         layout.problems += [Diagnostic("W004", f"external repository {repo} {reason}; "
                                        "links into it are not checked", repo)
                             for repo, reason in unread]
@@ -330,12 +357,18 @@ def _slugs(path: Path) -> set[str]:
     return slugs
 
 
-def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
-    """W004: a link that leaves an installed directory must land on a file in both
-    layouts, or, for another repository's directory, in the installed one. A
-    `#fragment` must name a heading in the file the agent reads once installed.
-    """
-    diags = list(layout.problems)
+class _Link(NamedTuple):
+    """A Markdown link that leaves an installed directory."""
+    doc: Path
+    line: int
+    spec: str
+    home: Path  # the installed directory it leaves
+    source: Path  # where it lands in the source tree
+    landed: Path | None  # where it lands once installed
+    target: Path | None  # the installed directory it lands in
+
+
+def _leaving(docs: list[Path], layout: Layout) -> Iterator[_Link]:
     for doc in docs:
         doc = doc.resolve()
         home = layout.home(doc)
@@ -347,26 +380,56 @@ def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
             source = _doc_link_path(doc, spec)
             if source is None or source.is_relative_to(home):
                 continue  # same file in both layouts
-            landed, target = layout.land(doc, home, source)
-            in_install = landed is not None and landed.is_file()
-            in_source = source.is_file()
-            where = None
-            if target in layout.external:
-                # A relative link can reach another repository only once installed.
-                if not in_install:
-                    where = "resolves in neither layout"
-            elif in_install != in_source:
-                where = f"resolves only in {'the source tree' if in_source else 'the installed layout'}"
-            if where:
-                diags.append(Diagnostic("W004", f"link {spec} leaves {home.name}/ and {where}",
-                                        doc, line_of(start)))
-                continue
-            fragment = unquote(urlsplit(spec.strip().strip("<>")).fragment)
-            if fragment and in_install and fragment.lower() not in _slugs(landed):
-                diags.append(Diagnostic("W004", f"link {spec} names no heading in "
-                                        f"{target.name}/{landed.relative_to(target).as_posix()}",
-                                        doc, line_of(start)))
+            yield _Link(doc, line_of(start), spec, home, source, *layout.land(doc, home, source))
+
+
+def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
+    """W004: a link that leaves an installed directory must land on a file in both
+    layouts, or, for another repository's directory, in the installed one. A
+    `#fragment` must name a heading in the file the agent reads once installed.
+    """
+    diags = list(layout.problems)
+    for link in _leaving(docs, layout):
+        landed, target = link.landed, link.target
+        in_install = landed is not None and landed.is_file()
+        in_source = link.source.is_file()
+        where = None
+        if target in layout.external:
+            # A relative link can reach another repository only once installed.
+            if not in_install:
+                where = "resolves in neither layout"
+        elif in_install != in_source:
+            where = f"resolves only in {'the source tree' if in_source else 'the installed layout'}"
+        if where:
+            diags.append(Diagnostic("W004", f"link {link.spec} leaves {link.home.name}/ "
+                                    f"and {where}", link.doc, link.line))
+            continue
+        fragment = unquote(urlsplit(link.spec.strip().strip("<>")).fragment)
+        if fragment and in_install and fragment.lower() not in _slugs(landed):
+            diags.append(Diagnostic("W004", f"link {link.spec} names no heading in "
+                                    f"{target.name}/{landed.relative_to(target).as_posix()}",
+                                    link.doc, link.line))
     return diags
+
+
+def cross_edges(docs: list[Path], layout: Layout, owner) -> list[Edge]:
+    """Include edges for links that land, once installed, on another repository's record.
+
+    No field here can name that record, so the link is the only declaration, and
+    a relative link into another repository resolves only once installed, where
+    the agent reads the text in place. That repository's own edges are not read,
+    so a walk ends at its record.
+    """
+    found: dict[tuple, Edge] = {}
+    for link in _leaving(docs, layout):
+        other = layout.external.get(link.target)
+        if other is None or link.landed is None or not link.landed.is_file():
+            continue  # a link that resolves nowhere is W004
+        source, target = owner(link.doc), other(link.landed)
+        if source is not None and target is not None:
+            found.setdefault((id(source), id(target), link.doc, link.line),
+                             Edge("include", source, target, link.doc, link.line))
+    return list(found.values())
 
 
 def across_repositories(refs: list[Ref], layout: Layout) -> list[Ref]:
@@ -394,8 +457,8 @@ def across_repositories(refs: list[Ref], layout: Layout) -> list[Ref]:
 
 def check_edges(glossary: Glossary, refs: list[Ref], cfg: EdgeConfig, root: Path,
                 docs: list[Path], layout: Layout) -> list[Diagnostic]:
-    edges = build_edges(glossary, refs, cfg, root, layout.local)
     owner = owners(glossary, root, layout.local)
+    edges = build_edges(glossary, refs, cfg, root, layout.local) + cross_edges(docs, layout, owner)
     return (_include_cycles(edges) + _part_inputs(glossary, edges, cfg)
             + _blocked_invokes(edges, cfg) + _install_layout(docs, layout)
             + _drift(glossary, refs, edges, cfg, owner))
