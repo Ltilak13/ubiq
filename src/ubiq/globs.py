@@ -14,6 +14,11 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 
+
+class GlobError(OSError):
+    """A directory could not be scanned for a configured pattern."""
+
+
 _MAGIC = frozenset("*?[")
 
 
@@ -71,10 +76,20 @@ class Glob:
                 yield self.base
             return
         ignore = tuple(ignore)
+        if prune and any(g.covers_dir(self.base) for g in ignore):
+            return
         # Without `**`, a match is exactly len(tail) segments deep.
         max_depth = None if "**" in self.tail else len(self.tail) - 1
+
+        def scan_error(error: OSError) -> None:
+            # Optional glob roots can be absent, but an incomplete scan must fail.
+            if (isinstance(error, (FileNotFoundError, NotADirectoryError))
+                    and error.filename == str(self.base)):
+                return
+            raise GlobError(error.errno, error.strerror, error.filename) from error
+
         ancestors: list[str] = []
-        for dirpath, dirnames, filenames in os.walk(self.base, followlinks=True):
+        for dirpath, dirnames, filenames in os.walk(self.base, followlinks=True, onerror=scan_error):
             depth = len(Path(dirpath).relative_to(self.base).parts)
             del ancestors[depth:]
             real = os.path.realpath(dirpath)
