@@ -334,23 +334,26 @@ copying them:
 glossary:
   - {glob: "skills/*/SKILL.md", term_field: name, ns: skill}
   - {glob: "skills/*/parts/*.md", term_field: name, ns: part}
-ref_fields: [uses, routes]
+ref_fields: [uses, routes, references]
 edges:
   invoke: {blocked_by: disable-model-invocation}  # W003 for an edge the model can't follow
   route: {fields: [routes]}                       # "not for X; use Y" is not a dependency
+  reference: {fields: [references]}               # informational examples and comparisons
   install: ["skills/*/SKILL.md"]                  # W004 for links that break once installed
   external: [../upstream-skills]                  # another repository installed into the same root
   drift: {ns: [skill]}                            # W005 when references and edges disagree
 ```
 
 `uses` declares invoke edges, `routes` declares route edges, and a link to a
-`part:` record is an include edge. Installers copy or link only skill
+`part:` record is an include edge. `references` declares informational relationships
+for examples, comparisons, and caller descriptions. These targets must resolve,
+but graph walks do not follow them as dependencies. Installers copy or link only skill
 directories, so keep a part in `parts/` inside the skill directory that owns its
 subject: a `../<skill>/parts/` link then resolves in the source tree and once
 installed. A part can list enumerated inputs, such as `inputs: {mode: [new,
 existing]}`; each include then names one after the link, as in ``Follow
 [checkout](../ship/parts/checkout.md) in `new` mode.`` (E012 otherwise).
 
-`ubiq graph` shows all three kinds, `ubiq overlap` finds text worth extracting,
+`ubiq graph` shows all four kinds, `ubiq overlap` finds text worth extracting,
 and `check` reports include cycles (E011). The
 [composable skills goal](composable-skills-goal.md) covers what is still open.

@@ -134,3 +134,21 @@ def test_emails_and_html_comments_are_not_mentions(tmp_path, capsys):
            "\n# C\n\nThe issue tracker.\n")                 # 12: flagged
     make_repo(tmp_path, recs, {"doc.md": doc}, config=CFG)
     assert w002(tmp_path, capsys) == (0, [("doc.md", 12)])
+
+
+def test_mentions_stay_in_root_but_external_links_are_checked(tmp_path, capsys):
+    root = tmp_path / "project"
+    root.mkdir()
+    make_repo(root, {"s.md": REC_SESSION}, {"doc.md": "A session.\n"}, config=CFG)
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    (upstream / "notes.md").write_text("A session. [[missing]]\n")
+    (root / "dependency").symlink_to(upstream, target_is_directory=True)
+    # An internal symlink still belongs to this repository.
+    (root / "local.md").symlink_to(root / "doc.md")
+    main(["check", "--root", str(root), "--json"])
+    out = json.loads(capsys.readouterr().out)
+    mentions = [d for d in out["diagnostics"] if d["code"] == "W002"]
+    assert mentions and all(d["file"] == "doc.md" for d in mentions)
+    assert any(d["code"] == "E002" and "missing" in d["message"]
+               for d in out["diagnostics"])

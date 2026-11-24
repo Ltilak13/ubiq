@@ -572,3 +572,72 @@ def test_overlap_labels_a_restated_composite(tmp_path, capsys):
     gwd.write_text(skill("grill-with-docs", GRILL, uses=BOTH), encoding="utf-8")
     _, out = run(tmp_path, capsys, "overlap")
     assert [c["blocked"] for c in out["clusters"][0]["restates_composite"]] == [False]
+
+
+INFORMATIONAL = DRIFT.replace("ref_fields: [uses, routes]", "ref_fields: [uses, routes, references]").replace(
+    "edges:\n", "edges:\n  reference: {fields: [references]}\n")
+
+
+def test_informational_references_are_validated_but_not_dependencies(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/a/SKILL.md": skill("a", "Example: [[b]]."),
+        "skills/b/SKILL.md": skill("b", "Run [[c]].", uses=["c"], user_only=True),
+        "skills/c/SKILL.md": skill("c", "C."),
+        "overlays/a.md": "---\nsource: skills/a/SKILL.md\nreferences: [b]\n---\n",
+    }, cfg=INFORMATIONAL)
+    status, out = run(tmp_path, capsys, "check")
+    assert status == 0
+    assert not [d for d in out["diagnostics"] if d["code"] in ("W003", "W005")]
+    _, out = run(tmp_path, capsys, "graph", "a")
+    assert [(e["kind"], e["target"]) for e in out["edges"]] == [("reference", "skill:b")]
+    _, out = run(tmp_path, capsys, "graph", "c", "--callers")
+    assert [(e["kind"], e["source"]) for e in out["edges"]] == [
+        ("invoke", "skill:b"), ("reference", "skill:a")]
+    # Classification does not hide misspelled targets or stale declarations.
+    sidecar = tmp_path / "overlays/a.md"
+    sidecar.write_text(sidecar.read_text().replace("[b]", "[missing]"))
+    status, out = run(tmp_path, capsys, "check")
+    assert status == 1 and any(d["code"] == "E006" for d in out["diagnostics"])
+    sidecar.write_text(sidecar.read_text().replace("[missing]", "[c]"))
+    _, out = run(tmp_path, capsys, "check")
+    assert any(d["code"] == "W005" and "declares reference" in d["message"]
+               for d in out["diagnostics"])
+    # A real invocation still enforces the target's invocation restriction.
+    sidecar.write_text(sidecar.read_text().replace("references: [c]", "uses: [b]"))
+    _, out = run(tmp_path, capsys, "check")
+    assert any(d["code"] == "W003" for d in out["diagnostics"])
+
+
+def test_reference_fields_require_resolution_and_unique_classification(tmp_path, capsys):
+    for fields in ("[missing]", "[routes]"):
+        repo(tmp_path, {"skills/a/SKILL.md": skill("a")},
+             cfg=INFORMATIONAL.replace("reference: {fields: [references]}",
+                                       f"reference: {{fields: {fields}}}"))
+        status, out = run(tmp_path, capsys, "check")
+        assert status == 1 and out["diagnostics"][0]["code"] == "E008"
+
+
+def test_reference_classification_cannot_share_explicit_invoke_field(tmp_path, capsys):
+    cfg = INFORMATIONAL.replace("{blocked_by: disable-model-invocation}", "{fields: [uses]}")
+    cfg = cfg.replace("reference: {fields: [references]}", "reference: {fields: [uses]}")
+    repo(tmp_path, {}, cfg=cfg)
+    status, out = run(tmp_path, capsys, "check")
+    assert status == 1 and out["diagnostics"][0]["code"] == "E008"
+
+
+def test_reference_severity_preserves_target_validation(tmp_path, capsys):
+    for severity in ("warn", "error", "off"):
+        cfg = INFORMATIONAL.replace("reference: {fields: [references]}",
+                                    f"reference: {{fields: [references], severity: {severity}}}")
+        repo(tmp_path, {
+            "skills/a/SKILL.md": skill("a", "A."),
+            "skills/b/SKILL.md": skill("b", "B."),
+            "overlays/a.md": "---\nsource: skills/a/SKILL.md\nreferences: [b, missing]\n---\n",
+        }, cfg=cfg)
+        status, out = run(tmp_path, capsys, "check")
+        assert status == 1 and any(d["code"] == "E006" for d in out["diagnostics"])
+        drift = [d for d in out["diagnostics"] if d["code"] == "W005"]
+        if severity == "off":
+            assert not drift
+        else:
+            assert len(drift) == 1 and drift[0]["severity"] == ("warning" if severity == "warn" else "error")
