@@ -50,6 +50,9 @@ instructions. Installing the CLI alone does not install the skills.
 When the project changes, use [maintain-ubiq](skills/maintain-ubiq/SKILL.md) to
 find new terms, repair references, and check the result.
 
+Changing ubiq versions? Use [upgrade-ubiq](skills/upgrade-ubiq/SKILL.md) to update pins and skills,
+check compatibility, and assess useful new features. Maintenance routes there when versions need attention.
+
 Prefer to do it yourself? Follow the steps below.
 
 ## Quick start with the CLI
@@ -59,7 +62,7 @@ You need Python 3.10 or later and Git. Run these commands in a terminal.
 ### 1. Install ubiq
 
 ```bash
-python -m pip install 'git+https://github.com/Ltilak13/ubiq.git@v0.6.0'
+python -m pip install 'git+https://github.com/Ltilak13/ubiq.git@v0.7.0'
 ```
 
 ### 2. Open your project and start
