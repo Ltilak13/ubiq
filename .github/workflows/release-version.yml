@@ -1,0 +1,91 @@
+name: Sync release version
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-version
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Select the latest release
+        id: release
+        env:
+          EVENT_RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          gh api "repos/$GH_REPO/releases/latest" > "$RUNNER_TEMP/latest-release.json"
+          latest_id=$(jq -r .id "$RUNNER_TEMP/latest-release.json")
+          if [ -n "$EVENT_RELEASE_ID" ] && [ "$EVENT_RELEASE_ID" != "$latest_id" ]; then
+            echo 'Skipping a release that is not latest.'
+            exit 0
+          fi
+          tag=$(jq -r .tag_name "$RUNNER_TEMP/latest-release.json")
+          if [[ ! "$tag" =~ ^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo 'Expected a stable release tag such as v1.2.3.' >&2
+            exit 1
+          fi
+          echo "id=$latest_id" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.release.outputs.id != ''
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-python@v5
+        if: steps.release.outputs.id != ''
+        with:
+          python-version: "3.12"
+      - name: Update the package version
+        if: steps.release.outputs.id != ''
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          if not re.fullmatch(r"v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
+              raise SystemExit("Expected a stable release tag such as v1.2.3.")
+          version = tag.removeprefix("v")
+          path = Path("pyproject.toml")
+          source = path.read_text()
+          updated, count = re.subn(r'^version = "[^"]+"$', f'version = "{version}"', source, flags=re.MULTILINE)
+          if count != 1 or tomllib.loads(updated)["project"]["version"] != version:
+              raise SystemExit("Expected exactly one project version field.")
+          path.write_text(updated)
+          PY
+      - name: Commit and push the version
+        if: steps.release.outputs.id != ''
+        env:
+          RELEASE_ID: ${{ steps.release.outputs.id }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if git diff --quiet -- pyproject.toml; then
+            echo 'The package version already matches the latest release.'
+            exit 0
+          fi
+          if [ "$(gh api "repos/$GH_REPO/releases/latest" --jq .id)" != "$RELEASE_ID" ]; then
+            echo 'Skipping because the latest release changed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pyproject.toml
+          git commit -m "chore(release): sync version to $RELEASE_TAG"
+          git push origin "HEAD:refs/heads/$DEFAULT_BRANCH"
