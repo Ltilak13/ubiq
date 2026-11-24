@@ -44,8 +44,34 @@ Ask your agent:
 > Read the [apply-ubiq instructions](skills/apply-ubiq/SKILL.md) and follow them
 > for this project. Keep existing source files intact. Ask me about unclear terms.
 
-These skills live in this repository. Give your agent this checkout or the linked
-instructions. Installing the CLI alone does not install the skills.
+### Install the skills
+
+Install `apply-ubiq`, `maintain-ubiq`, and `upgrade-ubiq` together from the same
+Ubiq revision. Copy or link their complete directories from `skills/` into one
+skill root, keeping their names and subdirectories. For example:
+
+```text
+<skill-root>/
+  apply-ubiq/
+    SKILL.md
+    references/
+      schema-workflow.md
+      schema-validation.md
+  maintain-ubiq/
+    SKILL.md
+  upgrade-ubiq/
+    SKILL.md
+    examples/
+      upgrade-report.md
+```
+
+The shared schema docs live in `apply-ubiq/references/`. The other skills use
+relative links to that copy, so keep all three directories as siblings when
+installing or upgrading. A standalone copy of `SKILL.md` is incomplete.
+Installing the CLI alone does not install the skills.
+
+You can also give your agent this checkout and ask it to follow the linked
+instructions directly.
 
 When the project changes, use [maintain-ubiq](skills/maintain-ubiq/SKILL.md) to
 find new terms, repair references, and check the result.

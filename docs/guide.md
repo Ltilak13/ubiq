@@ -51,9 +51,8 @@ redesigning the model.
 ### 2. Set up the checks
 
 Ubiq ships three agent skills: `apply-ubiq`, `maintain-ubiq`, and [upgrade-ubiq](../skills/upgrade-ubiq/SKILL.md).
-Use your agent's skill installation mechanism, or ask it to read the linked
-`SKILL.md` and follow it for your target repository. Installing the CLI alone
-doesn't install skills into your agent.
+Follow the [skill installation instructions](../README.md#install-the-skills),
+or give your agent this checkout and ask it to follow the linked `SKILL.md`.
 
 Start with `apply-ubiq`. It discovers existing files, reviews their vocabulary
 and domain boundaries, and creates the configuration and supporting metadata.
