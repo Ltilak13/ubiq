@@ -139,15 +139,16 @@ def _meta(term: Term) -> dict:
         return {}  # an unreadable record is already E005
 
 
+def blocks_invoke(term: Term, blocked_by: str | None) -> bool:
+    """True when the record sets its `edges.invoke.blocked_by` field: the model cannot invoke it."""
+    return blocked_by is not None and str(_meta(term).get(blocked_by)).lower() == "true"
+
+
 def _blocked_invokes(edges: list[Edge], cfg: EdgeConfig) -> list[Diagnostic]:
     """W003: an invoke edge to a record that the model cannot invoke."""
-    if cfg.blocked_by is None:
-        return []
     diags = []
     for e in edges:
-        if e.kind != "invoke":
-            continue
-        if str(_meta(e.target).get(cfg.blocked_by)).lower() == "true":
+        if e.kind == "invoke" and blocks_invoke(e.target, cfg.blocked_by):
             diags.append(Diagnostic(
                 "W003", f"{e.source.qualified} invokes {e.target.qualified}, which sets "
                 f"{cfg.blocked_by}: true — include its file or allow model invocation",

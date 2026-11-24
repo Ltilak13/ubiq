@@ -13,6 +13,7 @@
         "skill:wayfinder"
       ],
       "restates_include": false,
+      "restates_composite": [],
       "blocks": [
         {
           "record": "skill:code review",
@@ -59,6 +60,7 @@
         "skill:wayfinder"
       ],
       "restates_include": false,
+      "restates_composite": [],
       "blocks": [
         {
           "record": "skill:grill with docs",
@@ -98,6 +100,7 @@
         "skill:handoff"
       ],
       "restates_include": false,
+      "restates_composite": [],
       "blocks": [
         {
           "record": "skill:claude handoff",
@@ -155,6 +158,7 @@
         "skill:writing shape"
       ],
       "restates_include": false,
+      "restates_composite": [],
       "blocks": [
         {
           "record": "skill:writing beats",
@@ -200,6 +204,7 @@
         "skill:triage"
       ],
       "restates_include": false,
+      "restates_composite": [],
       "blocks": [
         {
           "record": "skill:setup matt pocock skills",
@@ -233,6 +238,7 @@
         "skill:implement spec"
       ],
       "restates_include": false,
+      "restates_composite": [],
       "blocks": [
         {
           "record": "skill:implement spec",
@@ -254,6 +260,7 @@
         "skill:teach"
       ],
       "restates_include": false,
+      "restates_composite": [],
       "blocks": [
         {
           "record": "skill:domain modeling",
@@ -275,6 +282,7 @@
         "skill:to tickets"
       ],
       "restates_include": false,
+      "restates_composite": [],
       "blocks": [
         {
           "record": "skill:to spec",

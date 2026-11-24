@@ -253,7 +253,6 @@ commit when present, pinning locations without its text. Criterion 5 is the
 reviewed refactor above.
 
 Open: graph edges into another repository (W004 checks the links, but the target
-is not a record here), labeling a skill that restates a composite it could
-invoke, and per-kind severity with the include guarantee in the spec. Paths
-written in code spans, such as the public collection's `` `../retro/SKILL.md` ``,
-are not links, so W004 does not check them.
+is not a record here), and per-kind severity with the include guarantee in the
+spec. Paths written in code spans, such as the public collection's
+`` `../retro/SKILL.md` ``, are not links, so W004 does not check them.

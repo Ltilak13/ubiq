@@ -432,8 +432,9 @@ def cmd_overlap(args) -> int:
     edges = build_edges(built.glossary, built.refs, built.config.edges, root, installed)
     parts = {t.file.resolve() for t in built.glossary.terms
              if t.ns in built.config.edges.include_ns}
+    blocked_by = built.config.edges.blocked_by
     found = find_overlap(docs, owners(built.glossary, root, installed), edges,
-                         args.min_similarity, args.unit, parts=parts)
+                         args.min_similarity, args.unit, parts=parts, blocked_by=blocked_by)
     for c in found:
         for b in c["blocks"]:
             b["file"] = _display_path(b["file"], root)
@@ -443,6 +444,9 @@ def cmd_overlap(args) -> int:
     else:
         for c in found:
             note = " (restates an included part)" if c["restates_include"] else ""
+            for r in c["restates_composite"]:
+                why = f", but it sets {blocked_by}: true (W003)" if r["blocked"] else ""
+                note += f" ({', '.join(r['records'])} could invoke {r['composite']}{why})"
             print(f"== {len(c['records'])} records: {', '.join(c['records'])}{note}")
             for b in c["blocks"]:
                 print(f"   {b['file']}:{b['line']}  {b['text'][:120]}")
