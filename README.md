@@ -280,6 +280,43 @@ The [integration skill](skills/apply-ubiq/SKILL.md) covers setup in another repo
 The [spec](docs/spec.md) defines the resolution rules and diagnostics, including
 catalog checks and historical-document exceptions. Ubiq checks its own docs.
 
+## PR validation
+
+Install the development dependencies and run the local checks before publishing:
+
+```bash
+python -m pip install -e ".[dev]"
+python -m mypy
+ruff check src tests
+python -m pytest tests/ -q
+ubiq check
+python -m pip check
+```
+
+Mypy checks all production modules, including bodies without annotations, against
+Python 3.10. This is a gradual typing baseline; it does not require every function
+to have annotations. Tool and stub versions are pinned in `pyproject.toml`.
+
+CI also runs actionlint 1.7.12 on the workflows, tests Python 3.10 through 3.14
+on Linux and Python 3.14 on macOS, builds and validates the source archive and
+wheel, tests a clean wheel installation, and exercises the bundled GitHub Action.
+For local workflow validation, install actionlint 1.7.12 and run `actionlint`.
+
+The required checks for `main` are recorded in
+[branch-protection.json](.github/branch-protection.json). They require successful
+GitHub Actions results on a branch that is up to date with `main`, including for
+administrators. Keep the check names in that file aligned with the workflow.
+An administrator can apply the settings with:
+
+```bash
+gh api --method PUT repos/Ltilak13/ubiq/branches/main/protection \
+  --input .github/branch-protection.json
+```
+
+This command replaces branch protection settings. Review any existing protection
+before applying it; the file does not require review approvals or restrict pushes
+to particular users or teams.
+
 ## Roadmap
 
 The current focus is deterministic checks: readable Markdown, consistent

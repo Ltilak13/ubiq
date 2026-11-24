@@ -11,6 +11,7 @@ import re
 from collections.abc import Iterable
 from difflib import get_close_matches
 from pathlib import Path
+from typing import cast
 
 from .records import Glossary, normalize
 from .scan import bold_spans, inline_code
@@ -30,7 +31,7 @@ class Shape(enum.Flag):
 
     @classmethod
     def parse(cls, names: Iterable[str]) -> Shape:
-        known = [shape.name.lower() for shape in cls]
+        known = [cast(str, shape.name).lower() for shape in cls]
         shapes = cls(0)
         for name in names:
             if name not in known:

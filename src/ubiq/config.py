@@ -192,8 +192,8 @@ def _edges(raw, ref_fields: tuple[str, ...], root: Path) -> EdgeConfig:
         raise InvalidConfig("edges.route.fields: a field cannot both invoke and route")
     blocked = invoke.get("blocked_by")
     external = []
-    for path in _strings(raw.get("external", []), "edges.external", scalar=True):
-        path = Path(os.path.expanduser(path))
+    for value in _strings(raw.get("external", []), "edges.external", scalar=True):
+        path = Path(os.path.expanduser(value))
         external.append(path if path.is_absolute() else root / path)
     return EdgeConfig(
         invoke_fields=fields,
@@ -284,7 +284,7 @@ def _policies(raw, unlinked) -> Policies:
 
 
 def load_config(root: Path) -> Config:
-    cfg = deepcopy(DEFAULT_CONFIG)
+    cfg: dict = deepcopy(DEFAULT_CONFIG)
     path = root / "ubiq.yaml"
     if path.exists():
         try:
@@ -318,7 +318,7 @@ def load_config(root: Path) -> Config:
     def globs(patterns: list[str]) -> tuple[Glob, ...]:
         return tuple(Glob.parse(pattern, root) for pattern in patterns)
 
-    rules = []
+    rules: list[GlossaryRule] = []
     for i, entry in enumerate(cfg["glossary"]):
         field = f"glossary[{i}]"
         if isinstance(entry, str):
@@ -336,7 +336,7 @@ def load_config(root: Path) -> Config:
         rules.append(GlossaryRule(Glob.parse(pattern, root), tuple(term_field),
                                   entry.get("ns"), f"{field} ({pattern})"))
 
-    catalogs = []
+    catalogs: list[CatalogSpec] = []
     for i, spec in enumerate(cfg["catalogs"]):
         field = f"catalogs[{i}]"
         if not isinstance(spec, dict):
@@ -350,7 +350,7 @@ def load_config(root: Path) -> Config:
         cover = _strings(spec.get("cover", []), f"{field}.cover", scalar=True)
         catalogs.append(CatalogSpec(root / file, file, items, term, globs(cover)))
 
-    schemas = []
+    schemas: list[SchemaSpec] = []
     for i, spec in enumerate(cfg["schemas"]):
         field = f"schemas[{i}]"
         if not isinstance(spec, dict):

@@ -30,6 +30,7 @@ A reference kind's policy (kinds.py) sets the severity of what its refs report:
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from difflib import get_close_matches
 from pathlib import Path
@@ -95,7 +96,7 @@ def _resolver():
 
 def unlinked_mentions(glossary: Glossary, refs: list[Ref],
                       skip_files: set[Path] | None = None,
-                      except_names: list[str] | None = None) -> list[Diagnostic]:
+                      except_names: Sequence[str] | None = None) -> list[Diagnostic]:
     """W002: the first plain mention of a term in a section that never links it.
 
     A section starts at an ATX heading (or the top of the file). Any wiki-link,
@@ -143,7 +144,7 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
 def run_checks(glossary: Glossary, refs: list[Ref],
                external_id_patterns=(), *,
                skip_unlinked: set[Path] | None = None,
-               unlinked_except: list[str] | None = None) -> list[Diagnostic]:
+               unlinked_except: Sequence[str] | None = None) -> list[Diagnostic]:
     diags: list[Diagnostic] = []
     external = [re.compile(p) for p in external_id_patterns]
 

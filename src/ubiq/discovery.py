@@ -81,7 +81,7 @@ def discover(root: Path) -> dict:
                 family = 'scripts'
             if 'glossary' in parts[:-1]:
                 family = None
-            metadata = {}
+            metadata: dict = {}
             if path.suffix in {'.md', '.mdc'}:
                 try:
                     metadata, _ = parse_frontmatter(path)
@@ -103,9 +103,9 @@ def discover(root: Path) -> dict:
             ns, evidence = family[:-1], 'asset-kind'
         else:
             ancestors = [p for p in contexts if p != '.' and (group == p or group.startswith(p + '/'))]
-            context = max(ancestors, key=len) if ancestors else None
-            ns = normalize(Path(context).name) if context else 'repo'
-            evidence = 'directory-candidate' if context else 'default'
+            ancestor = max(ancestors, key=len) if ancestors else None
+            ns = normalize(Path(ancestor).name) if ancestor else 'repo'
+            evidence = 'directory-candidate' if ancestor else 'default'
         schema = {'path': group, 'storage': storage,
                   'term_field': term_field if storage == 'frontmatter' else 'term',
                   'name_source': 'frontmatter' if term_field else ('relative_path' if family else 'review_required'),
