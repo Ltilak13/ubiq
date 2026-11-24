@@ -1,6 +1,6 @@
 ---
-description: Keep docs/spec.md guarantees and kinds.GUARANTEES in sync
-globs: docs/spec.md,src/ubiq/kinds.py,tests/test_kinds.py
+description: Keep spec guarantees in sync with kinds.GUARANTEES, and keep the survey overlap pins valid
+globs: docs/spec.md,src/ubiq/kinds.py,tests/test_kinds.py,src/ubiq/overlap.py,src/ubiq/graph.py,tests/test_survey.py,tests/fixtures/**
 alwaysApply: false
 ---
 
@@ -9,3 +9,12 @@ alwaysApply: false
 
 - Edit a quoted spec sentence and its guarantee in the same change.
 - When you add a `Context` member, add text for that region to the fixture document of the property test in `tests/test_kinds.py`.
+
+`tests/test_survey.py` pins `ubiq overlap` output for the two surveyed skill repositories.
+A change to block splitting, shingling, ownership, or include handling can change the pins.
+
+- Keep `tests/test_survey.py` passing.
+- Regenerate intended public fixture changes with `ubiq overlap --json` for each unit at the pinned input.
+- For `tests/fixtures/survey-personal.json`, use the surveyed commit and the `locations()` projection in `tests/test_survey.py`.
+  Keep the `paragraph` and `line` keys. Never save personal block text in this fixture.
+- Explain each changed cluster in the commit message.
