@@ -1,10 +1,11 @@
 # Goal: composable skills
 
-Status: in progress. Shared parts register as records with configuration alone.
-`ubiq graph` shows invoke and include edges, `ubiq overlap` reports repeated text,
-and `ubiq check` reports include cycles (E011), invokes the model can't follow
-(W003), and links that break in the installed layout (W004). Typed relations,
-drift detection, and part inputs remain open.
+Status: the acceptance criteria have evidence; see the last section. Shared parts
+register as records with configuration alone. `ubiq graph` shows invoke, include,
+and route edges, and `ubiq overlap` reports repeated text. `ubiq check` reports
+include cycles (E011), part inputs that an include does not name (E012), invokes
+the model can't follow (W003), links that break once installed, across
+repositories too (W004), and drift between references and edges (W005).
 
 ## Objective
 
@@ -22,9 +23,13 @@ A skill reuses other logic in one of three ways:
 
 | Way | Example | Ubiq today |
 | --- | --- | --- |
-| Invoke another skill | "call the Skill tool for `grilling`", `/commit-slices` | Edge only when an overlay declares it in `uses` |
-| Include a shared part | `[PR scope](../_shared/pr-scope.md)` | Checked link when the part is a registered record; not a graph edge |
-| Copy the text | the same precondition pasted into six skills | Not detected |
+| Invoke another skill | "call the Skill tool for `grilling`", `/commit-slices` | Invoke edge when the record or its overlay declares it in `uses` |
+| Include a shared part | `[PR scope](../_shared/pr-scope.md)` | Include edge from the link to a registered part; inputs checked |
+| Copy the text | the same precondition pasted into six skills | `ubiq overlap` clusters it |
+
+Text can also point at a skill without reusing it: "not for X; use Y". A route
+edge, declared in a field such as `routes`, records that relation so it is
+neither mistaken for a dependency nor reported as drift.
 
 A [[shared part]] holds one procedure, policy, or precondition that several skills
 follow. Skills include it by link. Nobody invokes it on its own.
@@ -70,15 +75,21 @@ A glossary rule registers parts, with a naming field and a namespace such as
 `part`. Every link to a part is then a checked reference. This works today and
 needs a regression test so it stays true.
 
-Some parts take an input. `pr-checkout.md`, for example, runs in `new` or
-`existing` mode. A part schema should list its inputs so that ubiq can check that
-each caller names a valid one. That schema goes through the
-[schema change workflow](schema-workflow.md) like any other [[domain-schema]].
+Some parts take an input. `pr-checkout.md`, for example, runs in `new`,
+`existing`, or `branch` mode. The part lists its enumerated inputs in frontmatter
+(`inputs: {mode: [new, existing, branch]}`), and each include names one value as a
+code span followed by the input name, the way callers already wrote it: ``Follow
+[PR checkout](../_shared/pr-checkout.md) in `existing` mode.`` A missing or
+undeclared value is E012. Ubiq checks the field's shape itself; a repository
+that wants more, such as required inputs or descriptions, binds a frontmatter
+schema to its parts through the [schema change workflow](schema-workflow.md) like
+any other [[domain-schema]].
 
 ## Show one graph with typed edges
 
 Invoke edges come from `uses` and any other field configured for invocation.
-Include edges come from links to part records. Authors shouldn't declare an
+Route edges come from fields configured for routing. Include edges come from links
+to part records. Authors shouldn't declare an
 include twice, once as a link and once in metadata, because the two copies drift.
 
 Each edge kind is a policy: what declares the edge, how its target resolves, and
@@ -89,7 +100,8 @@ edge.
 
 Cycles follow the edge's meaning. An include cycle sends the agent around the
 same files forever, so it is an error. An invoke cycle can be legitimate, as when
-two workflows hand off to each other, so ubiq reports it without failing.
+two workflows hand off to each other, so ubiq allows it. A route edge is not a
+dependency, so graph walks show it but do not follow it.
 
 ## Find overlap
 
@@ -117,6 +129,14 @@ the source tree. That needs a declared install layout, for instance "each
 `skills/*/` directory becomes a sibling under one root, and parts install at
 `<root>/_shared/`". Ubiq reports links that resolve in only one layout.
 
+A skill can also include part of another repository's skill. `breakdown` in the
+personal repository applies section 3 of `to-tickets` from the public collection,
+which it cannot invoke because `to-tickets` is user-invoked only. With
+`edges.external` naming the other checkout, a link such as
+`../to-tickets/SKILL.md#3-draft-vertical-slices` resolves through that
+repository's installed directories, its heading is checked, and a missing checkout
+in CI leaves such links unchecked instead of failing.
+
 Severity is configurable per edge kind. An include link that resolves nowhere
 should still fail under any configuration. That belongs in the spec as a
 guarantee, enforced like the existing ones: a setting that would break it
@@ -124,10 +144,24 @@ reports `E008`.
 
 ## Detect drift
 
-Ubiq should warn when a skill mentions another skill without declaring an edge,
-and when it declares an edge it never mentions. This check depends on typed
-relations. Without them, routing text ("not for X; use Y") reads as a missing
-dependency and buries the real findings.
+W005 warns when a skill references another skill without an edge, and when it
+declares an edge it never names. It depends on typed relations: without route
+edges, routing text ("not for X; use Y") reads as a missing dependency and buries
+the real findings. Only explicit references can be missing an edge, because plain
+words such as "research" match skill names; any mention satisfies a declared edge.
+Both records must be in `edges.drift.ns`, and an edge in either direction counts,
+so a skill may name its callers.
+
+On a scratch copy of the personal repository at the surveyed commit, a first
+version reported 32 findings, 26 of them from glossary definitions and rules
+rather than skills. Scoped to skills, with reverse edges counting, it reports 4:
+one routing reference, two caller references with no edge either way, and one
+declared edge the text never names. On the refactor branch of the public
+collection it reports 38 (43 at the surveyed commit, before five references to
+`/setup-matt-pocock-skills` moved into the extracted part): 26 from `ask-matt`, a
+router that names every skill and would declare them as routes, and 6 edges
+named only inside code spans, which `references.mention.scans: [inline_code]`
+resolves.
 
 ## Support the refactor loop
 
@@ -146,6 +180,30 @@ The maintenance skill drives the change, and ubiq supplies the evidence:
 Extraction has a cost. Every include is one more file the agent has to read, so
 a one-line composition is usually better as an edge than as a new part. Text that
 matches by accident should stay where it is.
+
+## Refactor of the public collection
+
+On a branch of the public collection, the loop ran on the six clusters that
+`ubiq overlap` reports. The configuration added `edges.install` and a part rule,
+`skills/*/*/parts/*.md`. Each cluster was reviewed:
+
+| Cluster | Decision | Reason |
+| --- | --- | --- |
+| Tracker precondition in six engineering skills, three wordings | Extracted `setup-matt-pocock-skills/parts/tracker-setup.md` with `mode: [tracker, labels]` | One rule that must change together, already drifting. Callers keep their own additions. |
+| Prototype snippets in `to-spec` and `to-tickets` | Left | Two callers and no directory both install; the include would cost a read. |
+| `grill-with-docs` restated in `triage` and `wayfinder` | Left | A one-line composition, and the composite is user-invoked only (W003). |
+| `handoff` and `claude-handoff` | Left | Different buckets, so no relative link resolves in both layouts; one is in progress. |
+| `writing-beats` and `writing-shape` | Left | In progress, and their terms differ on purpose. |
+| ADR and learning-record numbering | Left | Coincidental. |
+
+The part lives inside the skill that all six callers already send the user to,
+because installers copy or link only skill directories; a top-level `_shared/`
+would resolve only in the source tree. Check results stayed the same except for
+the new part record and six include edges. Paragraph overlap fell from 6 clusters
+and 27 blocks to 5 and 21; line overlap from 8 and 35 to 7 and 29. The first
+pass raised line overlap instead, because the six new include lines matched each
+other. Overlap now blanks links to parts before comparing, since an include is
+the call and not repeated prose.
 
 ## Make quality measurable
 
@@ -188,8 +246,14 @@ The goal is achieved when:
 6. Tests cover nested includes, an include cycle, a legitimate invoke cycle, and
    near-duplicate blocks just below and just above the threshold.
 
-Criteria 1, 2, and 4 have tests in `tests/test_graph.py`. Criteria 3 and 6 are
-partly covered: the tests lack an invoke cycle, nested includes, and pinned
-results for the surveyed repositories. Criterion 5 needs a reviewed refactor of a
-real repository. Remaining order: typed relations, then
-drift, then part inputs. The status line lists what is available today.
+Criteria 1, 2, 4, and 6 have tests in `tests/test_graph.py`. Criterion 3 has
+pinned results in `tests/test_survey.py`: the public collection is vendored at the
+surveyed commit, and the personal repository is read through git at its surveyed
+commit when present, pinning locations without its text. Criterion 5 is the
+reviewed refactor above.
+
+Open: graph edges into another repository (W004 checks the links, but the target
+is not a record here), labeling a skill that restates a composite it could
+invoke, and per-kind severity with the include guarantee in the spec. Paths
+written in code spans, such as the public collection's `` `../retro/SKILL.md` ``,
+are not links, so W004 does not check them.
