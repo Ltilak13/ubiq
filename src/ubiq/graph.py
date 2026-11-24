@@ -106,7 +106,7 @@ def build_edges(glossary: Glossary, refs: list[Ref], edges: EdgeConfig, root: Pa
         if kind == "include" and target.ns not in edges.include_ns:
             continue
         source = owner(r.file)
-        if source is None or source is target:
+        if source is None or (source is target and kind != "include"):
             continue
         key = (kind, id(source), id(target), r.file, r.line)
         found.setdefault(key, Edge(kind, source, target, r.file, r.line))
