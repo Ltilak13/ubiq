@@ -56,7 +56,7 @@ Done: the migration list is complete, and each relevant new capability has an ev
 6. Check refreshed skill files and links directly. Report when skill discovery needs a new agent session.
 7. Apply required compatibility fixes. Preserve documented guarantees instead of weakening checks to obtain a pass.
 8. Enable approved optional capabilities and check their configuration against the target version.
-9. For schema or record migrations, follow the [schema change workflow](../../docs/schema-workflow.md).
+9. For schema or record migrations, follow the [schema change workflow](../apply-ubiq/references/schema-workflow.md).
 
 If a shared installation affects other repositories, check that the existing authorization covers them before changing it.
 When a target release lacks a required skill, report that gap. Keep the existing skill until you identify a compatible source.

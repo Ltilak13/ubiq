@@ -12,12 +12,12 @@ Install: `pip install ubiq` (or `pip install -e <path-to-ubiq>`). Run `python3 -
 
 ## Schema changes
 
-Read [the schema change workflow](../../docs/schema-workflow.md) when the task adds or changes type/domain schemas.
+Read [the schema change workflow](references/schema-workflow.md) when the task adds or changes type/domain schemas.
 Inspect `.ubiq/staging/` for existing candidates before creating a new one.
 Stage useful schema changes with their record migrations, evidence, and tests.
 Test affected existing records and invalid cases. Repair or reject unsupported candidates.
 Register promoted contracts with `schemas:` bindings in `ubiq.yaml`.
-Use the [native schema contract](../../docs/schema-validation.md) for file selection, type validation, and graph integrity.
+Use the [native schema contract](references/schema-validation.md) for file selection, type validation, and graph integrity.
 Verify that local hooks and CI use the validator revision that supports those bindings.
 Promote only within the authorized scope after the normal checker can enforce the schema and the migration passes.
 If enforcement or migration is unavailable, keep the candidate staged and report the promotion blocker.
