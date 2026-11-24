@@ -1,0 +1,19 @@
+{
+  "required_status_checks": {
+    "strict": true,
+    "checks": [
+      {"context": "quality", "app_id": 15368},
+      {"context": "test (ubuntu-latest, 3.10)", "app_id": 15368},
+      {"context": "test (ubuntu-latest, 3.11)", "app_id": 15368},
+      {"context": "test (ubuntu-latest, 3.12)", "app_id": 15368},
+      {"context": "test (ubuntu-latest, 3.13)", "app_id": 15368},
+      {"context": "test (ubuntu-latest, 3.14)", "app_id": 15368},
+      {"context": "test (macos-latest, 3.14)", "app_id": 15368},
+      {"context": "package", "app_id": 15368},
+      {"context": "action", "app_id": 15368}
+    ]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": null,
+  "restrictions": null
+}

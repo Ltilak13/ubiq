@@ -10,7 +10,7 @@ from __future__ import annotations
 import enum
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .config import Config
@@ -35,13 +35,13 @@ class Context(enum.Flag):
         for name in names:
             member = cls.__members__.get(name.upper())
             if not member:
-                regions = ", ".join(flag.name.lower() for flag in cls if flag)
+                regions = ", ".join(cast(str, flag.name).lower() for flag in cls if flag)
                 raise ValueError(f"unknown region {name}; expected {regions}")
             flags |= member
         return flags
 
     def names(self) -> list[str]:
-        return [flag.name.lower() for flag in type(self) if flag and flag in self]
+        return [cast(str, flag.name).lower() for flag in type(self) if flag and flag in self]
 
 
 class Severity(enum.Enum):
@@ -54,7 +54,7 @@ Resolver = Callable[["Glossary", "Ref"], "list[Term]"]
 
 
 def by_file(glossary: Glossary, ref: Ref) -> list[Term]:
-    return list(glossary.by_file.get(ref.destination, []))
+    return list(glossary.by_file.get(ref.destination, [])) if ref.destination is not None else []
 
 
 def by_id(glossary: Glossary, ref: Ref) -> list[Term]:

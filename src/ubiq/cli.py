@@ -15,6 +15,7 @@ import argparse
 import json
 import sys
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -404,7 +405,7 @@ def _layout(cfg: Config) -> Layout:
     return Layout.build(_installed(cfg), external, unread)
 
 
-def _resolve_one(glossary, query: str, others: list[Repository] = ()):
+def _resolve_one(glossary, query: str, others: Sequence[Repository] = ()):
     """The one record `query` names. A name defined here wins, as its directory
     does once installed; `<repository>/<name>` names another repository's record."""
     def find(g: Glossary, q: str) -> list:

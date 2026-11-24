@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from jsonschema import Draft202012Validator
@@ -15,6 +16,9 @@ from referencing.jsonschema import DRAFT202012
 
 from .check import Diagnostic
 from .records import FRONTMATTER_RE
+
+if TYPE_CHECKING:
+    from jsonschema.protocols import Validator
 
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
@@ -136,7 +140,7 @@ def _validator(root: Path, location: str):
     resolver = Registry().resolver_with_root(resource)
     locations = _schema_locations(resource)
     _check_refs(resource, resolver, locations)
-    validator = Draft202012Validator(schema, registry=Registry())
+    validator: Validator = Draft202012Validator(schema, registry=Registry())
     selected = schema
     if separator:
         # Resolve eagerly so missing fragments fail even with an empty target set.

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
+from collections.abc import Set as AbstractSet
 from itertools import combinations
 from pathlib import Path
 
@@ -61,7 +62,7 @@ def _words(block: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", LIST_MARK.sub("", LINK_TARGET.sub("]", block)).lower())
 
 
-def _without_includes(path: Path, text: str, parts: set[Path]) -> str:
+def _without_includes(path: Path, text: str, parts: AbstractSet[Path]) -> str:
     """Blank links to shared parts: an include is the call, not repeated prose,
     so callers of one part are not near-duplicates of each other."""
     for start, end, spec in _interpret_markdown(text).links:
@@ -73,7 +74,7 @@ def _without_includes(path: Path, text: str, parts: set[Path]) -> str:
 
 def find_overlap(docs: list[Path], owner, edges: list[Edge], similarity: float = 0.5,
                  unit: str = "paragraph", min_words: int | None = None,
-                 parts: set[Path] = frozenset(), blocked_by: str | None = None) -> list[dict]:
+                 parts: AbstractSet[Path] = frozenset(), blocked_by: str | None = None) -> list[dict]:
     if min_words is None:
         min_words = 7 if unit == "line" else 10
     units = []  # (owner, path, line, text, shingles)
@@ -129,7 +130,7 @@ def find_overlap(docs: list[Path], owner, edges: list[Edge], similarity: float =
         if e.kind == "invoke":
             invokes[id(e.source)].add(id(e.target))
     compared = Counter(id(u[0]) for u in units)
-    clusters = []
+    clusters: list[dict] = []
     for members in by_records.values():
         members.sort(key=lambda n: (str(units[n][1]), units[n][2]))
         owners = list({id(units[n][0]): units[n][0] for n in members}.values())

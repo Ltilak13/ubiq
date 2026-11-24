@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import re
 from collections import Counter
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
@@ -40,7 +40,8 @@ class Edge:
     line: int
 
 
-def owners(glossary: Glossary, root: Path, installed: list[Path] = ()):
+def owners(glossary: Glossary, root: Path,
+           installed: Sequence[Path] = ()) -> Callable[[Path], Term | None]:
     """Return path -> owning record: the record itself, its overlay, or the
     single record defined directly in an enclosing directory (a skill's siblings).
 
@@ -87,7 +88,7 @@ def _kind(r: Ref, edges: EdgeConfig) -> str | None:
 
 
 def build_edges(glossary: Glossary, refs: list[Ref], edges: EdgeConfig, root: Path,
-                installed: list[Path] = ()) -> list[Edge]:
+                installed: Sequence[Path] = ()) -> list[Edge]:
     owner = owners(glossary, root, installed)
     found: dict[tuple, Edge] = {}
     for r in refs:
@@ -303,8 +304,8 @@ class Layout:
     problems: list[Diagnostic] = field(default_factory=list)
 
     @classmethod
-    def build(cls, local: list[Path], external: list[Repository] = (),
-              unread: list[tuple[Path, str]] = ()) -> Layout:
+    def build(cls, local: list[Path], external: Sequence[Repository] = (),
+              unread: Sequence[tuple[Path, str]] = ()) -> Layout:
         layout = cls(list(local), repositories=list(external))
         for d in sorted({f.resolve().parent for f in local}):
             if d.name in layout.by_name:
@@ -314,7 +315,7 @@ class Layout:
                     f"share the name {d.name}/", d))
             layout.by_name.setdefault(d.name, d)
             layout.homes.add(d)
-        dirs = {}
+        dirs: dict[Path, Callable[[Path], Term | None]] = {}
         for repo in external:
             owner = owners(repo.glossary, repo.root, repo.installed)
             for f in repo.installed:
@@ -409,7 +410,8 @@ def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
                                     f"and {where}", link.doc, link.line))
             continue
         fragment = unquote(urlsplit(link.spec.strip().strip("<>")).fragment)
-        if fragment and in_install and fragment.lower() not in _slugs(landed):
+        if (fragment and in_install and landed is not None and target is not None
+                and fragment.lower() not in _slugs(landed)):
             diags.append(Diagnostic("W004", f"link {link.spec} names no heading in "
                                     f"{target.name}/{landed.relative_to(target).as_posix()}",
                                     link.doc, link.line))
@@ -426,7 +428,7 @@ def cross_edges(docs: list[Path], layout: Layout, owner) -> list[Edge]:
     """
     found: dict[tuple, Edge] = {}
     for link in _leaving(docs, layout):
-        other = layout.external.get(link.target)
+        other = layout.external.get(link.target) if link.target is not None else None
         if other is None or link.landed is None or not link.landed.is_file():
             continue  # a link that resolves nowhere is W004
         source, target = owner(link.doc), other(link.landed)
@@ -454,7 +456,7 @@ def across_repositories(refs: list[Ref], layout: Layout,
             doc = r.file.resolve()
             home = layout.home(doc)
             source = _doc_link_path(doc, r.target) if home else None
-            if source is not None and not source.is_relative_to(home):
+            if source is not None and home is not None and not source.is_relative_to(home):
                 landed, target = layout.land(doc, home, source)
                 include = any(glob.matches(r.destination) for glob in parts)
                 if (target in layout.external or (target is None and layout.partial)) and (
