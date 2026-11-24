@@ -27,7 +27,7 @@ from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
 from .config import Config, InvalidConfig, load_config
 from .discovery import discover, init_assets
-from .globs import Glob, first_match
+from .globs import Glob, GlobError, first_match
 from .graph import KINDS as GRAPH_KINDS
 from .graph import (
     Layout,
@@ -396,10 +396,13 @@ def _layout(cfg: Config) -> Layout:
         try:
             other = load_config(repo)
             glossary, _ = _glossary(other)
+            files = _installed(other)
+        except GlobError as exc:
+            unread.append((repo, f"cannot be scanned ({exc})"))
+            continue
         except (InvalidConfig, ConflictingGlossary) as exc:
             unread.append((repo, f"has invalid configuration ({exc})"))
             continue
-        files = _installed(other)
         if not files:
             unread.append((repo, "installs nothing (no edges.install match)"))
         # Records take the directory name, or the full path when two repositories share it.
@@ -699,6 +702,11 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         return args.fn(args)
+    except GlobError as exc:
+        root = Path(args.root).resolve()
+        return _report([Diagnostic("E005", f"cannot scan directory: {exc}",
+                                   Path(exc.filename) if exc.filename else root)],
+                       root, getattr(args, "json", False))
     except (InvalidConfig, ConflictingGlossary) as exc:
         root = Path(args.root).resolve()
         return _report([Diagnostic("E008", str(exc), root / "ubiq.yaml")],
