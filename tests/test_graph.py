@@ -87,6 +87,29 @@ def test_include_cycle_fails(tmp_path, capsys):
     assert ("E011", "include cycle part:a -> part:b -> part:a") in found
 
 
+def test_direct_self_include_fails(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/_shared/a.md": part("a", "Follow [a](a.md)."),
+    })
+    status, found = check(tmp_path, capsys)
+    assert status == 1
+    assert ("E011", "include cycle part:a -> part:a") in found
+
+
+def test_self_references_and_local_fragments_are_not_dependencies(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/a/SKILL.md": skill("a", "See [section](SKILL.md#section).\n\n# Section\n",
+                                    uses=["a"], user_only=True),
+        "skills/_shared/b.md": part("b", "See [section](#section).\n\n# Section\n"),
+    })
+    status, found = check(tmp_path, capsys)
+    assert status == 0
+    assert found == []
+    status, out = run(tmp_path, capsys, "graph")
+    assert status == 0
+    assert out["edges"] == []
+
+
 def test_invoking_a_user_only_skill_warns(tmp_path, capsys):
     repo(tmp_path, {
         "skills/lead/SKILL.md": skill("lead", "Delegate.", uses=["spec", "tdd"]),
