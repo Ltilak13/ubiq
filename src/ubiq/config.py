@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from difflib import get_close_matches
@@ -90,6 +91,8 @@ DEFAULT_CONFIG = {
     #   both there and in the source tree (W004).
     # external: other repositories whose own edges.install joins the same root.
     # drift.ns: namespaces whose explicit references and declared edges must agree (W005).
+    # invoke.severity, route.severity, include.severity: error|warn|off for what
+    #   checks of that kind's edges report; unset, each code keeps its letter.
     "edges": {},
 }
 
@@ -139,6 +142,11 @@ class Config:
     candidate_shapes: Shape
     edges: EdgeConfig
 
+    @property
+    def part_rules(self) -> tuple[GlossaryRule, ...]:
+        """Rules whose files are shared parts: a Markdown link into one is an include link."""
+        return tuple(rule for rule in self.glossary if rule.ns in self.edges.include_ns)
+
 
 @dataclass(frozen=True)
 class EdgeConfig:
@@ -150,6 +158,8 @@ class EdgeConfig:
     install: tuple[Glob, ...]
     external: tuple[Path, ...]  # other repositories that install into the same root
     drift_ns: tuple[str, ...]  # namespaces whose mentions and edges must agree (W005)
+    # Edge kind -> configured severity; a kind left out keeps each code's default.
+    severity: Mapping[str, Severity]
 
 
 def _section(raw: dict, key: str, allowed) -> dict:
@@ -164,10 +174,13 @@ def _edges(raw, ref_fields: tuple[str, ...], root: Path) -> EdgeConfig:
     if not isinstance(raw, dict):
         raise InvalidConfig("edges: expected a mapping")
     _known(raw, "edges", ("invoke", "route", "include", "install", "external", "drift"))
-    invoke = _section(raw, "invoke", ("fields", "blocked_by"))
-    route = _section(raw, "route", ("fields",))
-    include = _section(raw, "include", ("ns", "inputs"))
+    invoke = _section(raw, "invoke", ("fields", "blocked_by", "severity"))
+    route = _section(raw, "route", ("fields", "severity"))
+    include = _section(raw, "include", ("ns", "inputs", "severity"))
     drift = _section(raw, "drift", ("ns",))
+    severity = {kind: _severity(section["severity"], f"edges.{kind}.severity")
+                for kind, section in (("invoke", invoke), ("route", route), ("include", include))
+                if section.get("severity") is not None}
     routes = tuple(_strings(route.get("fields", []), "edges.route.fields", scalar=True))
     default = [f for f in ref_fields if f not in routes]
     fields = tuple(_strings(invoke.get("fields", default), "edges.invoke.fields", scalar=True))
@@ -191,6 +204,7 @@ def _edges(raw, ref_fields: tuple[str, ...], root: Path) -> EdgeConfig:
         install=tuple(Glob.parse(g, root) for g in _strings(raw.get("install", []), "edges.install")),
         external=tuple(external),
         drift_ns=tuple(_strings(drift.get("ns", []), "edges.drift.ns", scalar=True)),
+        severity=severity,
     )
 
 
@@ -266,9 +280,6 @@ def _policies(raw, unlinked) -> Policies:
             policies[name] = policies[name].override(severity=severity, scans=scans)
         except ValueError as exc:
             raise InvalidConfig(f"{field}.scans: {exc}") from None
-    broken = broken_guarantees(policies)
-    if broken:
-        raise InvalidConfig("; ".join(broken))
     return policies
 
 
@@ -377,7 +388,7 @@ def load_config(root: Path) -> Config:
         except (ValueError, re.error) as exc:
             raise InvalidConfig(f"{field}: {exc}") from exc
 
-    return Config(
+    config = Config(
         root=root,
         glossary=tuple(rules),
         docs=globs(cfg["docs"]),
@@ -397,3 +408,7 @@ def load_config(root: Path) -> Config:
         candidate_shapes=shapes,
         edges=_edges(cfg["edges"], tuple(cfg["ref_fields"]), root),
     )
+    broken = broken_guarantees(config)
+    if broken:
+        raise InvalidConfig("; ".join(broken))
+    return config

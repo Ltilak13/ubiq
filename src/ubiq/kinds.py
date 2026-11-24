@@ -2,7 +2,7 @@
 
 One policy table drives scanning, checks, `ubiq refs`, and the CLI. The
 `references:` setting composes overrides onto it, and every guarantee below is
-checked against the result, so no configuration can switch one off.
+checked against the loaded configuration, so no configuration can switch one off.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .config import Config
     from .records import Glossary, Term
     from .scan import Ref
 
@@ -134,7 +135,15 @@ class Guarantee:
     (Context has no member for fences), and a property test confirms it.
     """
     spec: str
-    broken_by: Callable[[Policies], str | None] = lambda policies: None
+    broken_by: Callable[[Config], str | None] = lambda config: None
+
+
+def _relaxes_includes(config: Config) -> str | None:
+    """An unresolved include link is a Markdown ref, so it reports E002 at the
+    markdown severity. Only a glossary rule can mark a missing file as a part."""
+    severity = config.policies["markdown"].severity
+    return f"references.markdown.severity: {severity.value}" if (
+        config.part_rules and severity is not Severity.ERROR) else None
 
 
 GUARANTEES = (
@@ -142,11 +151,13 @@ GUARANTEES = (
     Guarantee("Frontmatter is never scanned as prose"),
     Guarantee("Definition lines are metadata: they produce no references"),
     Guarantee("can never fail the build",
-              lambda policies: "references.mention.severity: error"
-              if policies["mention"].severity is Severity.ERROR else None),
+              lambda config: "references.mention.severity: error"
+              if config.policies["mention"].severity is Severity.ERROR else None),
+    Guarantee("An include link that resolves nowhere fails the build under any configuration",
+              _relaxes_includes),
 )
 
 
-def broken_guarantees(policies: Policies) -> list[str]:
+def broken_guarantees(config: Config) -> list[str]:
     return [f"{setting} contradicts the spec guarantee '{guarantee.spec}'"
-            for guarantee in GUARANTEES if (setting := guarantee.broken_by(policies))]
+            for guarantee in GUARANTEES if (setting := guarantee.broken_by(config))]

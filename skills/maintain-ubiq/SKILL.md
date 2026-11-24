@@ -1,6 +1,6 @@
 ---
 name: maintain-ubiq
-description: Keep a ubiq-wired repo healthy — fix failing references, link unlinked mentions (W002), review orphans, and propose new glossary terms.
+description: Keep a ubiq-wired repo healthy — fix failing references, link unlinked mentions (W002), review orphans, propose new glossary terms, and extract repeated skill text into shared parts.
 disable-model-invocation: true
 ---
 
@@ -121,7 +121,46 @@ Propose each candidate with where it appears. Create a record only for a name us
 
 **Done when:** each candidate is created, rejected, or listed for a human.
 
-## 6. Re-check and report
+## 6. Composition
+
+Use this step in a skill repository that sets `edges` in `ubiq.yaml`. Skip it in other repositories.
+Report overlap and drift in each pass. Change skill text only when the owner asked for a refactor.
+
+1. Run `ubiq check --json`. Keep the result as the baseline.
+2. Run `ubiq overlap --json`. Add `--unit line` for prose with one sentence on each line.
+3. Record one decision for each cluster in a table with three columns: cluster, decision, and reason.
+   - **Extract a part** when the cluster holds one rule that must change together.
+     An example is a precondition that six skills repeat in different words.
+   - **Invoke the composite skill** when the repeated text only calls other skills.
+     If the composite blocks model invocation (W003), keep the text and record that reason.
+   - **Keep the copies** when one of these conditions is true. Record the condition.
+     - The match is coincidental.
+     - The text is one line, and an include costs one more file read.
+     - No directory that all callers install can hold the part.
+     - The author wants the repetition.
+4. Put each new part in `parts/` inside the skill directory that owns its subject.
+   Installers copy or link only skill directories.
+   A top-level `_shared/` folder resolves only in the source tree (W004).
+5. Give the part a naming field. If callers use the part in different modes, list the modes in `inputs`.
+   Register its path with a glossary rule in a namespace from `edges.include.ns` (default: `part`).
+   Use the repository's schema workflow if registration needs a schema change.
+6. Replace each copy with an include link. Write the mode after the link:
+   ``Follow the [tracker setup](../setup/parts/tracker-setup.md) in `labels` mode.``
+7. Keep text that only one caller needs in that caller.
+8. Run `ubiq check`. Compare the result with the baseline.
+   The only differences must be the new part records and their include edges. Fix E002, E012, and W004.
+9. Run `ubiq overlap` again. Check that each extracted cluster is gone.
+   Run `ubiq graph <part> --callers` to see the new edges.
+10. For each W005, declare the reference in one edge field.
+    Use the invoke field (`uses`) for a dependency. Use the route field (`routes`) for `not for X; use Y` text.
+    If the reference is wrong, fix the text. Do not add an edge only to remove a warning.
+
+A smaller overlap count alone does not show success. Removing shared rules also makes the count smaller.
+
+**Done when:** each cluster has a decision, and `ubiq check` matches the baseline except for the new parts and edges.
+The report lists each cluster that you kept, with its reason.
+
+## 7. Re-check and report
 
 1. Use /validate-change when installed after changes to configuration, records, overlays, schemas, or migrations.
 2. Read that skill before you select checks.
@@ -132,6 +171,6 @@ Propose each candidate with where it appears. Create a record only for a name us
 7. Report unavailable checks as validation gaps.
 8. The companion skill does not authorize commits or publication.
 
-Run `ubiq check` again. Report what you fixed, linked, excepted, created, and left for a human. Include schema changes, group coverage, and unresolved context candidates.
+Run `ubiq check` again. Report what you fixed, linked, excepted, created, and left for a human. Include schema changes, group coverage, composition decisions, and unresolved context candidates.
 
 **Done when:** `ubiq check` exits 0 and the summary lists everything not resolved.

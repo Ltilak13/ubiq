@@ -24,12 +24,13 @@ Warnings (reported, exit 0):
 
 A reference kind's policy (kinds.py) sets the severity of what its refs report:
 `references.id.severity: warn` keeps E004 visible without failing the build.
+`edges.<kind>.severity` does the same for an edge kind's constraints (graph.py).
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from difflib import get_close_matches
 from pathlib import Path
 
@@ -55,18 +56,25 @@ class Diagnostic:
 
     def render(self) -> str:
         loc = f"{self.file}:{self.line}" if self.line else str(self.file)
-        # A policy can downgrade an E-code; say so next to the code.
-        note = " (warning)" if self.code.startswith("E") and not self.is_error else ""
+        # Configuration can move a code off its letter's default; say so next to it.
+        note = f" ({self.severity})" if self.is_error != self.code.startswith("E") else ""
         return f"{loc}: {self.code}{note} {self.message}"
+
+
+def at(severity: Severity | None, diags: list[Diagnostic]) -> list[Diagnostic]:
+    """`diags` at a configured severity: none when off, unchanged when unset."""
+    if severity is None:
+        return diags
+    if severity is Severity.OFF:
+        return []
+    level = "error" if severity is Severity.ERROR else "warning"
+    return [replace(d, severity=level) for d in diags]
 
 
 def reported(policy: Policy, code: str, message: str, file: Path,
              line: int = 0) -> list[Diagnostic]:
     """The diagnostic at the policy's severity, or none when it is off."""
-    if policy.severity is Severity.OFF:
-        return []
-    severity = "error" if policy.severity is Severity.ERROR else "warning"
-    return [Diagnostic(code, message, file, line, severity)]
+    return at(policy.severity, [Diagnostic(code, message, file, line)])
 
 
 def _term_files(glossary: Glossary) -> dict[int, Path]:
