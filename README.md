@@ -1,28 +1,34 @@
 # ubiq
 
-**Catch broken names before they confuse someone.**
+**Make your repo's rules checkable.**
 
-Your docs say “session.” One page explains what that means. Ubiq checks that
-links to “session” still lead to that definition, even as your project changes.
-A typo, a missing definition, or two definitions with the same name? You get a
-file, a line, and an error you can fix.
+“This word has one meaning.” “This record needs an owner.” “This skill uses
+those instructions.” Your project depends on rules like these.
 
-Think of it as a spell-check for your project's vocabulary.
+Ubiq checks the definitions, record fields, and links you register. When
+something breaks, it reports where to fix it. Run it locally or on every pull
+request, so people and agents can catch mistakes before they spread.
 
 ## How it works
 
-Give a word a home. Link to it. Let ubiq check the links.
+Write down a rule. Connect it to your files. Check it when things change.
 
 ```mermaid
 flowchart LR
-    accTitle: Define, link, check
-    accDescr: Define a word, link to its definition, then run ubiq to check the reference.
-    A["1. Define"] --> B["2. Link"] --> C["3. Check"]
+    accTitle: Define, connect, check
+    accDescr: Define vocabulary or record rules, connect your files, then check changes with ubiq.
+    A["1. Define"] --> B["2. Connect"] --> C["3. Check"]
 ```
 
-You choose what the words mean. Ubiq checks that each explicit reference finds
-exactly one definition. It also finds ordinary mentions, so you can see where
-a word appears. No AI model is needed to run the checks.
+| Your rule | What ubiq catches |
+| --- | --- |
+| A linked word has one definition. | Missing or ambiguous names. |
+| Every task record needs an owner. | A missing field, when your schema requires it. |
+| A skill uses shared instructions. | Broken include links, include cycles, or missing part inputs. |
+
+You and your agents decide what the rules should be. Ubiq checks the structure
+you declare; it cannot judge whether the prose is true or run your agents.
+The checks need no AI model.
 
 ## Start with your agent
 
