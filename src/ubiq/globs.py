@@ -73,14 +73,15 @@ class Glob:
         ignore = tuple(ignore)
         # Without `**`, a match is exactly len(tail) segments deep.
         max_depth = None if "**" in self.tail else len(self.tail) - 1
-        seen: set[str] = set()
+        ancestors: list[str] = []
         for dirpath, dirnames, filenames in os.walk(self.base, followlinks=True):
+            depth = len(Path(dirpath).relative_to(self.base).parts)
+            del ancestors[depth:]
             real = os.path.realpath(dirpath)
-            if real in seen:  # a symlink cycle or a second alias of one directory
+            if real in ancestors:  # Stop cycles without hiding matching sibling aliases.
                 dirnames[:] = []
                 continue
-            seen.add(real)
-            depth = len(Path(dirpath).relative_to(self.base).parts)
+            ancestors.append(real)
             if max_depth is not None and depth >= max_depth:
                 dirnames[:] = []
             elif prune:
