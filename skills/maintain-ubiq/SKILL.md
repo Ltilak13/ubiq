@@ -12,6 +12,22 @@ The recurring pass after `apply-ubiq`. ubiq reports; this skill decides. Never w
 
 Run `python3 -m ubiq.cli` if `ubiq` is not on `PATH`.
 
+## 0. Check for an upgrade
+
+1. Compare the installed CLI, repository pins, CI revisions, and installed ubiq skill sources.
+2. Inspect relevant history for a pin change since the previous maintenance pass, when that baseline is available.
+3. Route to [[skill:upgrade-ubiq]] when revisions disagree, a pin changed, or the owner requested an upgrade.
+4. Read that skill before the handoff. Supply the repository, observed revisions, target, baseline diagnostics, and authorized edit scope.
+5. Read-only assessment is allowed. Changing pins or installations requires upgrade authorization beyond routine maintenance.
+6. If the skill is unavailable, report how to obtain it from the repository's trusted ubiq source.
+7. If the upgrade is blocked, keep dependent maintenance pending. Continue only checks supported by the current version.
+8. After a successful return, continue at section 1, Discover groups and run the check.
+   Reuse current evidence and do not repeat the upgrade in this pass.
+
+A consistent installation continues directly to section 1. Routine maintenance does not require a remote latest-version lookup.
+
+Done: upgrade work is completed, unnecessary, or reported as a blocker with its next action.
+
 ## Schema changes
 
 Read [the schema change workflow](../../docs/schema-workflow.md) when the task adds or changes type/domain schemas.

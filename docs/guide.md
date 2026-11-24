@@ -50,7 +50,7 @@ redesigning the model.
 
 ### 2. Set up the checks
 
-Ubiq ships two agent skills in this checkout: `apply-ubiq` and `maintain-ubiq`.
+Ubiq ships three agent skills: `apply-ubiq`, `maintain-ubiq`, and [upgrade-ubiq](../skills/upgrade-ubiq/SKILL.md).
 Use your agent's skill installation mechanism, or ask it to read the linked
 `SKILL.md` and follow it for your target repository. Installing the CLI alone
 doesn't install skills into your agent.
@@ -79,6 +79,9 @@ the promoted schema. Simple vocabulary linking needs no custom schema.
 The optional `validate-change` companion skill can coordinate repository checks
 for schema and migration changes. Without it, run those checks directly. The
 required validation is the same either way.
+
+For version changes, use [upgrade-ubiq](../skills/upgrade-ubiq/SKILL.md) to reconcile CLI, CI, and skill revisions.
+It reviews compatibility and relevant new capabilities before maintenance continues.
 
 ### 4. Maintain the vocabulary
 
