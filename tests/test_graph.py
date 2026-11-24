@@ -324,3 +324,18 @@ def test_an_unreadable_external_repository_leaves_its_links_unchecked(tmp_path, 
     assert status == 0
     assert found == [("W004", (f"external repository {tmp_path / 'local' / '../missing'} "
                                "was not found; links into it are not checked"))]
+
+
+def test_callers_of_one_part_are_not_overlap(tmp_path, capsys):
+    label = "the shared repository checkout procedure for pull requests"
+    repo(tmp_path, {
+        "skills/_shared/checkout.md": part("checkout", "Check out."),
+        "skills/a/SKILL.md": skill("a", f"Follow [{label}](../_shared/checkout.md) now."),
+        "skills/b/SKILL.md": skill("b", f"Then run [{label}](../_shared/checkout.md) first."),
+        "skills/c/SKILL.md": skill("c", f"Then run [{label}](../c/notes.md) first."),
+        "skills/c/notes.md": "Notes.\n",
+    })
+    # The include link is the call; only c, whose link is not an include, keeps
+    # the label as prose, and no other block shares it.
+    _, out = run(tmp_path, capsys, "overlap", "--unit", "line", "--min-similarity", "0.3")
+    assert out["count"] == 0

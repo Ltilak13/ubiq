@@ -430,8 +430,10 @@ def cmd_overlap(args) -> int:
     docs = [path for path in built.docs if path not in built.historical]
     installed = _installed(built.config)
     edges = build_edges(built.glossary, built.refs, built.config.edges, root, installed)
+    parts = {t.file.resolve() for t in built.glossary.terms
+             if t.ns in built.config.edges.include_ns}
     found = find_overlap(docs, owners(built.glossary, root, installed), edges,
-                         args.min_similarity, args.unit)
+                         args.min_similarity, args.unit, parts=parts)
     for c in found:
         for b in c["blocks"]:
             b["file"] = _display_path(b["file"], root)

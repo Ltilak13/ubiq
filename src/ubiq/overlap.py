@@ -13,7 +13,13 @@ from itertools import combinations
 from pathlib import Path
 
 from .graph import Edge
-from .scan import FRONTMATTER_RE, _blank, _blank_fences
+from .scan import (
+    FRONTMATTER_RE,
+    _blank,
+    _blank_fences,
+    _doc_link_path,
+    _interpret_markdown,
+)
 
 SHINGLE = 4
 # A short block fully inside a longer one is a restatement even when Jaccard
@@ -50,8 +56,19 @@ def _words(block: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", LIST_MARK.sub("", LINK_TARGET.sub("]", block)).lower())
 
 
+def _without_includes(path: Path, text: str, parts: set[Path]) -> str:
+    """Blank links to shared parts: an include is the call, not repeated prose,
+    so callers of one part are not near-duplicates of each other."""
+    for start, end, spec in _interpret_markdown(text).links:
+        dest = _doc_link_path(path, spec)
+        if dest is not None and dest.resolve() in parts:
+            text = text[:start] + _blank(text[start:end]) + text[end:]
+    return text
+
+
 def find_overlap(docs: list[Path], owner, edges: list[Edge], similarity: float = 0.5,
-                 unit: str = "paragraph", min_words: int | None = None) -> list[dict]:
+                 unit: str = "paragraph", min_words: int | None = None,
+                 parts: set[Path] = frozenset()) -> list[dict]:
     if min_words is None:
         min_words = 7 if unit == "line" else 10
     units = []  # (owner, path, line, text, shingles)
@@ -59,7 +76,8 @@ def find_overlap(docs: list[Path], owner, edges: list[Edge], similarity: float =
         term = owner(path)
         if term is None:
             continue
-        for line, block in _blocks(path.read_text(encoding="utf-8"), unit):
+        text = path.read_text(encoding="utf-8")
+        for line, block in _blocks(_without_includes(path, text, parts) if parts else text, unit):
             words = _words(block)
             if len(words) >= min_words:
                 grams = {tuple(words[i:i + SHINGLE]) for i in range(len(words) - SHINGLE + 1)}

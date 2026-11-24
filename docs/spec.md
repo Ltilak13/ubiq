@@ -192,6 +192,8 @@ skipping frontmatter, fences, and headings. Blocks with fewer than 10 words (7 f
 lines) are skipped. Two blocks from different owners join when their 4-word
 shingle Jaccard similarity reaches `--min-similarity` (default 0.5) or one
 contains 80% of the other's shingles. Clusters with the same set of owners merge.
+Links to shared parts are blanked before comparison: an include is the call,
+not repeated prose, so callers of one part do not cluster with each other.
 Each cluster has `records`, `restates_include` (one owner includes another
 owner's part), and `blocks` with `record`, `file`, `line`, and `text`. The
 command exits 0 unless configuration or assembly fails, and never writes files.
