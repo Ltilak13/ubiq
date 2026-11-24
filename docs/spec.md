@@ -74,7 +74,8 @@ for `ubiq refs`. `unlinked_mentions` is shorthand for the mention severity, off 
 No configuration can contradict a guarantee: a setting that would is E008, and a
 test fails if this spec stops stating one. The guarantees are that fenced code
 blocks are never scanned, frontmatter is never scanned as prose, definition lines
-produce no references, and a plain-prose mention can never fail the build.
+produce no references, a plain-prose mention can never fail the build, and an
+include link that resolves nowhere always fails it (see Composition edges).
 
 ## Diagnostics
 
@@ -125,6 +126,10 @@ produce no references, and a plain-prose mention can never fail the build.
   another such record without an edge between them, or declares an invoke or
   route edge to one its text never names.
 
+`references:` sets the severity of the codes a reference kind reports, and
+`edges.<kind>.severity` that of an edge kind's constraints: E011, E012, W003, and
+W005 for a declared edge (see Composition edges).
+
 ## Composition edges
 
 A [[composition edge]] connects the record that owns a document to a record it reuses.
@@ -136,8 +141,8 @@ Documents with no owner contribute no edges.
 
 | Kind | Comes from | Constraint |
 | --- | --- | --- |
-| `invoke` | a value in an `edges.invoke.fields` field (default: `ref_fields` minus `edges.route.fields`) | W003 when the target sets `blocked_by` |
-| `route` | a value in an `edges.route.fields` field (default: none) | none |
+| `invoke` | a value in an `edges.invoke.fields` field (default: `ref_fields` minus `edges.route.fields`) | W003 when the target sets `blocked_by`; W005 when the source's text never names the target |
+| `route` | a value in an `edges.route.fields` field (default: none) | W005 when the source's text never names the target |
 | `include` | a Markdown link to a record in an `edges.include.ns` namespace (default: `part`) | E011 on a cycle; E012 on a part input |
 
 Invoke and include edges are dependencies: the source needs the target to run.
@@ -146,6 +151,20 @@ use Y". Each `edges.invoke.fields` and `edges.route.fields` entry must also be i
 `ref_fields`, so every edge resolves (E006), and no field may be in both; either
 mistake is E008. Unresolved and ambiguous references make no edge. Invoke cycles
 are allowed: two workflows can hand off to each other.
+
+`edges.invoke.severity`, `edges.route.severity`, and `edges.include.severity`
+(`error`, `warn`, or `off`) set the severity of the codes in that kind's
+Constraint column, the way `references:` does for a reference kind. Unset, each
+code keeps its letter: E codes fail the build and W codes warn. A code moved off
+its letter shows its severity next to it, as in `W003 (error)`. W004, and W005
+for a missing edge, check links rather than edges, so no edge kind sets them.
+
+A Markdown link from a live document is an include link when its destination is
+a record in an `edges.include.ns` namespace or a path that a glossary rule with
+such an `ns` matches. An include link that resolves nowhere fails the build
+under any configuration. It is E002 at the `markdown` kind's severity, so while a
+glossary rule sets an include namespace, `references.markdown.severity` other
+than `error` is E008. No edge kind sets E002.
 
 A part lists enumerated inputs in its `edges.include.inputs` field (default
 `inputs`), such as `inputs: {mode: [new, existing]}`. Each include of that part
@@ -179,6 +198,8 @@ instead of E002, and reports them only when they resolve in neither layout. An
 external repository that is missing, has invalid configuration, or installs
 nothing is one W004; while it is unreadable, links to directory names that nothing
 here installs are not checked, so CI without the other checkout does not fail.
+Include links are the exception: one that does not resolve in the source tree
+stays E002 unless it resolves once installed.
 
 `graph --json` returns `target`, `view` (`dependencies` or `callers`), `count`,
 and `edges`, each with `kind`, `source`, `target`, `file`, and `line`. Without a

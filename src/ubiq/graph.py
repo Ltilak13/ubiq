@@ -17,8 +17,9 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlsplit
 
-from .check import Diagnostic
+from .check import Diagnostic, at
 from .config import EdgeConfig
+from .globs import Glob
 from .records import Glossary, InvalidRecord, Term, parse_frontmatter
 from .scan import Ref, _blank_fences, _doc_link_path, _interpret_markdown, _line_index
 
@@ -190,11 +191,13 @@ def _drift(glossary: Glossary, refs: list[Ref], edges: list[Edge], cfg: EdgeConf
     diags = [Diagnostic("W005", f"{s.qualified} references {t.qualified} but declares no "
                         f"edge to it — add it to {fields}", r.file, r.line)
              for key, (r, s, t) in linked.items() if key not in declared]
-    diags += [Diagnostic("W005", f"{e.source.qualified} declares {e.kind} "
-                         f"{e.target.qualified} but never names it", e.file, e.line)
-              for e in edges if e.kind != "include" and e.source.ns in cfg.drift_ns
-              and e.target.ns in cfg.drift_ns
-              and (id(e.source), id(e.target)) not in named]
+    # A declared edge that drifts is about that edge, so its kind sets the severity.
+    for e in edges:
+        if (e.kind != "include" and e.source.ns in cfg.drift_ns and e.target.ns in cfg.drift_ns
+                and (id(e.source), id(e.target)) not in named):
+            diags += at(cfg.severity.get(e.kind), [Diagnostic(
+                "W005", f"{e.source.qualified} declares {e.kind} {e.target.qualified} "
+                "but never names it", e.file, e.line)])
     return sorted(diags, key=lambda d: (str(d.file), d.line, d.message))
 
 
@@ -369,12 +372,15 @@ def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
     return diags
 
 
-def across_repositories(refs: list[Ref], layout: Layout) -> list[Ref]:
+def across_repositories(refs: list[Ref], layout: Layout,
+                        parts: tuple[Glob, ...] = ()) -> list[Ref]:
     """`refs` without Markdown links that only another repository resolves.
 
     The source tree cannot resolve a relative link into another repository, so
     W004 checks those links instead of E002. While an external repository is
     unreadable, a link to a directory name nobody here installs is unchecked too.
+    An include link into `parts` stays unless it resolves once installed: one
+    that resolves nowhere fails as E002 under any configuration.
     """
     if not layout.external and not layout.partial:
         return refs
@@ -385,8 +391,10 @@ def across_repositories(refs: list[Ref], layout: Layout) -> list[Ref]:
             home = layout.home(doc)
             source = _doc_link_path(doc, r.target) if home else None
             if source is not None and not source.is_relative_to(home):
-                _, target = layout.land(doc, home, source)
-                if target in layout.external or (target is None and layout.partial):
+                landed, target = layout.land(doc, home, source)
+                include = any(glob.matches(r.destination) for glob in parts)
+                if (target in layout.external or (target is None and layout.partial)) and (
+                        not include or (landed is not None and landed.is_file())):
                     continue
         kept.append(r)
     return kept
@@ -396,8 +404,11 @@ def check_edges(glossary: Glossary, refs: list[Ref], cfg: EdgeConfig, root: Path
                 docs: list[Path], layout: Layout) -> list[Diagnostic]:
     edges = build_edges(glossary, refs, cfg, root, layout.local)
     owner = owners(glossary, root, layout.local)
-    return (_include_cycles(edges) + _part_inputs(glossary, edges, cfg)
-            + _blocked_invokes(edges, cfg) + _install_layout(docs, layout)
+    # W004 and a missing-edge W005 check links, not edges, so no edge kind sets them.
+    return (at(cfg.severity.get("include"),
+               _include_cycles(edges) + _part_inputs(glossary, edges, cfg))
+            + at(cfg.severity.get("invoke"), _blocked_invokes(edges, cfg))
+            + _install_layout(docs, layout)
             + _drift(glossary, refs, edges, cfg, owner))
 
 
