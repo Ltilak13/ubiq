@@ -380,6 +380,77 @@ def test_external_repositories_with_one_directory_name_keep_distinct_records(tmp
         f"{tmp_path.resolve()}/upstream/skill:to tickets", f"{other.resolve()}/skill:extra"}
 
 
+def test_an_include_link_that_resolves_nowhere_fails_across_repositories(tmp_path, capsys):
+    """Another repository's directories never excuse a missing part (spec guarantee)."""
+    for name in ("upstream", "local"):
+        (tmp_path / name).mkdir()
+    make_repo(tmp_path / "upstream", {}, {
+        "skills/x/_shared/SKILL.md": skill("shared", "Upstream part.")}, config=UPSTREAM)
+    docs = {"skills/a/SKILL.md": skill(
+        "a", "Follow [gone](../_shared/gone.md).\n\nFollow [there](../_shared/SKILL.md).\n\n"
+             "Read [theirs](../theirs/SKILL.md).\n")}
+    unresolved = "unresolved reference {} — no defining record"
+    for external, links in (
+            # Unreadable: other links stay unchecked, include links do not.
+            ("../missing", ["[gone](../_shared/gone.md)", "[there](../_shared/SKILL.md)"]),
+            # Readable: an include link that resolves once installed is W004's.
+            ("../upstream", ["[gone](../_shared/gone.md)", "[theirs](../theirs/SKILL.md)"])):
+        repo(tmp_path / "local", docs, cfg=CFG.replace(
+            'install: ["skills/*/SKILL.md"]', f'install: ["skills/*/SKILL.md"]\n  external: [{external}]'))
+        status, out = run(tmp_path / "local", capsys, "check")
+        assert status == 1, external
+        assert sorted(d["message"] for d in out["diagnostics"] if d["code"] == "E002") == [
+            unresolved.format(link) for link in links], external
+
+
+def with_severity(cfg, kind, value):
+    """`cfg` with `edges.<kind>.severity` set."""
+    sections = {"invoke": "{blocked_by: disable-model-invocation", "route": "{fields: [routes]"}
+    if kind in sections:
+        return cfg.replace(sections[kind], f"{sections[kind]}, severity: {value}")
+    return cfg.replace("edges:\n", f"edges:\n  {kind}: {{severity: {value}}}\n")
+
+
+def test_edge_kind_severity_sets_its_constraints(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/_shared/a.md": part("a", "Then [b](b.md)."),
+        "skills/_shared/b.md": part("b", "Then [a](a.md)."),
+        "skills/_shared/checkout.md": part("checkout", "Check out.", INPUTS),
+        "skills/lead/SKILL.md": skill(
+            "lead", "Follow [checkout](../_shared/checkout.md), then [a](../_shared/a.md). "
+                    "Ask [[review]].", uses=["spec"], routes=["tickets"]),
+        "skills/spec/SKILL.md": skill("spec", "Spec.", user_only=True),
+        "skills/tickets/SKILL.md": skill("tickets", "Tickets."),
+        "skills/review/SKILL.md": skill("review", "Review."),
+    }, cfg=DRIFT)
+
+    def kind_of(code, message):
+        if code in ("E011", "E012"):
+            return "include"
+        if code == "W003" or "declares invoke" in message:
+            return "invoke"
+        return "route" if "declares route" in message else None
+
+    _, out = run(tmp_path, capsys, "check")
+    default = {(d["code"], d["message"]): d["severity"] for d in out["diagnostics"]
+               if d["code"] in ("E011", "E012", "W003", "W004", "W005")}
+    # Every kind has a constraint here, and W004 and a missing edge (W005) have none.
+    assert sorted({kind_of(*key) or "" for key in default}) == ["", "include", "invoke", "route"]
+    for kind in ("include", "invoke", "route"):
+        for value in ("error", "warn", "off"):
+            (tmp_path / "ubiq.yaml").write_text(with_severity(DRIFT, kind, value))
+            _, out = run(tmp_path, capsys, "check")
+            found = {(d["code"], d["message"]): d["severity"] for d in out["diagnostics"]
+                     if (d["code"], d["message"]) in default}
+            level = "error" if value == "error" else "warning"
+            assert found == {key: level if kind_of(*key) == kind else severity
+                             for key, severity in default.items()
+                             if not (value == "off" and kind_of(*key) == kind)}, (kind, value)
+    (tmp_path / "ubiq.yaml").write_text(with_severity(DRIFT, "invoke", "error"))
+    assert main(["check", "--root", str(tmp_path)]) == 1
+    assert "W003 (error) skill:lead invokes skill:spec" in capsys.readouterr().out
+
+
 def test_an_invoke_cycle_is_allowed_and_walks_end(tmp_path, capsys):
     # Two workflows that hand off to each other.
     repo(tmp_path, {

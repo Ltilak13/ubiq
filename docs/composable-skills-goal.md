@@ -159,10 +159,14 @@ Four decisions shape that edge:
 - Cost. Ubiq reads the other repository's glossary rules and overlays, one
   frontmatter per record. It does not scan its other documents.
 
-Severity is configurable per edge kind. An include link that resolves nowhere
-should still fail under any configuration. That belongs in the spec as a
-guarantee, enforced like the existing ones: a setting that would break it
-reports `E008`.
+Severity is configurable per edge kind. `edges.include.severity`,
+`edges.invoke.severity`, and `edges.route.severity` set the severity of that
+kind's constraints: E011 and E012, W003, and W005 for a declared edge. An include
+link that resolves nowhere still fails under any configuration. The spec states
+this as a guarantee, enforced like the existing ones: the link is E002 at the
+`markdown` kind's severity, so `references.markdown.severity: warn` reports
+`E008` while a glossary rule sets an include namespace. Another repository's
+directories do not excuse it either, even when that repository is unreadable.
 
 ## Detect drift
 
@@ -274,9 +278,9 @@ surveyed commit, and the personal repository is read through git at its surveyed
 commit when present, pinning locations without its text. Criterion 5 is the
 reviewed refactor above.
 
-Open: a field such as `uses` that names another repository's record (invoking an
-upstream skill still needs a glossary stub here), E012 for the inputs of another
-repository's parts, labeling a skill that restates a composite it could invoke,
-and per-kind severity with the include guarantee in the spec. Paths written in
-code spans, such as the public collection's `` `../retro/SKILL.md` ``, are not
-links, so W004 does not check them.
+Open: a field such as `uses` cannot name another repository's record, so
+invoking an upstream skill still needs a glossary stub here, and E012 does not
+read the inputs of another repository's parts. Labeling a skill that restates a
+composite it could invoke remains open. Paths written in code spans, such
+as the public collection's `` `../retro/SKILL.md` ``, are not links, so W004 does
+not check them.

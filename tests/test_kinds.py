@@ -9,6 +9,7 @@ from test_ubiq import make_repo
 
 from ubiq.cli import build, main
 from ubiq.config import load_config
+from ubiq.graph import KINDS as EDGE_KINDS
 from ubiq.kinds import GUARANTEES, POLICIES, Context
 from ubiq.scan import scan_file
 
@@ -67,6 +68,45 @@ def test_mention_severity_cannot_fail_the_build(tmp_path, capsys):
     assert "references.mention.severity" in message and "can never fail the build" in message
 
 
+def setting(path, value):
+    """A dotted setting and its value as one line of flow-style YAML."""
+    *keys, last = path.split(".")
+    text = f"{last}: {value}"
+    for key in reversed(keys):
+        text = f"{key}: {{{text}}}"
+    return text + "\n"
+
+
+INCLUDES = 'glossary: ["glossary/*.md", {glob: "parts/*.md", ns: part}]\ndocs: ["doc.md"]\n'
+
+
+def test_every_severity_setting_keeps_every_guarantee(tmp_path, capsys):
+    """Each allowed value keeps both checked guarantees, or is E008 naming the one it breaks."""
+    make_repo(tmp_path, {"s.md": REC},
+              {"doc.md": "A session.\n\nFollow [gone](parts/gone.md).\n"}, INCLUDES)
+    levels = ("error", "warn", "off")
+    settings = {**{f"references.{name}.severity": levels for name in POLICIES},
+                "unlinked_mentions": ("warn", "off"),
+                **{f"edges.{kind}.severity": levels for kind in EDGE_KINDS}}
+    rejected = set()
+    for path, values in settings.items():
+        for value in values:
+            (tmp_path / "ubiq.yaml").write_text(INCLUDES + setting(path, value))
+            status, result = check_json(tmp_path, capsys)
+            diags = result["diagnostics"]
+            assert status == 1, (path, value, diags)
+            if diags[0]["code"] == "E008":
+                assert f"{path}: {value} contradicts the spec guarantee" in diags[0]["message"]
+                rejected.add((path, value))
+                continue
+            # The link to a missing part (line 3) fails; the plain mention (line 1) never does.
+            errors = [(d["code"], d["line"]) for d in diags if d["severity"] == "error"]
+            assert errors == [("E002", 3)], (path, value, diags)
+    assert rejected == {("references.mention.severity", "error"),
+                        ("references.markdown.severity", "warn"),
+                        ("references.markdown.severity", "off")}
+
+
 def test_kind_severity_downgrades_or_silences_failures(tmp_path, capsys):
     doc = "[[session]] then UB-9, /ghost, and <!-- [[ghost]] -->.\n"
     make_repo(tmp_path, {"s.md": REC}, {"doc.md": doc}, BASE)
@@ -102,6 +142,9 @@ def test_references_config_names_the_bad_setting(tmp_path, capsys):
         "references: {markdown: {scans: [inline_code]}}":
             "references.markdown.scans: markdown cannot scan inline_code",
         "references: [id]": "references: expected a mapping",
+        "edges: {include: {severity: loud}}": "edges.include.severity: expected error, warn, or off",
+        "edges: {route: {severty: warn}}":
+            "edges.route: unknown setting severty; did you mean severity?",
         "glosary: [x]": "unknown setting glosary; did you mean glossary?",
         "glossary: [{glob: 'g/*.md', term_feild: name}]":
             "glossary[0]: unknown setting term_feild; did you mean term_field?",

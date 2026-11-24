@@ -361,7 +361,7 @@ def cmd_check(args) -> int:
     result = build(root)
     glossary, cfg = result.glossary, result.config
     layout = _layout(cfg)
-    refs = across_repositories(result.refs, layout)
+    refs = across_repositories(result.refs, layout, tuple(r.glob for r in cfg.part_rules))
     sidecars = {path.resolve() for path in glossary.overlay_sources.values()}
     diags = result.diagnostics + run_checks(
         glossary, refs, cfg.external_id_patterns,
