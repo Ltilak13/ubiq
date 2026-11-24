@@ -79,10 +79,12 @@ DEFAULT_CONFIG = {
     "candidate_shapes": ["code"],
     # Composition edges between records (`ubiq graph`, E011, E012, W003-W005).
     # invoke.fields: frontmatter fields whose values invoke another record
-    #   (default: ref_fields minus route.fields). invoke.blocked_by: a boolean
+    #   (default: ref_fields minus route.fields and reference.fields). invoke.blocked_by: a boolean
     #   field that, when true on the target, means the model cannot invoke it (W003).
     # route.fields: fields that point elsewhere without depending on the target
     #   ("not for X; use Y"). Walks show route edges but don't follow them.
+    # reference.fields: informational examples and comparisons; these are validated
+    #   relationships, but graph walks do not follow them as dependencies.
     # include.ns: namespaces of shared parts; a Markdown link to one is an include.
     # include.inputs: the part field listing enumerated inputs ({mode: [new, existing]});
     #   each include names one value as "`new` mode" after the link (E012).
@@ -152,6 +154,7 @@ class Config:
 class EdgeConfig:
     invoke_fields: tuple[str, ...]
     route_fields: tuple[str, ...]
+    reference_fields: tuple[str, ...]
     blocked_by: str | None
     include_ns: tuple[str, ...]
     inputs: str  # part frontmatter field: {input name: [allowed values]}
@@ -173,23 +176,28 @@ def _section(raw: dict, key: str, allowed) -> dict:
 def _edges(raw, ref_fields: tuple[str, ...], root: Path) -> EdgeConfig:
     if not isinstance(raw, dict):
         raise InvalidConfig("edges: expected a mapping")
-    _known(raw, "edges", ("invoke", "route", "include", "install", "external", "drift"))
+    _known(raw, "edges", ("invoke", "route", "reference", "include", "install", "external", "drift"))
     invoke = _section(raw, "invoke", ("fields", "blocked_by", "severity"))
     route = _section(raw, "route", ("fields", "severity"))
+    reference = _section(raw, "reference", ("fields", "severity"))
     include = _section(raw, "include", ("ns", "inputs", "severity"))
     drift = _section(raw, "drift", ("ns",))
     severity = {kind: _severity(section["severity"], f"edges.{kind}.severity")
-                for kind, section in (("invoke", invoke), ("route", route), ("include", include))
+                for kind, section in (("invoke", invoke), ("route", route),
+                                      ("reference", reference), ("include", include))
                 if section.get("severity") is not None}
     routes = tuple(_strings(route.get("fields", []), "edges.route.fields", scalar=True))
-    default = [f for f in ref_fields if f not in routes]
+    references = tuple(_strings(reference.get("fields", []), "edges.reference.fields", scalar=True))
+    default = [f for f in ref_fields if f not in (*routes, *references)]
     fields = tuple(_strings(invoke.get("fields", default), "edges.invoke.fields", scalar=True))
     # An edge must resolve, and only ref_fields are resolved (E006).
-    for name, values in (("invoke", fields), ("route", routes)):
+    for name, values in (("invoke", fields), ("route", routes), ("reference", references)):
         if set(values) - set(ref_fields):
             raise InvalidConfig(f"edges.{name}.fields: each field must also be in ref_fields")
     if set(fields) & set(routes):
         raise InvalidConfig("edges.route.fields: a field cannot both invoke and route")
+    if set(references) & (set(fields) | set(routes)):
+        raise InvalidConfig("edges.reference.fields: a field cannot also invoke or route")
     blocked = invoke.get("blocked_by")
     external = []
     for value in _strings(raw.get("external", []), "edges.external", scalar=True):
@@ -198,6 +206,7 @@ def _edges(raw, ref_fields: tuple[str, ...], root: Path) -> EdgeConfig:
     return EdgeConfig(
         invoke_fields=fields,
         route_fields=routes,
+        reference_fields=references,
         blocked_by=None if blocked is None else _string(blocked, "edges.invoke.blocked_by"),
         include_ns=tuple(_strings(include.get("ns", ["part"]), "edges.include.ns", scalar=True)),
         inputs=_string(include.get("inputs", "inputs"), "edges.include.inputs"),

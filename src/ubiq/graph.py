@@ -5,6 +5,8 @@ Edge kinds:
              to run as its own step. Declared in the record or its overlay.
   route    — a configured field names a record the text points to without
              depending on it ("not for X; use Y"). Walks show it but stop there.
+  reference — a configured field names an informational example or comparison.
+              Walks show it but stop there.
   include  — a Markdown link to a record in a shared-part namespace, or one that
              lands, once installed, on another repository's record. Derived from
              the link, so authors don't declare the dependency twice.
@@ -26,8 +28,8 @@ from .globs import Glob
 from .records import Glossary, InvalidRecord, Term, parse_frontmatter
 from .scan import Ref, _blank_fences, _doc_link_path, _interpret_markdown, _line_index
 
-KINDS = ("invoke", "include", "route")
-# The source needs the target to run. Route edges only point elsewhere.
+KINDS = ("invoke", "include", "route", "reference")
+# Only invocation and inclusion require the target to run.
 DEPENDS = frozenset({"invoke", "include"})
 
 
@@ -81,6 +83,8 @@ def _kind(r: Ref, edges: EdgeConfig) -> str | None:
             return "invoke"
         if name in edges.route_fields:
             return "route"
+        if name in edges.reference_fields:
+            return "reference"
         return None
     if r.kind == "markdown":
         return "include"
@@ -192,7 +196,7 @@ def _drift(glossary: Glossary, refs: list[Ref], edges: list[Edge], cfg: EdgeConf
                 linked.setdefault((id(source), id(target)), (r, source, target))
     declared = {pair for e in edges for pair in ((id(e.source), id(e.target)),
                                                 (id(e.target), id(e.source)))}
-    fields = " or ".join((*cfg.invoke_fields, *cfg.route_fields)) or "an edge field"
+    fields = " or ".join((*cfg.invoke_fields, *cfg.route_fields, *cfg.reference_fields)) or "an edge field"
     diags = [Diagnostic("W005", f"{s.qualified} references {t.qualified} but declares no "
                         f"edge to it — add it to {fields}", r.file, r.line)
              for key, (r, s, t) in linked.items() if key not in declared]
@@ -481,8 +485,8 @@ def check_edges(glossary: Glossary, refs: list[Ref], cfg: EdgeConfig, root: Path
 def walk(edges: list[Edge], start: Term | None, callers: bool, depth: int | None) -> list[Edge]:
     """Edges reachable from `start` (all edges when None), following callers when asked.
 
-    Route edges are shown where the walk reaches them but not followed: a record
-    that routes elsewhere does not depend on, or call, the other record.
+    Route and reference edges are shown but not followed. Neither declares
+    a dependency on the target.
     """
     if start is None:
         return edges

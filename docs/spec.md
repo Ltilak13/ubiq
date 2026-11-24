@@ -107,7 +107,10 @@ include link that resolves nowhere always fails it (see Composition edges).
   Markdown vocabulary link, or id reference in that section resolves to it. Reported
   once per term per section, at the first mention. A section starts at an ATX heading
   or the top of the file. Mentions on heading lines, in historical docs, in the term's
-  own record, and in overlay sidecars are not reported. By default, link destinations,
+  own record, and in overlay sidecars are not reported. Plain-mention suggestions
+  apply only to documents whose resolved paths are inside the checked repository.
+  Dependency prose reached through symlinks or external paths belongs to its source
+  repository. Explicit references in those documents are still checked. By default, link destinations,
   URLs, emails, HTML tags, and HTML comments are not mentions; a mention in another
   link's label counts as linked. Off unless `unlinked_mentions: warn`;
   `unlinked_except` lists terms by name or qualified name.
@@ -123,8 +126,8 @@ include link that resolves nowhere always fails it (see Composition edges).
   repository's installed directory resolves in neither; a `#fragment` names no
   heading in the installed target; or an `edges.external` repository cannot be read.
 - `W005` drift — a record in an `edges.drift.ns` namespace explicitly references
-  another such record without an edge between them, or declares an invoke or
-  route edge to one its text never names.
+  another such record without an edge between them, or declares an invoke, route, or
+  reference edge to one its text never names.
 
 `references:` sets the severity of the codes a reference kind reports, and
 `edges.<kind>.severity` that of an edge kind's constraints: E011, E012, W003, and
@@ -141,18 +144,22 @@ Documents with no owner contribute no edges.
 
 | Kind | Comes from | Constraint |
 | --- | --- | --- |
-| `invoke` | a value in an `edges.invoke.fields` field (default: `ref_fields` minus `edges.route.fields`) | W003 when the target sets `blocked_by`; W005 when the source's text never names the target |
+| `invoke` | a value in an `edges.invoke.fields` field (default: `ref_fields` minus route and reference fields) | W003 when the target sets `blocked_by`; W005 when the source's text never names the target |
 | `route` | a value in an `edges.route.fields` field (default: none) | W005 when the source's text never names the target |
+| `reference` | a value in an `edges.reference.fields` field (default: none) | W005 when the source's text never names the target |
 | `include` | a Markdown link to a record in an `edges.include.ns` namespace (default: `part`), or one that lands on another repository's record once installed | E011 on a cycle; E012 on a part input |
 
 Invoke and include edges are dependencies: the source needs the target to run.
 A route edge points elsewhere without depending on the target, as in "not for X;
-use Y". Each `edges.invoke.fields` and `edges.route.fields` entry must also be in
-`ref_fields`, so every edge resolves (E006), and no field may be in both; either
+use Y". A reference edge identifies an informational example, comparison, or caller
+without declaring a dependency or directing the reader to another workflow.
+Route and reference edges are shown in graph walks but are not followed.
+Each configured edge field must also be in `ref_fields`, so every target resolves
+(E006). A field may have only one edge kind; either
 mistake is E008. Unresolved and ambiguous references make no edge. Invoke cycles
 are allowed: two workflows can hand off to each other.
 
-`edges.invoke.severity`, `edges.route.severity`, and `edges.include.severity`
+`edges.invoke.severity`, `edges.route.severity`, `edges.reference.severity`, and `edges.include.severity`
 (`error`, `warn`, or `off`) set the severity of the codes in that kind's
 Constraint column, the way `references:` does for a reference kind. Unset, each
 code keeps its letter: E codes fail the build and W codes warn. A code moved off

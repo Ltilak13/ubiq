@@ -363,10 +363,14 @@ def cmd_check(args) -> int:
     glossary, cfg = result.glossary, result.config
     layout = _layout(cfg)
     refs = across_repositories(result.refs, layout, tuple(r.glob for r in cfg.part_rules))
-    sidecars = {path.resolve() for path in glossary.overlay_sources.values()}
+    skip_mentions = {path.resolve() for path in glossary.overlay_sources.values()}
+    # A consuming repository does not own dependency prose reached through links.
+    # Keep explicit references checked; only plain-mention suggestions stay local.
+    skip_mentions.update(path.resolve() for path in result.docs
+                         if not path.resolve().is_relative_to(root))
     diags = result.diagnostics + run_checks(
         glossary, refs, cfg.external_id_patterns,
-        skip_unlinked=sidecars, unlinked_except=cfg.unlinked_except)
+        skip_unlinked=skip_mentions, unlinked_except=cfg.unlinked_except)
     if cfg.schemas:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))
@@ -672,7 +676,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="report names used in at least this many docs (default 2)")
     k.set_defaults(fn=cmd_candidates)
 
-    g = sub.add_parser("graph", help="show composition edges: invoke, include, and route")
+    g = sub.add_parser("graph", help="show composition edges: invoke, include, route, and reference")
     g.add_argument("target", nargs="?", help="start from this record (default: all edges)")
     g.add_argument("--root", default=".")
     g.add_argument("--json", action="store_true")
