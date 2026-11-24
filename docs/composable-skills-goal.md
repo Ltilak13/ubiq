@@ -135,7 +135,29 @@ which it cannot invoke because `to-tickets` is user-invoked only. With
 `edges.external` naming the other checkout, a link such as
 `../to-tickets/SKILL.md#3-draft-vertical-slices` resolves through that
 repository's installed directories, its heading is checked, and a missing checkout
-in CI leaves such links unchecked instead of failing.
+in CI leaves such links unchecked instead of failing. The link is also an include
+edge to that repository's record, so `ubiq graph` shows
+`skill:breakdown -include-> skills/skill:to tickets` with its file and line.
+Four decisions shape that edge:
+
+- Names. Both repositories define `code-review`, and the installer lets the local
+  one win the directory. The other repository's records are therefore named
+  `<repository>/<ns>:<term>`, and a query resolves a bare name here first, the
+  same way the installer does.
+- Fragments. Across repositories, every link to a record is an include, because
+  no field here can name that record. Inside one repository, a `#fragment` does
+  not make a link to a skill an include. In the personal repository,
+  `triage-pr-comments/gh-commands.md` and `live-input.md` link each other's
+  sections, which E011 would read as a cycle between two records. Also,
+  `idea-to-pr` links the post-comment review section of `triage-pr-comments` and
+  repeats a line from another section, which overlap would label as restating an
+  include.
+- Callers and drift. `--callers` from the other repository's record lists the
+  skills here that include it. A walk ends there, because ubiq does not read that
+  repository's edges. W005 counts the edge as declared, but it never asks for an
+  edge to that record, because references here resolve only to records here.
+- Cost. Ubiq reads the other repository's glossary rules and overlays, one
+  frontmatter per record. It does not scan its other documents.
 
 Severity is configurable per edge kind. `edges.include.severity`,
 `edges.invoke.severity`, and `edges.route.severity` set the severity of that
@@ -256,8 +278,9 @@ surveyed commit, and the personal repository is read through git at its surveyed
 commit when present, pinning locations without its text. Criterion 5 is the
 reviewed refactor above.
 
-Open: graph edges into another repository (W004 checks the links, but the target
-is not a record here), and labeling a skill that restates a composite it could
-invoke. Paths
-written in code spans, such as the public collection's `` `../retro/SKILL.md` ``,
-are not links, so W004 does not check them.
+Open: a field such as `uses` cannot name another repository's record, so
+invoking an upstream skill still needs a glossary stub here, and E012 does not
+read the inputs of another repository's parts. Labeling a skill that restates a
+composite it could invoke remains open. Paths written in code spans, such
+as the public collection's `` `../retro/SKILL.md` ``, are not links, so W004 does
+not check them.
