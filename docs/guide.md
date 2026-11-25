@@ -247,6 +247,8 @@ ubiq graph part:checkout --callers     # who reuses a shared part
 ubiq overlap --unit line               # prose that several records repeat
 ubiq impact --since main              # changed records and the callers they affect
 ubiq compare --since main --markdown  # new and resolved findings for a PR comment
+ubiq coverage                          # how many selected files have typed metadata
+ubiq coverage --since main --markdown  # coverage change and policies for a PR comment
 ```
 
 `--kind` is repeatable: results include any selected kind (`explicit`, `id`,
@@ -277,6 +279,16 @@ becomes a record or an alias is left to the
 Use the bundled GitHub Action (`uses: Ltilak13/ubiq@main`) or the
 [pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`; Markdown, YAML, and JSON changes trigger it.
 The [integration skill](../skills/apply-ubiq/SKILL.md) covers setup in another repo.
+
+`coverage` measures typed metadata over the files a `coverage:` section
+selects. List the asset families you own, give every exclusion a reason, and
+add `min_typed_percent` or `no_regression` to gate CI. A file counts as typed
+when a schema binding selects it or an `x-ubiq` record names it as source;
+registering it as vocabulary is not enough. When the report shows a gap, add a
+schema rather than an exclusion. Run it in CI with full history
+(`fetch-depth: 0`) and `--since` the pull request base, next to `ubiq check`,
+which stays the validation gate. This repository's `ubiq.yaml` and CI workflow
+are a working example; the [spec](spec.md#coverage) has the full contract.
 
 The [spec](spec.md) defines the resolution rules and diagnostics, including
 catalog checks and historical-document exceptions. Ubiq checks its own docs.
