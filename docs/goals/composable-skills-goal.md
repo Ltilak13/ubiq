@@ -1,6 +1,72 @@
+---
+name: composable-skills-goal
+status: in-progress
+criteria:
+  AC1:
+    assessment: partial
+    support:
+    - feature: Registered shared parts
+      implementation:
+        path: src/ubiq/graph.py
+        anchor: def build_edges(
+      check:
+        path: tests/test_graph.py
+        anchor: def test_invoke_and_include_edges_with_callers(
+    gap: Existing tests support this criterion. This migration does not re-audit the complete
+      goal.
+  AC2:
+    assessment: partial
+    support:
+    - feature: Typed composition edges
+      implementation:
+        path: src/ubiq/graph.py
+        anchor: def build_edges(
+      check:
+        path: tests/test_graph.py
+        anchor: def test_route_edges_are_shown_but_not_followed(
+    gap: Graph behavior has tests. Full criterion review remains pending.
+  AC3:
+    assessment: partial
+    support:
+    - feature: Pinned overlap survey
+      implementation:
+        path: src/ubiq/overlap.py
+        anchor: def find_overlap(
+      check:
+        path: tests/test_survey.py
+        anchor: def test_public_collection_overlap_is_pinned(
+    gap: The personal repository case depends on a separate local checkout.
+  AC4:
+    assessment: partial
+    support:
+    - feature: Installed link validation
+      implementation:
+        path: src/ubiq/graph.py
+        anchor: def _install_layout(
+      check:
+        path: tests/test_graph.py
+        anchor: def test_links_that_resolve_in_only_one_layout_warn(
+    gap: This test covers layout differences. Invocation policy also needs review.
+  AC5:
+    assessment: unassessed
+    support: []
+    gap: Criterion needs a recorded review against its acceptance text.
+  AC6:
+    assessment: partial
+    support:
+    - feature: Composition constraints
+      implementation:
+        path: src/ubiq/graph.py
+        anchor: def _include_cycles(
+      check:
+        path: tests/test_graph.py
+        anchor: def test_include_cycle_fails(
+    gap: Cycle evidence is partial. Review the remaining nested and threshold cases.
+---
+
 # Goal: composable skills
 
-Status: the acceptance criteria have evidence; see the last section. Shared parts
+Prior acceptance evidence is recorded; see the last section. Shared parts
 register as records with configuration alone. `ubiq graph` shows invoke, include,
 and route edges, and `ubiq overlap` reports repeated text. `ubiq check` reports
 include cycles (E011), part inputs that an include does not name (E012), invokes
@@ -82,7 +148,7 @@ code span followed by the input name, the way callers already wrote it: ``Follow
 [PR checkout](../_shared/pr-checkout.md) in `existing` mode.`` A missing or
 undeclared value is E012. Ubiq checks the field's shape itself; a repository
 that wants more, such as required inputs or descriptions, binds a frontmatter
-schema to its parts through the [schema change workflow](schema-workflow.md) like
+schema to its parts through the [schema change workflow](../schema-workflow.md) like
 any other [[domain-schema]].
 
 ## Show one graph with typed edges
@@ -257,19 +323,19 @@ knowledge tree, and part inputs become schema fields.
 
 The goal is achieved when:
 
-1. Registering shared parts needs configuration only, and every link to a part is
+1. AC1: Registering shared parts needs configuration only, and every link to a part is
    a checked reference.
-2. Graph queries return invoke and include edges with their kind, direction, and
+2. AC2: Graph queries return invoke and include edges with their kind, direction, and
    declaration location.
-3. Overlap reports the same clusters for the same input on both surveyed
+3. AC3: Overlap reports the same clusters for the same input on both surveyed
    repositories.
-4. Fixtures reproduce each defect found in the survey: an invoke edge to a
+4. AC4: Fixtures reproduce each defect found in the survey: an invoke edge to a
    user-only skill, and include links that resolve in only one layout. The edge
    checks report each one.
-5. Refactoring a representative skill repository through the loop reduces overlap
+5. AC5: Refactoring a representative skill repository through the loop reduces overlap
    without changing check results beyond the intended new edges, and the
    maintainer reviews each extraction.
-6. Tests cover nested includes, an include cycle, a legitimate invoke cycle, and
+6. AC6: Tests cover nested includes, an include cycle, a legitimate invoke cycle, and
    near-duplicate blocks just below and just above the threshold.
 
 Criteria 1, 2, 4, and 6 have tests in `tests/test_graph.py`. Criterion 3 has
