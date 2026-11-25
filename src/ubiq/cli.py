@@ -508,7 +508,10 @@ def cmd_impact(args) -> int:
                 base = _side("baseline", base_root, _baseline_config(base_root, root))
             except (GlobError, ConflictingGlossary) as exc:
                 raise review.BaselineError(f"baseline cannot be built: {exc}") from exc
-            head = _side("head", root)
+            try:
+                head = _side("head", root)
+            except (InvalidConfig, ConflictingGlossary, GlobError) as exc:
+                raise review.BaselineError(f"head cannot be built: {exc}") from exc
             changes = review.classify(files, base, head)
             affected = review.affected(changes, base, head, args.depth)
             gaps = review.incomplete(base, head)

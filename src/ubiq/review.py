@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import tarfile
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -77,11 +76,16 @@ def resolve_baseline(root: Path, rev: str) -> Baseline:
     except (BaselineError, OSError) as exc:
         raise BaselineError(f"{root} is not inside a git work tree ({exc})") from exc
     try:
+        if rev.startswith("-"):  # never let a rev read as an option
+            raise BaselineError(rev)
         commit = _git(root, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}").strip()
     except BaselineError:
         raise BaselineError(f"'{rev}' names no commit") from None
     commit = _git(root, "merge-base", commit, "HEAD").strip()
-    prefix = root.resolve().relative_to(top).as_posix()
+    try:
+        prefix = root.resolve().relative_to(top).as_posix()
+    except ValueError:
+        raise BaselineError(f"{root} is not inside git work tree {top}") from None
     return Baseline(rev, commit, top, "" if prefix == "." else prefix)
 
 
@@ -90,20 +94,13 @@ def checkout(baseline: Baseline) -> Iterator[Path]:
     """The baseline tree in a temporary directory; yields the root inside it."""
     tmp = Path(tempfile.mkdtemp(prefix="ubiq-baseline-"))
     try:
-        archive = tmp / "base.tar"
-        archive.write_bytes(_git(baseline.toplevel, "archive", "--format=tar",
-                                 baseline.commit, data=True))
+        # A throwaway index and checkout-index write the tree the way a checkout
+        # would: smudge and eol filters apply, export attributes do not.
         tree = tmp / "tree"
-        try:
-            with tarfile.open(archive) as tar:
-                # The "tar" filter refuses absolute and escaping member paths but keeps
-                # symlinks as committed, so links resolve the way they do at the head.
-                if hasattr(tarfile, "tar_filter"):
-                    tar.extractall(tree, filter="tar")
-                else:  # older Python: git archive writes no absolute or parent paths
-                    tar.extractall(tree)
-        except (tarfile.TarError, OSError) as exc:
-            raise BaselineError(f"cannot extract baseline {baseline.commit[:12]}: {exc}") from exc
+        env = {**os.environ, "GIT_INDEX_FILE": str(tmp / "index")}
+        _git(baseline.toplevel, "read-tree", baseline.commit, env=env)
+        _git(baseline.toplevel, "checkout-index", "--all", "--force",
+             f"--prefix={tree}/", env=env)
         _retarget_outside_links(tree, baseline.toplevel)
         root = tree / baseline.prefix if baseline.prefix else tree
         root.mkdir(parents=True, exist_ok=True)
@@ -163,8 +160,10 @@ def changed_files(baseline: Baseline) -> list[ChangedFile]:
             i += 3
             if new is None and old is not None:
                 found.append(ChangedFile("deleted", old))
-            elif new is not None:
-                found.append(ChangedFile(_STATUS[code], new, old if code == "R" else None))
+            elif new is not None and code == "R" and old is not None:
+                found.append(ChangedFile("renamed", new, old))
+            elif new is not None:  # a copy, or a move in from outside the root
+                found.append(ChangedFile("added", new))
             continue
         path = local(fields[i + 1])
         i += 2
@@ -179,7 +178,14 @@ class Change:
     change: str  # added, deleted, edited, renamed, unknown
     files: list[str]
     source: str | None = None  # baseline qualified name of a rename
-    side: str = "head"  # the graph whose callers this change affects
+
+    def starts(self, side: str) -> str | None:
+        """The name to walk callers from in that side's graph, if any."""
+        if side == "head":
+            return None if self.change == "deleted" else self.record
+        if self.change == "renamed":
+            return self.source
+        return self.record if self.change in ("deleted", "unknown") else None
 
     def as_json(self) -> dict:
         out: dict = {"record": self.record, "change": self.change}
@@ -218,7 +224,7 @@ def classify(files: list[ChangedFile], base: Side, head: Side) -> list[Change]:
         elif q in head.terms:
             changes[q] = Change(q, "added", files_)
         else:
-            changes[q] = Change(q, "deleted", files_, side="baseline")
+            changes[q] = Change(q, "deleted", files_)
 
     # A deleted record whose file (or that file's rename) defines an added record
     # is one rename.
@@ -245,12 +251,13 @@ def affected(changes: list[Change], base: Side, head: Side,
 
     Breadth-first over incoming invoke and include edges, from every changed
     record at once. Head callers reach added, edited, and renamed records;
-    baseline callers reach deleted ones.
+    baseline callers reach deleted records and the old names of renamed ones.
+    On equal length, the head path wins.
     """
-    changed = {c.record for c in changes}
+    changed = {c.record for c in changes} | {c.source for c in changes if c.source}
     paths: dict[str, list[tuple[Edge, Side]]] = {}
     for side in (head, base):
-        starts = {c.record for c in changes if c.side == side.name}
+        starts = {q for c in changes if (q := c.starts(side.name))}
         incoming: dict[str, list[Edge]] = {}
         for e in side.edges:
             if e.kind in DEPENDS and e.source.repository is None:

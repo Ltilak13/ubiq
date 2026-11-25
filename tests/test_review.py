@@ -263,3 +263,62 @@ def test_impact_baseline_symlinks_leaving_the_repository_resolve(tmp_path, capsy
     assert code == 0 and out["complete"] is True
     assert out["changed"] == [{"record": "skill:a", "change": "edited",
                                "files": ["skills/a/SKILL.md"]}]
+
+
+def test_impact_ignores_export_attributes(tmp_path, capsys):
+    """git archive would drop export-ignore paths and read the edit as an addition."""
+    root = skills_repo(tmp_path)
+    (root / ".gitattributes").write_text("skills/c export-ignore\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "attributes")
+    git(root, "branch", "-f", "main")
+    (root / "skills/c/SKILL.md").write_text(skill("c") + "More.\n")
+    _, out = impact(root, capsys)
+    assert out["changed"] == [{"record": "skill:c", "change": "edited",
+                               "files": ["skills/c/SKILL.md"]}]
+
+
+def test_impact_rename_in_place_reports_broken_callers(tmp_path, capsys):
+    """Callers still naming the old record are the impact of a rename."""
+    root = skills_repo(tmp_path)
+    (root / "skills/c/SKILL.md").write_text(skill("c2"))
+    _, out = impact(root, capsys)
+    assert out["changed"] == [{"record": "skill:c2", "change": "renamed", "from": "skill:c",
+                               "files": ["skills/c/SKILL.md"]}]
+    assert [(a["record"], [e["side"] for e in a["via"]]) for a in out["affected"]] == [
+        ("skill:a", ["baseline", "baseline"]), ("skill:b", ["baseline"]),
+        ("skill:d", ["baseline"])]
+
+
+def test_impact_unknown_record_keeps_baseline_callers(tmp_path, capsys):
+    root = skills_repo(tmp_path)
+    (root / "skills/c/SKILL.md").write_text("---\nname: [c\n---\n\nBroken.\n")
+    _, out = impact(root, capsys)
+    assert [a["record"] for a in out["affected"]] == ["skill:a", "skill:b", "skill:d"]
+
+
+def test_impact_root_in_subdirectory(tmp_path, capsys):
+    """Paths are root-relative; a move into the root from outside it is an addition."""
+    repo = tmp_path / "repo"
+    (repo / "elsewhere/x").mkdir(parents=True)
+    (repo / "elsewhere/x/SKILL.md").write_text(skill("x", "a"))
+    skills_repo(repo / "docs")
+    shutil.rmtree(repo / "docs/.git")
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "base")
+    shutil.move(repo / "elsewhere/x", repo / "docs/skills/x")
+    (repo / "docs/skills/c/reference.md").write_text("Revised.\n")
+    _, out = impact(repo / "docs", capsys)
+    assert out["changed_files"] == [
+        {"status": "modified", "file": "skills/c/reference.md"},
+        {"status": "added", "file": "skills/x/SKILL.md"}]
+    assert [(c["record"], c["change"]) for c in out["changed"]] == [
+        ("skill:c", "edited"), ("skill:x", "added")]
+
+
+def test_impact_head_with_invalid_config_exits_2(tmp_path, capsys):
+    root = skills_repo(tmp_path)
+    (root / "ubiq.yaml").write_text(SKILLS_CONFIG + "bogus: 1\n")
+    code, out = run_json(capsys, "impact", "--since", "main", "--root", str(root))
+    assert code == 2 and "head" in out["error"]
