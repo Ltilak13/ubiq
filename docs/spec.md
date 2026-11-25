@@ -90,7 +90,11 @@ include link that resolves nowhere always fails it (see Composition edges).
 - `E005` invalid record — a [[record]] file exists but its frontmatter cannot be parsed
   (strict mode; `frontmatter: lenient` opts into line-based parsing for non-YAML dialects).
   Unreadable records/catalogs, malformed overlays, duplicate overlay sources, and
-  term or alias names that are not nonempty strings also use E005.
+  term, alias, `id`, or `ns` values that are not nonempty strings also use E005.
+  A null value reads as absent. Malformed declarations never disappear silently:
+  a `ref_fields` value that is not a string or list of strings, unparsable
+  frontmatter in a document scanned for `ref_fields` (strict mode), and a catalog
+  entry that is not a string or number are E005 too.
 - `E006` unresolved field ref — a value in a configured `ref_fields` frontmatter field
   or a [[catalog]] entry with no defining [[record]] by id or name;
   `external_id_patterns` whitelists ids defined outside records.

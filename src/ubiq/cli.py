@@ -195,7 +195,9 @@ def build(root: Path, trace: ScanTrace | None = None) -> Build:
             extra.append(Diagnostic("E005", f"catalog file not found: {spec.path}", spec.file))
             continue
         try:
-            catalog_entries = catalog_refs(spec, catalog)
+            entry_errors: list[str] = []
+            catalog_entries = catalog_refs(spec, catalog, entry_errors)
+            extra.extend(Diagnostic("E005", msg, spec.file) for msg in entry_errors)
             refs.extend(catalog_entries)
             cover = _expand(spec.cover, cfg.ignore, trace, "cover")
             extra.extend(catalog_cover_gaps(catalog_entries, spec.file, glossary,

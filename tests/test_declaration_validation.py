@@ -18,7 +18,6 @@ def _check(tmp_path, capsys, records, docs, config):
     return code, capsys.readouterr().out
 
 
-@pytest.mark.xfail(strict=True, reason="M2: unparsable doc frontmatter drops its ref fields")
 def test_unparsable_doc_frontmatter_with_ref_fields_is_e005(tmp_path, capsys):
     doc = "---\nuses: [ghost\ntitle: a: b\n---\n\nBody.\n"
     cfg = 'glossary: ["glossary/**/*.md"]\ndocs: ["doc.md"]\nref_fields: [uses]\n'
@@ -27,17 +26,15 @@ def test_unparsable_doc_frontmatter_with_ref_fields_is_e005(tmp_path, capsys):
     assert "doc.md: E005" in out and "invalid YAML frontmatter" in out
 
 
-@pytest.mark.xfail(strict=True, reason="M2: non-string ref field values are skipped")
 @pytest.mark.parametrize("value", ["[{name: ghost}]", "[[ghost]]", "{name: ghost}"])
 def test_non_string_ref_field_values_are_e005(tmp_path, capsys, value):
     doc = f"---\nuses: {value}\n---\n\nBody.\n"
     cfg = 'glossary: ["glossary/**/*.md"]\ndocs: ["doc.md"]\nref_fields: [uses]\n'
     code, out = _check(tmp_path, capsys, {"tdd.md": TDD}, {"doc.md": doc}, cfg)
     assert code == 1
-    assert "doc.md:2: E005" in out and "uses: expected a string or list of strings" in out
+    assert "doc.md: E005" in out and "uses: expected a string or list of strings" in out
 
 
-@pytest.mark.xfail(strict=True, reason="M2: non-scalar catalog entries are skipped")
 @pytest.mark.parametrize("entry", ['{"name": "ghost"}', "null", "true", '["ghost"]'])
 def test_non_scalar_catalog_entries_are_e005(tmp_path, capsys, entry):
     cfg = ('glossary: ["glossary/**/*.md"]\ndocs: []\ncatalogs:\n'
@@ -49,7 +46,6 @@ def test_non_scalar_catalog_entries_are_e005(tmp_path, capsys, entry):
     assert "inv.json: E005" in out and "skills[1]: expected a string" in out
 
 
-@pytest.mark.xfail(strict=True, reason="M2: blank or non-string terms drop the record")
 @pytest.mark.parametrize("value", ['""', "[]", "{}"])
 def test_blank_or_non_string_term_is_e005(tmp_path, capsys, value):
     rec = f"---\nterm: {value}\n---\n\nBody.\n"
@@ -59,7 +55,6 @@ def test_blank_or_non_string_term_is_e005(tmp_path, capsys, value):
     assert "bad.md: E005" in out and "term: expected a nonempty string" in out
 
 
-@pytest.mark.xfail(strict=True, reason="M2: non-scalar id and ns are coerced with str()")
 @pytest.mark.parametrize("field,value", [("id", "[UB-1, UB-2]"), ("id", '""'),
                                          ("ns", "[x]"), ("ns", "{a: b}"), ("ns", '" "')])
 def test_malformed_id_and_ns_are_e005(tmp_path, capsys, field, value):

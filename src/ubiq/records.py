@@ -125,6 +125,12 @@ def _name(value, field: str) -> str:
     return value.strip()
 
 
+def _optional_name(meta: dict, field: str) -> str | None:
+    """`id` or `ns` as written; null reads as absent. `id: [a, b]` is E005."""
+    value = meta.get(field)
+    return None if value is None else _name(value, field)
+
+
 def _aliases(meta: dict, label: str = "aliases") -> list[str]:
     aliases = meta.get("aliases") or []
     if isinstance(aliases, str):
@@ -143,19 +149,20 @@ def parse_record(path: Path, term_fields: tuple[str, ...] = ("term",),
     `default_ns` is used when the file itself has no `ns:` (glob-level overlay).
     """
     meta, body = parse_frontmatter(path, lenient)
-    field_name = next((f for f in term_fields if meta.get(f)), None)
+    # A null field reads as absent; any other value must be a nonempty string.
+    field_name = next((f for f in term_fields if meta.get(f) is not None), None)
     if field_name is None:
         return None
     term = _name(meta[field_name], field_name)
     aliases = _aliases(meta)
     # An empty `ns:` loads as null, which reads as absent.
-    ns = meta.get("ns") or default_ns or DEFAULT_NS
+    ns = _optional_name(meta, "ns") or default_ns or DEFAULT_NS
     return Term(
         term=normalize(term),
-        ns=normalize(str(ns)),
+        ns=normalize(ns),
         file=path,
         aliases=[normalize(a) for a in aliases],
-        id=str(meta["id"]) if meta.get("id") is not None else None,
+        id=_optional_name(meta, "id"),
         definition=body.strip(),
         spellings=[term, *aliases],
     )
@@ -165,10 +172,11 @@ def overlay_onto(term: Term, meta: dict) -> Term:
     """Merge sidecar frontmatter onto a record. Overlay wins for ns/id; aliases union."""
     extra = _aliases(meta, "overlay aliases")
     aliases = list(dict.fromkeys([*term.aliases, *map(normalize, extra)]))
-    ns = normalize(str(meta["ns"])) if meta.get("ns") else term.ns
-    id_ = str(meta["id"]) if meta.get("id") is not None else term.id
+    ns_ = _optional_name(meta, "ns")
+    ns = normalize(ns_) if ns_ else term.ns
+    id_ = _optional_name(meta, "id") or term.id
     term_name, spellings = term.term, list(term.spellings)
-    if meta.get("term"):
+    if meta.get("term") is not None:
         # An overlay `term:` replaces the record's own spelling, which comes first.
         written = _name(meta["term"], "overlay term")
         term_name = normalize(written)
@@ -279,7 +287,7 @@ def assemble_glossary(root: Path, sources: list[tuple[Path, tuple[str, ...], str
             term = parse_record(source, fields, lenient, default_ns=ns)
             if source in overlays:
                 _, meta = overlays[source]
-                if term is None and meta.get("term"):
+                if term is None and meta.get("term") is not None:
                     written = _name(meta["term"], "overlay term")
                     term = Term(normalize(written), ns, source, spellings=[written])
                 if term is None:
