@@ -1,0 +1,72 @@
+{
+  "baseline": {
+    "rev": "main",
+    "commit": "<commit>"
+  },
+  "complete": true,
+  "incomplete": [],
+  "changed_files": [
+    {
+      "status": "modified",
+      "file": "skills/c/reference.md"
+    }
+  ],
+  "changed": [
+    {
+      "record": "skill:c",
+      "change": "edited",
+      "files": [
+        "skills/c/reference.md"
+      ]
+    }
+  ],
+  "affected": [
+    {
+      "record": "skill:a",
+      "via": [
+        {
+          "kind": "invoke",
+          "source": "skill:a",
+          "target": "skill:b",
+          "file": "skills/a/SKILL.md",
+          "line": 3,
+          "side": "head"
+        },
+        {
+          "kind": "invoke",
+          "source": "skill:b",
+          "target": "skill:c",
+          "file": "skills/b/SKILL.md",
+          "line": 3,
+          "side": "head"
+        }
+      ]
+    },
+    {
+      "record": "skill:b",
+      "via": [
+        {
+          "kind": "invoke",
+          "source": "skill:b",
+          "target": "skill:c",
+          "file": "skills/b/SKILL.md",
+          "line": 3,
+          "side": "head"
+        }
+      ]
+    },
+    {
+      "record": "skill:d",
+      "via": [
+        {
+          "kind": "invoke",
+          "source": "skill:d",
+          "target": "skill:c",
+          "file": "skills/d/SKILL.md",
+          "line": 3,
+          "side": "head"
+        }
+      ]
+    }
+  ]
+}

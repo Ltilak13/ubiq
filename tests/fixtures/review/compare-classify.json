@@ -1,0 +1,46 @@
+{
+  "baseline": {
+    "rev": "main",
+    "commit": "<commit>"
+  },
+  "status": "ok",
+  "counts": {
+    "new": 1,
+    "resolved": 1,
+    "unchanged": 2
+  },
+  "new": [
+    {
+      "code": "E002",
+      "severity": "error",
+      "file": "doc.md",
+      "line": 7,
+      "message": "unresolved reference [[ghost3]] \u2014 no defining record"
+    }
+  ],
+  "resolved": [
+    {
+      "code": "E002",
+      "severity": "error",
+      "file": "doc.md",
+      "line": 1,
+      "message": "unresolved reference [[ghost1]] \u2014 no defining record"
+    }
+  ],
+  "unchanged": [
+    {
+      "code": "E002",
+      "severity": "error",
+      "file": "doc.md",
+      "line": 5,
+      "message": "unresolved reference [[ghost2]] \u2014 no defining record"
+    },
+    {
+      "code": "W001",
+      "severity": "warning",
+      "file": "glossary/tdd.md",
+      "line": 0,
+      "message": "orphan term 'core:tdd' \u2014 defined but never used"
+    }
+  ]
+}

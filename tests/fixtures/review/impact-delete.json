@@ -1,0 +1,77 @@
+{
+  "baseline": {
+    "rev": "main",
+    "commit": "<commit>"
+  },
+  "complete": true,
+  "incomplete": [],
+  "changed_files": [
+    {
+      "status": "deleted",
+      "file": "skills/c/SKILL.md"
+    },
+    {
+      "status": "deleted",
+      "file": "skills/c/reference.md"
+    }
+  ],
+  "changed": [
+    {
+      "record": "skill:c",
+      "change": "deleted",
+      "files": [
+        "skills/c/SKILL.md",
+        "skills/c/reference.md"
+      ]
+    }
+  ],
+  "affected": [
+    {
+      "record": "skill:a",
+      "via": [
+        {
+          "kind": "invoke",
+          "source": "skill:a",
+          "target": "skill:b",
+          "file": "skills/a/SKILL.md",
+          "line": 3,
+          "side": "baseline"
+        },
+        {
+          "kind": "invoke",
+          "source": "skill:b",
+          "target": "skill:c",
+          "file": "skills/b/SKILL.md",
+          "line": 3,
+          "side": "baseline"
+        }
+      ]
+    },
+    {
+      "record": "skill:b",
+      "via": [
+        {
+          "kind": "invoke",
+          "source": "skill:b",
+          "target": "skill:c",
+          "file": "skills/b/SKILL.md",
+          "line": 3,
+          "side": "baseline"
+        }
+      ]
+    },
+    {
+      "record": "skill:d",
+      "via": [
+        {
+          "kind": "invoke",
+          "source": "skill:d",
+          "target": "skill:c",
+          "file": "skills/d/SKILL.md",
+          "line": 3,
+          "side": "baseline"
+        }
+      ]
+    }
+  ]
+}

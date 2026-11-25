@@ -59,12 +59,16 @@ def _items(spec: CatalogSpec) -> list:
     return items
 
 
-def catalog_refs(spec: CatalogSpec, policy: Policy) -> list[Ref]:
-    """Each inventory value is a catalog ref that must resolve (E006)."""
+def catalog_refs(spec: CatalogSpec, policy: Policy,
+                 errors: list[str] | None = None) -> list[Ref]:
+    """Each inventory value is a catalog ref that must resolve (E006).
+    Entries that cannot name a term are appended to `errors` (E005)."""
     refs: list[Ref] = []
     for i, item in enumerate(_items(spec)):
         # bool is an int: a JSON `true` is not a term.
         if not isinstance(item, (str, int)) or isinstance(item, bool):
+            if errors is not None:
+                errors.append(f"{spec.items}[{i}]: expected a string or number")
             continue
         raw = str(item)
         name = _term_of(raw, spec.term)

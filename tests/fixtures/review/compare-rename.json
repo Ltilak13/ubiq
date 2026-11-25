@@ -1,0 +1,30 @@
+{
+  "baseline": {
+    "rev": "main",
+    "commit": "<commit>"
+  },
+  "status": "ok",
+  "counts": {
+    "new": 0,
+    "resolved": 0,
+    "unchanged": 2
+  },
+  "new": [],
+  "resolved": [],
+  "unchanged": [
+    {
+      "code": "W001",
+      "severity": "warning",
+      "file": "glossary/tdd.md",
+      "line": 0,
+      "message": "orphan term 'core:tdd' \u2014 defined but never used"
+    },
+    {
+      "code": "E002",
+      "severity": "error",
+      "file": "guide.md",
+      "line": 3,
+      "message": "unresolved reference [[ghost2]] \u2014 no defining record"
+    }
+  ]
+}

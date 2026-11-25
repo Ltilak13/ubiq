@@ -7,6 +7,10 @@
   ubiq discover [--root DIR] [--json] groups, schema proposals, and candidate contexts
   ubiq candidates [--root DIR] [--json] [--min-files N]
                                      marked names (candidate_shapes) in N+ docs with no record
+  ubiq impact --since REV [--root DIR] [--json] [--depth N]
+                                     changed records and the callers they affect
+  ubiq compare --since REV [--root DIR] [--json | --markdown]
+                                     new, resolved, and unchanged findings
 """
 
 from __future__ import annotations
@@ -16,12 +20,12 @@ import json
 import sys
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
 
-from . import __version__
+from . import __version__, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
@@ -162,9 +166,9 @@ def _glossary(cfg: Config, trace: ScanTrace | None = None) -> tuple[Glossary, li
                              ref_fields=cfg.ref_fields), overlay_files
 
 
-def build(root: Path, trace: ScanTrace | None = None) -> Build:
+def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None) -> Build:
     root = root.resolve()
-    cfg = load_config(root)
+    cfg = cfg or load_config(root)
     glossary, overlay_files = _glossary(cfg, trace)
 
     if trace is not None:
@@ -195,7 +199,9 @@ def build(root: Path, trace: ScanTrace | None = None) -> Build:
             extra.append(Diagnostic("E005", f"catalog file not found: {spec.path}", spec.file))
             continue
         try:
-            catalog_entries = catalog_refs(spec, catalog)
+            entry_errors: list[str] = []
+            catalog_entries = catalog_refs(spec, catalog, entry_errors)
+            extra.extend(Diagnostic("E005", msg, spec.file) for msg in entry_errors)
             refs.extend(catalog_entries)
             cover = _expand(spec.cover, cfg.ignore, trace, "cover")
             extra.extend(catalog_cover_gaps(catalog_entries, spec.file, glossary,
@@ -359,7 +365,13 @@ def _assembly_errors(glossary, extra) -> list[Diagnostic]:
 
 def cmd_check(args) -> int:
     root = Path(args.root).resolve()
-    result = build(root)
+    diags, terms, refs = _check(root)
+    return _report(diags, root, args.json, terms, refs)
+
+
+def _check(root: Path, cfg: Config | None = None) -> tuple[list[Diagnostic], int, int]:
+    """Every check diagnostic, with the term and reference counts."""
+    result = build(root, cfg=cfg)
     glossary, cfg = result.glossary, result.config
     layout = _layout(cfg)
     refs = across_repositories(result.refs, layout, tuple(r.glob for r in cfg.part_rules))
@@ -376,7 +388,7 @@ def cmd_check(args) -> int:
         diags.extend(check_schemas(cfg, glossary))
     live = [path for path in result.docs if path not in result.historical]
     diags.extend(check_edges(glossary, refs, cfg.edges, root, live, layout))
-    return _report(diags, root, args.json, len(glossary.terms), len(result.refs))
+    return diags, len(glossary.terms), len(result.refs)
 
 
 def _installed(cfg: Config) -> list[Path]:
@@ -460,6 +472,132 @@ def cmd_graph(args) -> int:
                   f"  {_display_path(e.file, root)}:{e.line}")
         print(f"{len(shown)} edge{'s' if len(shown) != 1 else ''}")
     return 0
+
+
+def _side(name: str, root: Path, cfg: Config | None = None) -> review.Side:
+    """One side of a change review: its records, dependency edges, and gaps."""
+    built = build(root, cfg=cfg)
+    layout = _layout(built.config)
+    live = [path for path in built.docs if path not in built.historical]
+    owner = owners(built.glossary, root, layout.local)
+    edges = (build_edges(built.glossary, built.refs, built.config.edges, root, layout.local)
+             + cross_edges(live, layout, owner))
+    side = review.Side(name, root.resolve(), {t.qualified: t for t in built.glossary.terms},
+                       owner, edges, {}, layout.unread)
+    for diag in _assembly_errors(built.glossary, built.diagnostics):
+        side.invalid.setdefault(side.rel(diag.file), diag.message)
+    return side
+
+
+def _baseline_config(base_root: Path, head_root: Path) -> Config:
+    """The baseline's configuration, reading edges.external from the real checkout:
+    other repositories are read in their current state on both sides."""
+    try:
+        cfg = load_config(base_root)
+    except (InvalidConfig, ConflictingGlossary) as exc:
+        raise review.BaselineError(f"baseline configuration cannot load: {exc}") from exc
+    external = tuple(head_root / p.relative_to(base_root) if p.is_relative_to(base_root) else p
+                     for p in cfg.edges.external)
+    return replace(cfg, edges=replace(cfg.edges, external=external))
+
+
+def _review_error(message: str, as_json: bool) -> int:
+    print(json.dumps({"error": message}, indent=2) if as_json else f"error: {message}")
+    return 2
+
+
+def cmd_impact(args) -> int:
+    root = Path(args.root).resolve()
+    try:
+        baseline = review.resolve_baseline(root, args.since)
+        files = review.changed_files(baseline)
+        with review.checkout(baseline) as base_root:
+            try:
+                base = _side("baseline", base_root, _baseline_config(base_root, root))
+            except (GlobError, ConflictingGlossary) as exc:
+                raise review.BaselineError(f"baseline cannot be built: {exc}") from exc
+            try:
+                head = _side("head", root)
+            except (InvalidConfig, ConflictingGlossary, GlobError) as exc:
+                raise review.BaselineError(f"head cannot be built: {exc}") from exc
+            changes = review.classify(files, base, head)
+            affected = review.affected(changes, base, head, args.depth)
+            gaps = review.incomplete(base, head)
+    except review.BaselineError as exc:
+        return _review_error(str(exc), args.json)
+    if args.json:
+        print(json.dumps({"baseline": baseline.as_json(), "complete": not gaps,
+                          "incomplete": gaps,
+                          "changed_files": [c.as_json() for c in files],
+                          "changed": [c.as_json() for c in changes],
+                          "affected": affected}, indent=2))
+        return 0
+    print(f"baseline {args.since} ({baseline.commit[:12]})")
+    for c in changes:
+        note = f" (from {c.source})" if c.source else ""
+        print(f"{c.change} {c.record}{note}  {', '.join(c.files)}")
+    for a in affected:
+        chain = " ".join(f"-{e['kind']}-> {e['target']}" for e in a["via"])
+        where = ", ".join(f"{e['file']}:{e['line']}" for e in a["via"])
+        side = " (baseline)" if a["via"][0]["side"] == "baseline" else ""
+        print(f"affected {a['record']} {chain}{side}  {where}")
+    for gap in gaps:
+        print(f"incomplete ({gap['side']}) {gap['file']}: {gap['reason']}")
+    print(f"{len(files)} files, {len(changes)} records changed, {len(affected)} affected"
+          + ("" if not gaps else f", INCOMPLETE: {len(gaps)} gap{'s' * (len(gaps) != 1)}"))
+    return 0
+
+
+def _findings(diags: list[Diagnostic], root: Path) -> list[dict]:
+    """Findings keyed for comparison: a path outside the root is resolved, so
+    `root/../other` names the same file from either side."""
+    def where(path: Path) -> str:
+        resolved = path.resolve() if path.is_absolute() else (root / path).resolve()
+        return _display_path(resolved, root) if resolved.is_relative_to(root) else str(resolved)
+    return [{"code": d.code, "severity": d.severity, "file": where(d.file),
+             "line": d.line, "message": d.message} for d in diags]
+
+
+def cmd_compare(args) -> int:
+    root = Path(args.root).resolve()
+    try:
+        baseline = review.resolve_baseline(root, args.since)
+        renamed = {c.source: c.file for c in review.changed_files(baseline) if c.source}
+        with review.checkout(baseline) as base_root:
+            try:
+                base_diags, _, _ = _check(base_root, _baseline_config(base_root, root))
+            except (GlobError, ConflictingGlossary) as exc:
+                raise review.BaselineError(f"baseline cannot be checked: {exc}") from exc
+            base = _findings(base_diags, base_root)
+            # The temporary checkout stands for the real repository: its root and
+            # top level (reached through in-repo links) take the real paths.
+            tree = str(base_root)[:-len(baseline.prefix) - 1] if baseline.prefix else str(base_root)
+            for f in base:
+                for temp, real in ((str(base_root), str(root)), (tree, str(baseline.toplevel))):
+                    f["message"] = f["message"].replace(temp, real)
+                    if f["file"].startswith(temp + "/"):
+                        f["file"] = _display_path(Path(real + f["file"][len(temp):]), root)
+                f["file"] = renamed.get(f["file"], f["file"])
+        try:
+            head = _findings(_check(root)[0], root)
+        except (InvalidConfig, ConflictingGlossary, GlobError) as exc:
+            raise review.BaselineError(f"head cannot be checked: {exc}") from exc
+    except review.BaselineError as exc:
+        result = {"status": "unavailable", "reason": str(exc)}
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"{'**ubiq:** ' if args.markdown else ''}comparison unavailable: {exc}")
+        return 2
+    new, resolved, unchanged = review.compare_findings(base, head)
+    if args.json:
+        print(json.dumps({"baseline": baseline.as_json(), "status": "ok",
+                          "counts": {"new": len(new), "resolved": len(resolved),
+                                     "unchanged": len(unchanged)},
+                          "new": new, "resolved": resolved, "unchanged": unchanged}, indent=2))
+    else:
+        print(review.summary(new, resolved, unchanged, markdown=args.markdown))
+    return 1 if any(f["severity"] == "error" for f in new) else 0
 
 
 def cmd_overlap(args) -> int:
@@ -689,6 +827,24 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--depth", type=_positive, default=None,
                    help="stop after this many hops from the target (default: no limit)")
     g.set_defaults(fn=cmd_graph)
+
+    im = sub.add_parser("impact", help="records a change touches and the callers it affects")
+    im.add_argument("--since", required=True, metavar="REV",
+                    help="baseline: the merge base of REV and HEAD")
+    im.add_argument("--root", default=".")
+    im.add_argument("--json", action="store_true")
+    im.add_argument("--depth", type=_positive, default=None,
+                    help="stop after this many caller hops (default: no limit)")
+    im.set_defaults(fn=cmd_impact)
+
+    cp = sub.add_parser("compare", help="new, resolved, and unchanged findings since a baseline")
+    cp.add_argument("--since", required=True, metavar="REV",
+                    help="baseline: the merge base of REV and HEAD")
+    cp.add_argument("--root", default=".")
+    out = cp.add_mutually_exclusive_group()
+    out.add_argument("--json", action="store_true")
+    out.add_argument("--markdown", action="store_true", help="a PR-ready summary")
+    cp.set_defaults(fn=cmd_compare)
 
     o = sub.add_parser("overlap", help="list near-duplicate prose shared across records")
     o.add_argument("--root", default=".")

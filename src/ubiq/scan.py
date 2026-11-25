@@ -407,13 +407,18 @@ def _covers(spans: list[tuple[int, int]]):
 
 
 def _field_refs(fm_text: str, path: Path, ref_fields: tuple[str, ...],
-                lenient: bool, policy: Policy) -> list[Ref]:
+                lenient: bool, policy: Policy, errors: list[str]) -> list[Ref]:
+    """Field refs, appending malformed declarations to `errors` (E005)."""
+    refs: list[Ref] = []
     try:
         meta = load_vocabulary_yaml(fm_text) or {}
-    except yaml.YAMLError:
-        meta = _parse_lenient(fm_text) if lenient else {}
-    refs: list[Ref] = []
+    except yaml.YAMLError as exc:
+        if not lenient:
+            errors.append(f"invalid YAML frontmatter: {str(exc).splitlines()[0]}")
+            return refs
+        meta = _parse_lenient(fm_text)
     if not isinstance(meta, dict):
+        errors.append("frontmatter must be a mapping")
         return refs
     lines = fm_text.splitlines()
     for fld in ref_fields:
@@ -421,11 +426,12 @@ def _field_refs(fm_text: str, path: Path, ref_fields: tuple[str, ...],
         if vals is None:
             continue
         vals = vals if isinstance(vals, list) else [vals]
+        if not all(isinstance(v, str) for v in vals):
+            errors.append(f"{fld}: expected a string or list of strings")
+            continue
         line = next((i + 2 for i, ln in enumerate(lines)
                      if re.match(rf"^{re.escape(fld)}\s*:", ln)), 1)
         for v in vals:
-            if not isinstance(v, str):
-                continue
             v = v.strip().strip("'\"")
             if not v or v.lower() in SKIP_FIELD_VALUES:
                 continue
@@ -441,13 +447,20 @@ def _mention_pattern(name: str) -> str:
     return (r"[_-]+" if slug else r"[\s_-]+").join(re.escape(w) for w in words if w)
 
 
-def scan_file(path: Path, glossary: Glossary, cfg: Config) -> list[Ref]:
+def scan_file(path: Path, glossary: Glossary, cfg: Config,
+              invalid: list[tuple[Path, str]] | None = None) -> list[Ref]:
     text = path.read_text(encoding="utf-8")
     policies = cfg.policies
     refs: list[Ref] = []
     fm = FRONTMATTER_RE.match(text)
     if fm and cfg.ref_fields:
-        refs += _field_refs(fm.group(1), path, cfg.ref_fields, cfg.lenient, policies["field"])
+        errors: list[str] = []
+        refs += _field_refs(fm.group(1), path, cfg.ref_fields, cfg.lenient,
+                            policies["field"], errors)
+        if invalid is not None:
+            # A record's own parse error is already reported once.
+            reported = {(p.resolve(), msg) for p, msg in invalid}
+            invalid += [(path, msg) for msg in errors if (path.resolve(), msg) not in reported]
     document = _interpret_markdown(text)
     line_of = _line_index(document.prose)
 
@@ -558,7 +571,7 @@ def scan_docs(paths: list[Path], glossary: Glossary, cfg: Config,
     refs: list[Ref] = []
     for p in sorted(paths):
         try:
-            found = scan_file(p, glossary, cfg)
+            found = scan_file(p, glossary, cfg, invalid)
         except (OSError, UnicodeError) as exc:
             if invalid is None:
                 raise

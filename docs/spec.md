@@ -90,7 +90,11 @@ include link that resolves nowhere always fails it (see Composition edges).
 - `E005` invalid record — a [[record]] file exists but its frontmatter cannot be parsed
   (strict mode; `frontmatter: lenient` opts into line-based parsing for non-YAML dialects).
   Unreadable records/catalogs, malformed overlays, duplicate overlay sources, and
-  term or alias names that are not nonempty strings also use E005.
+  term, alias, `id`, or `ns` values that are not nonempty strings also use E005.
+  A null value reads as absent. Malformed declarations never disappear silently:
+  a `ref_fields` value that is not a string or list of strings, unparsable
+  frontmatter in a document scanned for `ref_fields` (strict mode), and a catalog
+  entry that is not a string or number are E005 too.
 - `E006` unresolved field ref — a value in a configured `ref_fields` frontmatter field
   or a [[catalog]] entry with no defining [[record]] by id or name;
   `external_id_patterns` whitelists ids defined outside records.
@@ -361,6 +365,90 @@ unless configuration or assembly fails, and never writes files.
 All JSON commands use root-relative paths inside the repository and
 absolute paths outside it. Configuration failures use the check diagnostic
 JSON envelope and exit 1.
+
+## Change review
+
+`ubiq impact --since <rev>` and `ubiq compare --since <rev>` review a change
+against a baseline. Neither changes the working tree, the index, or refs, and
+neither replaces `ubiq check`: CI keeps
+running the full checker on the head.
+
+**Baseline.** The baseline is the committed tree at `git merge-base <rev> HEAD`,
+the base a pull request diff uses, checked out with the same filters as a
+working tree. Export attributes such as `export-ignore` do not apply. The head is the working tree, including
+uncommitted and untracked files. Ubiq builds each side with that side's own
+`ubiq.yaml`. Files git ignores exist only at the head and are never changes.
+Paths outside the repository are read in their current state for both sides:
+`edges.external` repositories, and the targets of committed symlinks that leave it.
+A `<rev>` that names no commit, a root outside a git work tree, or a side whose
+configuration cannot load is an invalid review: the command prints an
+`error` and exits 2. It never reports an empty change or zero findings instead.
+
+**Changed files.** Git's name-status diff from the baseline to the working
+tree, with rename detection, plus untracked files. Each has `status` (`added`,
+`modified`, `deleted`, or `renamed`), `file`, and, for a rename, `from`. A file
+moved into the root from outside it is `added`; one moved out is `deleted`.
+
+**Changed records.** A record changes when a changed file is its record file,
+its overlay, or a file it owns by directory (see Composition edges). Records
+are identified by qualified name. A changed record has `record`, `change`, and
+`files`, the changed files it owns:
+
+- `added`: only the head defines it.
+- `deleted`: only the baseline defines it.
+- `edited`: both sides define it.
+- `renamed`: the baseline record is gone, and the head record that replaces it
+  is defined in the same file, or in the file git reports as its rename. It
+  carries `from`, the baseline qualified name, and is not also added or deleted.
+- `unknown`: a changed file defines the record on one side and reports E005
+  on the other, so ubiq cannot tell what that side defines. It is never
+  reported as added or deleted.
+
+**Affected records.** An affected record is not changed itself but depends on
+a changed record through invoke or include edges, at any depth (`--depth`
+limits hops). Route and reference edges declare no dependency, so they never
+make a record affected. Callers of an added or edited record come from the head
+graph; callers of a deleted record come from the baseline graph, since no head
+edge can reach it. A renamed record is walked in both: head callers of its new
+name, and baseline callers of its old name, which a rename can break. An
+`unknown` record is walked in both graphs under its name. Each affected record has `record` and `via`, the
+shortest edge path from it to a changed record. Each edge has `kind`, `source`,
+`target`, `file`, `line`, and `side` (`head` or `baseline`). Among equally
+short paths, the head graph wins, then the path whose records nearest the
+change sort first by qualified name.
+
+**Completeness.** `complete` is false when dependency data is missing on either
+side: an `edges.external` repository is unreadable, or a document or record
+reports E005, so its edges are unknown. `incomplete` lists each reason with
+`side`, `file`, and `reason`. Missing data is reported, never read as "no
+callers".
+
+`impact --json` returns `baseline` (`rev` and `commit`), `complete`,
+`incomplete`, `changed_files`, `changed`, and `affected`. Changed files sort by
+`file`; changed and affected records sort by qualified name. The readable output
+lists the changed records, then each affected record with its path. It exits 0
+unless the review is invalid.
+
+**Finding comparison.** `compare` runs the checker on both sides. A finding's
+identity is its `code`, its `file`, and its `message`, not its line, so moved
+text stays the same finding. A baseline file that git reports as renamed takes
+its head path, a file outside the root is named by its resolved absolute path,
+and absolute baseline paths in messages are rewritten to the head
+root. Identical findings are counted: two at the baseline and three at the head
+are two unchanged and one new. Occurrences pair in line order, so the extra ones are the latest lines. Each finding is `new` (head only), `resolved`
+(baseline only), or `unchanged`. If either side fails before checking (an
+invalid baseline, or configuration that cannot load), `status` is
+`unavailable` with a `reason`, the command exits 2, and no finding lists are
+printed. A failed check is never zero findings.
+
+`compare --json` returns `baseline`, `status` (`ok` or `unavailable`), `counts`
+(`new`, `resolved`, `unchanged`), and `new`, `resolved`, and `unchanged`, each a
+list of findings with `code`, `severity`, `file`, `line` (the head line, or the
+baseline line for a resolved finding), and `message`. Lists sort by file, line, code,
+then message. `compare --markdown`
+prints a PR-ready summary: one line of counts, then new and resolved findings.
+Unchanged findings appear only as a count. `compare` exits 1 when a new finding
+is an error, 2 when unavailable, and 0 otherwise.
 
 ## Explicit type schemas
 
