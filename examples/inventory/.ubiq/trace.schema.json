@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "requirements",
+    "implementations",
+    "contracts",
+    "acceptance",
+    "terms",
+    "domains",
+    "relationships",
+    "interactions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "implementation",
+          "acceptance"
+        ],
+        "properties": {
+          "implementation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "acceptance": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "implementations": {
+      "type": "array"
+    },
+    "contracts": {
+      "type": "array"
+    },
+    "acceptance": {
+      "type": "array"
+    },
+    "terms": {
+      "type": "array"
+    },
+    "domains": {
+      "type": "array"
+    },
+    "relationships": {
+      "type": "array"
+    },
+    "interactions": {
+      "type": "array"
+    }
+  },
+  "x-ubiq": {
+    "collections": {
+      "requirements": "requirement",
+      "implementations": "implementation",
+      "contracts": "contract",
+      "acceptance": "acceptance",
+      "terms": "term"
+    },
+    "domains": "domains",
+    "relationships": "relationships",
+    "interactions": "interactions",
+    "roles": {
+      "implemented_by": {
+        "from": [
+          "requirement"
+        ],
+        "to": [
+          "implementation"
+        ]
+      },
+      "verified_by": {
+        "from": [
+          "requirement"
+        ],
+        "to": [
+          "acceptance"
+        ]
+      },
+      "uses": {
+        "from": [
+          "implementation"
+        ],
+        "to": [
+          "contract"
+        ]
+      }
+    },
+    "references": [
+      {
+        "kind": "requirement",
+        "field": "implementation",
+        "target_kind": "implementation",
+        "relationship": "implemented_by"
+      },
+      {
+        "kind": "requirement",
+        "field": "acceptance",
+        "target_kind": "acceptance",
+        "relationship": "verified_by"
+      }
+    ],
+    "coverage": {
+      "glossary": true,
+      "exclude": []
+    },
+    "evidence": true
+  }
+}

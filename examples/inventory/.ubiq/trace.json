@@ -1,0 +1,277 @@
+{
+  "requirements": [
+    {
+      "id": "REQ-RESERVE",
+      "kind": "requirement",
+      "domain": "inventory",
+      "source": "requirements/reserve.md",
+      "implementation": "inventory-service",
+      "acceptance": "reserve-feature",
+      "evidence": [
+        {
+          "path": "requirements/reserve.md",
+          "sha256": "efadb570507f7e3b3a46595bf8757833cf4a0463cfcba40a567cc29d1d62f254",
+          "anchor": "---\nterm: Reserve stock\nid: REQ-RESERVE\n---\n\n# Reserve stock\n\nThe service reserves units from an [[item]].\nA successful [[reservation]] reduces available stock by its quantity.\nThe service rejects unknown items, duplicate reservation identifiers, and quantities above available stock.\nA failed operation does not change stock or reservations."
+        }
+      ]
+    },
+    {
+      "id": "REQ-RELEASE",
+      "kind": "requirement",
+      "domain": "inventory",
+      "source": "requirements/release.md",
+      "implementation": "inventory-service",
+      "acceptance": "release-feature",
+      "evidence": [
+        {
+          "path": "requirements/release.md",
+          "sha256": "08f63873f666af4013f108cab65bfc7e8d884d2865078a01bae35f0a65653032",
+          "anchor": "---\nterm: Release stock\nid: REQ-RELEASE\n---\n\n# Release stock\n\nThe service releases an active [[reservation]].\nRelease restores its quantity to the [[item]] and changes its status to released.\nRepeated release succeeds without changing stock.\nThe service rejects an unknown reservation."
+        }
+      ]
+    },
+    {
+      "id": "REQ-VALIDATION",
+      "kind": "requirement",
+      "domain": "inventory",
+      "source": "requirements/validation.md",
+      "implementation": "inventory-service",
+      "acceptance": "validation-feature",
+      "evidence": [
+        {
+          "path": "requirements/validation.md",
+          "sha256": "466379d3034510d7bb9d86adb9a03a43701f9830ca0dee218788482466e14d42",
+          "anchor": "---\nterm: Validate quantities\nid: REQ-VALIDATION\n---\n\n# Validate quantities\n\nA [[reservation]] quantity must be a positive safe integer.\nIdentifiers must contain a non-whitespace character.\nThe service rejects invalid inputs before it writes data.\nThe database rejects invalid quantities, statuses, and missing item references."
+        }
+      ]
+    }
+  ],
+  "implementations": [
+    {
+      "id": "inventory-service",
+      "kind": "implementation",
+      "domain": "inventory",
+      "source": "src/inventory.ts",
+      "evidence": [
+        {
+          "path": "src/inventory.ts",
+          "sha256": "845c1a173f3cd021540b6b94f5bca96a606f88b340857fc811a9d111ddda0a7c",
+          "anchor": "import Database from 'better-sqlite3';\nimport { and, eq, gte, sql } from 'drizzle-orm';\nimport { drizzle } from 'drizzle-orm/better-sqlite3';\nimport { migrate } from 'drizzle-orm/better-sqlite3/migrator';\nimport { fileURLToPath } from 'node:url';\nimport { releaseInput, reserveInput } from './contracts.js';\nimport { items, reservations } from './schema.js';\n\nexport type Failure = 'invalid_input' | 'unknown_item' | 'unknown_reservation' | 'duplicate_reservation' | 'insufficient_stock';\nexport type Result = { ok: true } | { ok: false; error: Failure };\n\nexport function openInventory(filename = ':memory:') {\n  const sqlite = new Database(filename);\n  sqlite.pragma('foreign_keys = ON');\n  const db = drizzle(sqlite);\n  migrate(db, { migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) });\n\n  function reserve(input: unknown): Result {\n    const parsed = reserveInput.safeParse(input);\n    if (!parsed.success) return { ok: false, error: 'invalid_input' };\n    const { reservationId, itemId, quantity } = parsed.data;\n    return db.transaction((tx): Result => {\n      if (tx.select().from(reservations).where(eq(reservations.id, reservationId)).get())\n        return { ok: false, error: 'duplicate_reservation' };\n      if (!tx.select().from(items).where(eq(items.id, itemId)).get())\n        return { ok: false, error: 'unknown_item' };\n      const updated = tx.update(items).set({ available: sql`${items.available} - ${quantity}` })\n        .where(and(eq(items.id, itemId), gte(items.available, quantity))).run();\n      if (!updated.changes) return { ok: false, error: 'insufficient_stock' };\n      tx.insert(reservations).values({ id: reservationId, itemId, quantity, status: 'active' }).run();\n      return { ok: true };\n    }, { behavior: 'immediate' });\n  }\n\n  function release(input: unknown): Result {\n    const parsed = releaseInput.safeParse(input);\n    if (!parsed.success) return { ok: false, error: 'invalid_input' };\n    return db.transaction((tx): Result => {\n      const reservation = tx.select().from(reservations)\n        .where(eq(reservations.id, parsed.data.reservationId)).get();\n      if (!reservation) return { ok: false, error: 'unknown_reservation' };\n      if (reservation.status === 'released') return { ok: true };\n      tx.update(reservations).set({ status: 'released' })\n        .where(and(eq(reservations.id, reservation.id), eq(reservations.status, 'active'))).run();\n      tx.update(items).set({ available: sql`${items.available} + ${reservation.quantity}` })\n        .where(eq(items.id, reservation.itemId)).run();\n      return { ok: true };\n    }, { behavior: 'immediate' });\n  }\n\n  return { sqlite, db, reserve, release, close: () => sqlite.close() };\n}"
+        }
+      ]
+    },
+    {
+      "id": "step-bindings",
+      "kind": "implementation",
+      "domain": "inventory",
+      "source": "features/steps/inventory.ts",
+      "evidence": [
+        {
+          "path": "features/steps/inventory.ts",
+          "sha256": "7b2c1bb4c714ebeeb4f11fad283e4af4257b1da94189a77b88228940659e9f96",
+          "anchor": "import assert from 'node:assert/strict';\nimport { After, Before, Given, When, Then, World, setWorldConstructor } from '@cucumber/cucumber';\nimport { openInventory, type Result } from '../../src/inventory.js';\nimport { items, reservations } from '../../src/schema.js';\n\nclass InventoryWorld extends World {\n  inventory!: ReturnType<typeof openInventory>;\n  result!: Result;\n}\nsetWorldConstructor(InventoryWorld);\nBefore(function (this: InventoryWorld) { this.inventory = openInventory(); });\nAfter(function (this: InventoryWorld) { this.inventory.close(); });\nGiven('item {string} has {int} available units', function (this: InventoryWorld, id: string, available: number) {\n  this.inventory.db.insert(items).values({ id, available }).run();\n});\nWhen('I reserve {float} units of {string} with ID {string}', function (this: InventoryWorld, quantity: number, itemId: string, reservationId: string) {\n  this.result = this.inventory.reserve({ reservationId, itemId, quantity });\n});\nWhen('I release reservation {string}', function (this: InventoryWorld, reservationId: string) {\n  this.result = this.inventory.release({ reservationId });\n});\nThen('the operation succeeds', function (this: InventoryWorld) { assert.deepEqual(this.result, { ok: true }); });\nThen('the error is {string}', function (this: InventoryWorld, error: string) { assert.deepEqual(this.result, { ok: false, error }); });\nThen('{int} units remain available', function (this: InventoryWorld, available: number) {\n  assert.equal(this.inventory.db.select().from(items).get()?.available, available);\n});\nThen('{int} reservations exist', function (this: InventoryWorld, count: number) {\n  assert.equal(this.inventory.db.select().from(reservations).all().length, count);\n});"
+        }
+      ]
+    }
+  ],
+  "contracts": [
+    {
+      "id": "database-contract",
+      "kind": "contract",
+      "domain": "inventory",
+      "source": "src/schema.ts",
+      "evidence": [
+        {
+          "path": "src/schema.ts",
+          "sha256": "6550ae43046ee682e99e63df62625c6ad9dca7d9c4c3c70db8ad81bdcd731790",
+          "anchor": "import { sql } from 'drizzle-orm';\nimport { check, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';\n\nexport const items = sqliteTable('items', {\n  id: text('id').primaryKey(),\n  available: integer('available').notNull(),\n}, (table) => [\n  check('item_id', sql`length(trim(${table.id})) > 0`),\n  check('available_integer', sql`typeof(${table.available}) = 'integer' AND ${table.available} BETWEEN 0 AND 9007199254740991`),\n]);\n\nexport const reservations = sqliteTable('reservations', {\n  id: text('id').primaryKey(),\n  itemId: text('item_id').notNull().references(() => items.id),\n  quantity: integer('quantity').notNull(),\n  status: text('status', { enum: ['active', 'released'] }).notNull(),\n}, (table) => [\n  check('reservation_id', sql`length(trim(${table.id})) > 0`),\n  check('quantity_integer', sql`typeof(${table.quantity}) = 'integer' AND ${table.quantity} BETWEEN 1 AND 9007199254740991`),\n  check('reservation_status', sql`${table.status} IN ('active', 'released')`),\n]);"
+        }
+      ]
+    },
+    {
+      "id": "input-contract",
+      "kind": "contract",
+      "domain": "inventory",
+      "source": "src/contracts.ts",
+      "evidence": [
+        {
+          "path": "src/contracts.ts",
+          "sha256": "303d63ca3a2702e77254adbcf1a4632bbcfddfccaa6c84a5953eb0f4f28a04b5",
+          "anchor": "import { createInsertSchema } from 'drizzle-zod';\nimport { z } from 'zod';\nimport { reservations } from './schema.js';\n\nconst identifier = z.string().trim().min(1);\nconst reservationInput = createInsertSchema(reservations, {\n  id: identifier, itemId: identifier, quantity: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),\n});\nexport const reserveInput = reservationInput.pick({ itemId: true, quantity: true })\n  .extend({ reservationId: reservationInput.shape.id }).strict();\nexport const releaseInput = reserveInput.pick({ reservationId: true }).strict();"
+        }
+      ]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "reserve-feature",
+      "kind": "acceptance",
+      "domain": "inventory",
+      "source": "features/reserve.feature",
+      "evidence": [
+        {
+          "path": "features/reserve.feature",
+          "sha256": "9a8746ab042e9783464ff050a4d0765f59a7002595b698be1963a20c2eb95532",
+          "anchor": "@REQ-RESERVE\nFeature: Reserve available stock\n  @SCN-RESERVE\n  Scenario: Reserve part of the available stock\n    Given item \"widget\" has 5 available units\n    When I reserve 3 units of \"widget\" with ID \"r1\"\n    Then the operation succeeds\n    And 2 units remain available\n    And 1 reservations exist\n\n  @SCN-INSUFFICIENT\n  Scenario: Reject a reservation above available stock\n    Given item \"widget\" has 5 available units\n    When I reserve 6 units of \"widget\" with ID \"r1\"\n    Then the error is \"insufficient_stock\"\n    And 5 units remain available\n    And 0 reservations exist\n\n  @SCN-COMPETING\n  Scenario: A second reservation cannot spend reserved stock\n    Given item \"widget\" has 5 available units\n    When I reserve 3 units of \"widget\" with ID \"r1\"\n    Then the operation succeeds\n    When I reserve 3 units of \"widget\" with ID \"r2\"\n    Then the error is \"insufficient_stock\"\n    And 2 units remain available\n    And 1 reservations exist\n\n  @SCN-DUPLICATE\n  Scenario: Reject a repeated reservation identifier\n    Given item \"widget\" has 5 available units\n    When I reserve 2 units of \"widget\" with ID \"r1\"\n    Then the operation succeeds\n    When I reserve 2 units of \"widget\" with ID \"r1\"\n    Then the error is \"duplicate_reservation\"\n    And 3 units remain available\n    And 1 reservations exist\n\n  @SCN-UNKNOWN-ITEM\n  Scenario: Reject an unknown item\n    When I reserve 2 units of \"missing\" with ID \"r1\"\n    Then the error is \"unknown_item\"\n    And 0 reservations exist"
+        }
+      ]
+    },
+    {
+      "id": "release-feature",
+      "kind": "acceptance",
+      "domain": "inventory",
+      "source": "features/release.feature",
+      "evidence": [
+        {
+          "path": "features/release.feature",
+          "sha256": "4851c8559efad09b6d72dadf46a72895e5399cd98630f2a573ce8b590f9afc67",
+          "anchor": "@REQ-RELEASE\nFeature: Release reserved stock once\n  @SCN-RELEASE\n  Scenario: Release and repeat the release\n    Given item \"widget\" has 5 available units\n    When I reserve 3 units of \"widget\" with ID \"r1\"\n    Then the operation succeeds\n    When I release reservation \"r1\"\n    Then the operation succeeds\n    And 5 units remain available\n    When I release reservation \"r1\"\n    Then the operation succeeds\n    And 5 units remain available\n    And 1 reservations exist\n\n  @SCN-UNKNOWN-RESERVATION\n  Scenario: Reject an unknown reservation\n    Given item \"widget\" has 5 available units\n    When I release reservation \"missing\"\n    Then the error is \"unknown_reservation\"\n    And 5 units remain available"
+        }
+      ]
+    },
+    {
+      "id": "validation-feature",
+      "kind": "acceptance",
+      "domain": "inventory",
+      "source": "features/validation.feature",
+      "evidence": [
+        {
+          "path": "features/validation.feature",
+          "sha256": "bfd398312db1c7131d6dc83be3fbb5b59c66aab5b6c7b60b95731c3243a30d8f",
+          "anchor": "@REQ-VALIDATION\nFeature: Validate reservation quantities\n  @SCN-ZERO\n  Scenario: Reject zero units\n    Given item \"widget\" has 5 available units\n    When I reserve 0 units of \"widget\" with ID \"r1\"\n    Then the error is \"invalid_input\"\n    And 5 units remain available\n    And 0 reservations exist\n\n  @SCN-NEGATIVE\n  Scenario: Reject negative units\n    Given item \"widget\" has 5 available units\n    When I reserve -1 units of \"widget\" with ID \"r1\"\n    Then the error is \"invalid_input\"\n    And 5 units remain available\n    And 0 reservations exist\n\n  @SCN-FRACTION\n  Scenario: Reject fractional units\n    Given item \"widget\" has 5 available units\n    When I reserve 1.5 units of \"widget\" with ID \"r1\"\n    Then the error is \"invalid_input\"\n    And 5 units remain available\n    And 0 reservations exist\n\n  @SCN-UNSAFE\n  Scenario: Reject an unsafe integer\n    Given item \"widget\" has 5 available units\n    When I reserve 9007199254740992 units of \"widget\" with ID \"r1\"\n    Then the error is \"invalid_input\"\n    And 5 units remain available\n    And 0 reservations exist"
+        }
+      ]
+    }
+  ],
+  "terms": [
+    {
+      "id": "item",
+      "kind": "term",
+      "domain": "inventory",
+      "source": ".ubiq/glossary/item.md",
+      "evidence": [
+        {
+          "path": ".ubiq/glossary/item.md",
+          "sha256": "23b17075d42f1dfdcdadc83ecb5a2736df8916fb7baa4e3bbd71903e180dd480",
+          "anchor": "---\nterm: item\n---\n\nA stock identity with a nonnegative available quantity."
+        }
+      ]
+    },
+    {
+      "id": "reservation",
+      "kind": "term",
+      "domain": "inventory",
+      "source": ".ubiq/glossary/reservation.md",
+      "evidence": [
+        {
+          "path": ".ubiq/glossary/reservation.md",
+          "sha256": "93e64d5b2f9373e7290f18a756183f8e4d73d198e3b745a9010885aaaa59aa1b",
+          "anchor": "---\nterm: reservation\n---\n\nAn allocation of a positive quantity of one item. Its status is active or released."
+        }
+      ]
+    }
+  ],
+  "domains": [
+    {
+      "id": "inventory",
+      "evidence": [
+        {
+          "path": ".ubiq/glossary/item.md",
+          "sha256": "23b17075d42f1dfdcdadc83ecb5a2736df8916fb7baa4e3bbd71903e180dd480",
+          "anchor": "---\nterm: item\n---\n\nA stock identity with a nonnegative available quantity."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "REQ-RESERVE-implemented_by",
+      "kind": "implemented_by",
+      "from": "REQ-RESERVE",
+      "to": "inventory-service",
+      "evidence": {
+        "path": "requirements/reserve.md",
+        "sha256": "efadb570507f7e3b3a46595bf8757833cf4a0463cfcba40a567cc29d1d62f254",
+        "anchor": "---\nterm: Reserve stock\nid: REQ-RESERVE\n---\n\n# Reserve stock\n\nThe service reserves units from an [[item]].\nA successful [[reservation]] reduces available stock by its quantity.\nThe service rejects unknown items, duplicate reservation identifiers, and quantities above available stock.\nA failed operation does not change stock or reservations."
+      }
+    },
+    {
+      "id": "REQ-RESERVE-verified_by",
+      "kind": "verified_by",
+      "from": "REQ-RESERVE",
+      "to": "reserve-feature",
+      "evidence": {
+        "path": "requirements/reserve.md",
+        "sha256": "efadb570507f7e3b3a46595bf8757833cf4a0463cfcba40a567cc29d1d62f254",
+        "anchor": "---\nterm: Reserve stock\nid: REQ-RESERVE\n---\n\n# Reserve stock\n\nThe service reserves units from an [[item]].\nA successful [[reservation]] reduces available stock by its quantity.\nThe service rejects unknown items, duplicate reservation identifiers, and quantities above available stock.\nA failed operation does not change stock or reservations."
+      }
+    },
+    {
+      "id": "REQ-RELEASE-implemented_by",
+      "kind": "implemented_by",
+      "from": "REQ-RELEASE",
+      "to": "inventory-service",
+      "evidence": {
+        "path": "requirements/release.md",
+        "sha256": "08f63873f666af4013f108cab65bfc7e8d884d2865078a01bae35f0a65653032",
+        "anchor": "---\nterm: Release stock\nid: REQ-RELEASE\n---\n\n# Release stock\n\nThe service releases an active [[reservation]].\nRelease restores its quantity to the [[item]] and changes its status to released.\nRepeated release succeeds without changing stock.\nThe service rejects an unknown reservation."
+      }
+    },
+    {
+      "id": "REQ-RELEASE-verified_by",
+      "kind": "verified_by",
+      "from": "REQ-RELEASE",
+      "to": "release-feature",
+      "evidence": {
+        "path": "requirements/release.md",
+        "sha256": "08f63873f666af4013f108cab65bfc7e8d884d2865078a01bae35f0a65653032",
+        "anchor": "---\nterm: Release stock\nid: REQ-RELEASE\n---\n\n# Release stock\n\nThe service releases an active [[reservation]].\nRelease restores its quantity to the [[item]] and changes its status to released.\nRepeated release succeeds without changing stock.\nThe service rejects an unknown reservation."
+      }
+    },
+    {
+      "id": "REQ-VALIDATION-implemented_by",
+      "kind": "implemented_by",
+      "from": "REQ-VALIDATION",
+      "to": "inventory-service",
+      "evidence": {
+        "path": "requirements/validation.md",
+        "sha256": "466379d3034510d7bb9d86adb9a03a43701f9830ca0dee218788482466e14d42",
+        "anchor": "---\nterm: Validate quantities\nid: REQ-VALIDATION\n---\n\n# Validate quantities\n\nA [[reservation]] quantity must be a positive safe integer.\nIdentifiers must contain a non-whitespace character.\nThe service rejects invalid inputs before it writes data.\nThe database rejects invalid quantities, statuses, and missing item references."
+      }
+    },
+    {
+      "id": "REQ-VALIDATION-verified_by",
+      "kind": "verified_by",
+      "from": "REQ-VALIDATION",
+      "to": "validation-feature",
+      "evidence": {
+        "path": "requirements/validation.md",
+        "sha256": "466379d3034510d7bb9d86adb9a03a43701f9830ca0dee218788482466e14d42",
+        "anchor": "---\nterm: Validate quantities\nid: REQ-VALIDATION\n---\n\n# Validate quantities\n\nA [[reservation]] quantity must be a positive safe integer.\nIdentifiers must contain a non-whitespace character.\nThe service rejects invalid inputs before it writes data.\nThe database rejects invalid quantities, statuses, and missing item references."
+      }
+    },
+    {
+      "id": "service-database-contract",
+      "kind": "uses",
+      "from": "inventory-service",
+      "to": "database-contract",
+      "evidence": {
+        "path": "src/inventory.ts",
+        "sha256": "845c1a173f3cd021540b6b94f5bca96a606f88b340857fc811a9d111ddda0a7c",
+        "anchor": "import Database from 'better-sqlite3';\nimport { and, eq, gte, sql } from 'drizzle-orm';\nimport { drizzle } from 'drizzle-orm/better-sqlite3';\nimport { migrate } from 'drizzle-orm/better-sqlite3/migrator';\nimport { fileURLToPath } from 'node:url';\nimport { releaseInput, reserveInput } from './contracts.js';\nimport { items, reservations } from './schema.js';\n\nexport type Failure = 'invalid_input' | 'unknown_item' | 'unknown_reservation' | 'duplicate_reservation' | 'insufficient_stock';\nexport type Result = { ok: true } | { ok: false; error: Failure };\n\nexport function openInventory(filename = ':memory:') {\n  const sqlite = new Database(filename);\n  sqlite.pragma('foreign_keys = ON');\n  const db = drizzle(sqlite);\n  migrate(db, { migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) });\n\n  function reserve(input: unknown): Result {\n    const parsed = reserveInput.safeParse(input);\n    if (!parsed.success) return { ok: false, error: 'invalid_input' };\n    const { reservationId, itemId, quantity } = parsed.data;\n    return db.transaction((tx): Result => {\n      if (tx.select().from(reservations).where(eq(reservations.id, reservationId)).get())\n        return { ok: false, error: 'duplicate_reservation' };\n      if (!tx.select().from(items).where(eq(items.id, itemId)).get())\n        return { ok: false, error: 'unknown_item' };\n      const updated = tx.update(items).set({ available: sql`${items.available} - ${quantity}` })\n        .where(and(eq(items.id, itemId), gte(items.available, quantity))).run();\n      if (!updated.changes) return { ok: false, error: 'insufficient_stock' };\n      tx.insert(reservations).values({ id: reservationId, itemId, quantity, status: 'active' }).run();\n      return { ok: true };\n    }, { behavior: 'immediate' });\n  }\n\n  function release(input: unknown): Result {\n    const parsed = releaseInput.safeParse(input);\n    if (!parsed.success) return { ok: false, error: 'invalid_input' };\n    return db.transaction((tx): Result => {\n      const reservation = tx.select().from(reservations)\n        .where(eq(reservations.id, parsed.data.reservationId)).get();\n      if (!reservation) return { ok: false, error: 'unknown_reservation' };\n      if (reservation.status === 'released') return { ok: true };\n      tx.update(reservations).set({ status: 'released' })\n        .where(and(eq(reservations.id, reservation.id), eq(reservations.status, 'active'))).run();\n      tx.update(items).set({ available: sql`${items.available} + ${reservation.quantity}` })\n        .where(eq(items.id, reservation.itemId)).run();\n      return { ok: true };\n    }, { behavior: 'immediate' });\n  }\n\n  return { sqlite, db, reserve, release, close: () => sqlite.close() };\n}"
+      }
+    },
+    {
+      "id": "service-input-contract",
+      "kind": "uses",
+      "from": "inventory-service",
+      "to": "input-contract",
+      "evidence": {
+        "path": "src/inventory.ts",
+        "sha256": "845c1a173f3cd021540b6b94f5bca96a606f88b340857fc811a9d111ddda0a7c",
+        "anchor": "import Database from 'better-sqlite3';\nimport { and, eq, gte, sql } from 'drizzle-orm';\nimport { drizzle } from 'drizzle-orm/better-sqlite3';\nimport { migrate } from 'drizzle-orm/better-sqlite3/migrator';\nimport { fileURLToPath } from 'node:url';\nimport { releaseInput, reserveInput } from './contracts.js';\nimport { items, reservations } from './schema.js';\n\nexport type Failure = 'invalid_input' | 'unknown_item' | 'unknown_reservation' | 'duplicate_reservation' | 'insufficient_stock';\nexport type Result = { ok: true } | { ok: false; error: Failure };\n\nexport function openInventory(filename = ':memory:') {\n  const sqlite = new Database(filename);\n  sqlite.pragma('foreign_keys = ON');\n  const db = drizzle(sqlite);\n  migrate(db, { migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) });\n\n  function reserve(input: unknown): Result {\n    const parsed = reserveInput.safeParse(input);\n    if (!parsed.success) return { ok: false, error: 'invalid_input' };\n    const { reservationId, itemId, quantity } = parsed.data;\n    return db.transaction((tx): Result => {\n      if (tx.select().from(reservations).where(eq(reservations.id, reservationId)).get())\n        return { ok: false, error: 'duplicate_reservation' };\n      if (!tx.select().from(items).where(eq(items.id, itemId)).get())\n        return { ok: false, error: 'unknown_item' };\n      const updated = tx.update(items).set({ available: sql`${items.available} - ${quantity}` })\n        .where(and(eq(items.id, itemId), gte(items.available, quantity))).run();\n      if (!updated.changes) return { ok: false, error: 'insufficient_stock' };\n      tx.insert(reservations).values({ id: reservationId, itemId, quantity, status: 'active' }).run();\n      return { ok: true };\n    }, { behavior: 'immediate' });\n  }\n\n  function release(input: unknown): Result {\n    const parsed = releaseInput.safeParse(input);\n    if (!parsed.success) return { ok: false, error: 'invalid_input' };\n    return db.transaction((tx): Result => {\n      const reservation = tx.select().from(reservations)\n        .where(eq(reservations.id, parsed.data.reservationId)).get();\n      if (!reservation) return { ok: false, error: 'unknown_reservation' };\n      if (reservation.status === 'released') return { ok: true };\n      tx.update(reservations).set({ status: 'released' })\n        .where(and(eq(reservations.id, reservation.id), eq(reservations.status, 'active'))).run();\n      tx.update(items).set({ available: sql`${items.available} + ${reservation.quantity}` })\n        .where(eq(items.id, reservation.itemId)).run();\n      return { ok: true };\n    }, { behavior: 'immediate' });\n  }\n\n  return { sqlite, db, reserve, release, close: () => sqlite.close() };\n}"
+      }
+    }
+  ],
+  "interactions": []
+}

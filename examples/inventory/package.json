@@ -1,0 +1,33 @@
+{
+  "name": "ubiq-inventory-example",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "check": "tsc --noEmit && eslint . && python3 -m ubiq.cli check --root . && node --import tsx scripts/check.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "generate": "drizzle-kit generate",
+    "evidence": "node --import tsx scripts/evidence.ts",
+    "test:mutations": "node --import tsx scripts/mutations.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.2.0",
+    "drizzle-orm": "0.45.4",
+    "drizzle-zod": "0.8.3",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "13.3.0",
+    "@cucumber/gherkin": "43.0.0",
+    "@cucumber/messages": "35.0.0",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "24.19.4",
+    "drizzle-kit": "0.31.11",
+    "eslint": "10.15.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.74.0"
+  }
+}
