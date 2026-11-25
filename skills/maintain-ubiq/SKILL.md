@@ -16,7 +16,7 @@ Run `python3 -m ubiq.cli` if `ubiq` is not on `PATH`.
 
 1. Compare the installed CLI, repository pins, CI revisions, and installed ubiq skill sources.
 2. Inspect relevant history for a pin change since the previous maintenance pass, when that baseline is available.
-3. Route to [[skill:upgrade-ubiq]] when revisions disagree, a pin changed, or the owner requested an upgrade.
+3. Route to [upgrade-ubiq](../upgrade-ubiq/SKILL.md) when revisions disagree, a pin changed, or the owner requested an upgrade.
 4. Read that skill before the handoff. Supply the repository, observed revisions, target, baseline diagnostics, and authorized edit scope.
 5. Read-only assessment is allowed. Changing pins or installations requires upgrade authorization beyond routine maintenance.
 6. If the skill is unavailable, report how to obtain it from the repository's trusted ubiq source.

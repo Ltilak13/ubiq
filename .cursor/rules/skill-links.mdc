@@ -1,0 +1,14 @@
+---
+description: Link bundled skills by their SKILL.md file so readers can click through
+globs: skills/**/*.md
+alwaysApply: false
+---
+
+When a bundled skill names another bundled skill, write a relative Markdown link to its `SKILL.md`.
+
+- Use `[upgrade-ubiq](../upgrade-ubiq/SKILL.md)`, not `[[skill:upgrade-ubiq]]`.
+- Do not link to the skill folder. ubiq resolves a link to `SKILL.md` as a reference to that skill; it records a folder link only as a mention.
+- Keep the path inside the installed skills root. Skills install as siblings, so `../<name>/SKILL.md` works in both layouts.
+- Leave optional skills that this repository does not ship (for example `domain-modeling`) as plain names.
+
+`tests/test_skill_install.py` fails on `[[skill:` in `skills/`. `ubiq check` fails (E002) on a link to a `SKILL.md` that does not exist.
