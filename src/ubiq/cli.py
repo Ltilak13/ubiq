@@ -376,7 +376,9 @@ def _check(root: Path, cfg: Config | None = None) -> tuple[list[Diagnostic], int
     result = build(root, cfg=cfg)
     glossary, cfg = result.glossary, result.config
     layout = _layout(cfg)
-    refs = across_repositories(result.refs, layout, tuple(r.glob for r in cfg.part_rules))
+    refs = [r for r in across_repositories(result.refs, layout,
+                                           tuple(r.glob for r in cfg.part_rules))
+            if not (r.kind == "link" and layout.covers_missing_link(r.file, r.target))]
     skip_mentions = {path.resolve() for path in glossary.overlay_sources.values()}
     # A consuming repository does not own dependency prose reached through links.
     # Keep explicit references checked; only plain-mention suggestions stay local.

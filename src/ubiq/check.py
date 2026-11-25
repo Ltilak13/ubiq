@@ -22,6 +22,7 @@ Warnings (reported, exit 0):
   W004 install-layout         a link that resolves in only one of source tree and install
   W005 drift                  a reference without an edge, or an edge the text never names
   W006 coverage-scope         a coverage pattern or exclusion matches nothing (coverage.py)
+  W007 broken-link            a relative link to a missing file that is not a record
 
 A reference kind's policy (kinds.py) sets the severity of what its refs report:
 `references.id.severity: warn` keeps E004 visible without failing the build.
@@ -212,6 +213,8 @@ def run_checks(glossary: Glossary, refs: list[Ref],
 
 
 def _unresolved(glossary: Glossary, r: Ref) -> str:
+    if r.kind == "link":
+        return f"broken link {r.raw} — no file at {r.target}"
     if r.kind == "id":
         return f"unresolved id '{r.name}' — no record carries id: {r.name}"
     if r.kind in ("field", "catalog"):

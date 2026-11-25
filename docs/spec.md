@@ -62,6 +62,7 @@ resolves, what it reports, and whether it links its term for W002.
 | `field` | field | id, then name | E006 | frontmatter only | nothing |
 | `catalog` | catalog | id, then name | E006, E007 | inventory only | nothing |
 | `mention` | mention | name | W002 | prose only | inline_code, address, comment |
+| `link` | link | nothing | W007 | prose only | comment |
 
 Every prose kind also matches plain prose. An address is a link or image
 destination, a bare URL or email, or a raw HTML tag. `references:` composes
@@ -70,6 +71,15 @@ overrides onto the table, per kind: `severity` (`error`, `warn`, or `off`) and
 codes as warnings, which never fail the check, and an ambiguous ref (E003) takes
 its kind's severity too. An `off` kind reports nothing, and its refs stay indexed
 for `ubiq refs`. `unlinked_mentions` is shorthand for the mention severity, off by default.
+
+A `link` ref is a relative Markdown link to a file or directory that does not
+exist, when no record or glossary rule claims the destination; such a link
+would otherwise be a `markdown` ref. It never resolves, so it always reports
+W007, a warning by default. URLs, anchor-only links, root-relative paths, and
+links outside the repository are not `link` refs. W004 handles Markdown links that leave an `edges.install` directory and
+resolve only after installation, or target an external installed directory.
+Other missing destinations still report W007. A path-shaped wiki-link to
+a missing file (`[[MISSION.md]]`) is not a reference of any kind.
 
 No configuration can contradict a guarantee: a setting that would is E008, and a
 test fails if this spec stops stating one. The guarantees are that fenced code
@@ -120,6 +130,8 @@ include link that resolves nowhere always fails it (see Composition edges).
   `unlinked_except` lists terms by name or qualified name.
 - `W006` coverage scope — a `coverage.files` pattern matches no file, or a
   `coverage.exclude` glob matches no selected file. Only `ubiq coverage` reports it.
+- `W007` broken link — a relative Markdown link to a missing file or directory that
+  is not a [[record]] (see the `link` kind). `references.link.severity` tunes it.
 - `E011` include cycle — a [[shared part]] includes itself through Markdown links
   to other parts. The agent would read the same files forever.
 - `E012` part input — an include names no value, or an undeclared value, for an

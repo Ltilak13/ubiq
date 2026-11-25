@@ -73,7 +73,7 @@ def test_invoke_and_include_edges_with_callers(tmp_path, capsys):
 def check(tmp_path, capsys):
     status, out = run(tmp_path, capsys, "check")
     return status, [(d["code"], d["message"]) for d in out["diagnostics"]
-                    if d["code"] in ("E011", "E012", "W003", "W004", "W005")]
+                    if d["code"] in ("E011", "E012", "W003", "W004", "W005", "W007")]
 
 
 def test_include_cycle_fails(tmp_path, capsys):

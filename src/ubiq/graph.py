@@ -26,7 +26,13 @@ from .check import Diagnostic, at
 from .config import EdgeConfig
 from .globs import Glob
 from .records import Glossary, InvalidRecord, Term, parse_frontmatter
-from .scan import Ref, _blank_fences, _doc_link_path, _interpret_markdown, _line_index
+from .scan import (
+    Ref,
+    _blank_fences,
+    _doc_link_path,
+    _interpret_markdown,
+    _line_index,
+)
 
 KINDS = ("invoke", "include", "route", "reference")
 # Only invocation and inclusion require the target to run.
@@ -337,6 +343,15 @@ class Layout:
 
     def home(self, doc: Path) -> Path | None:
         return next((d for d in doc.parents if d in self.homes), None)
+
+    def covers_missing_link(self, doc: Path, spec: str) -> bool:
+        """Whether W004 handles a destination missing from the source tree."""
+        doc = doc.resolve()
+        home, source = self.home(doc), _doc_link_path(doc, spec)
+        if home is None or source is None or source.is_relative_to(home):
+            return False
+        landed, target = self.land(doc, home, source)
+        return target in self.external or (landed is not None and landed.is_file())
 
     def land(self, doc: Path, home: Path, source: Path) -> tuple[Path | None, Path | None]:
         """The file a link from `doc` reaches once installed, and its installed directory.

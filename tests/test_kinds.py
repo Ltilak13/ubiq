@@ -32,7 +32,7 @@ def test_every_guarantee_is_quoted_from_the_spec():
 
 def test_no_configuration_scans_fences_frontmatter_or_definitions(tmp_path):
     """Every scannable region, for every kind, still leaves guarded lines alone."""
-    everything = "[[session]] /session `/session` UB-1 session [s](glossary/s.md)"
+    everything = "[[session]] /session `/session` UB-1 session [s](glossary/s.md) [g](gone.md)"
     doc = (f"---\nuses: [session]\nnote: \"{everything}\"\n---\n"   # lines 1-4
            f"[def]: glossary/s.md \"{everything}\"\n"               # line 5
            f"~~~\n{everything} <!-- [[session]] -->\n~~~\n"          # lines 6-8
@@ -203,3 +203,38 @@ def test_ambiguity_reports_e003_only_when_qualifying_helps(tmp_path, capsys):
     _, result = check_json(tmp_path, capsys)
     e003 = [d["message"] for d in result["diagnostics"] if d["code"] == "E003"]
     assert len(e003) == 1 and re.search(r"\[\[core:session\]\], \[\[game:session\]\]", e003[0])
+
+
+def test_links_to_missing_files_warn_at_the_link_severity(tmp_path, capsys):
+    doc = ("[[session]] [gone](missing.md) [script](./run.py) [ok](s.md) [web](https://x.io/a.md)\n"
+           "[top](#top) `[code](nope.md)` <!-- [hidden](nope.md) -->\n"
+           "```\n[fenced](nope.md)\n```\n")
+    make_repo(tmp_path, {"s.md": REC}, {"doc.md": doc, "s.md": "Plain.\n"}, BASE)
+    status, result = check_json(tmp_path, capsys)
+    assert status == 0, result
+    assert [(d["code"], d["severity"], d["line"]) for d in result["diagnostics"]] == [
+        ("W007", "warning", 1), ("W007", "warning", 1)]
+
+    (tmp_path / "ubiq.yaml").write_text(BASE + "references: {link: {severity: error}}\n")
+    status, result = check_json(tmp_path, capsys)
+    assert status == 1 and {d["severity"] for d in result["diagnostics"]} == {"error"}
+
+
+def test_missing_links_leaving_install_directory_still_warn(tmp_path, capsys):
+    make_repo(tmp_path, {}, {"skills/a/SKILL.md":
+              "[script](../missing.py)\n[dir](../missing/)\n[doc](../missing.md)\n"},
+              'glossary: []\ndocs: ["skills/**/*.md"]\n'
+              'edges: {install: ["skills/*/SKILL.md"]}\n')
+    status, result = check_json(tmp_path, capsys)
+    assert status == 0
+    assert [(d["code"], d["line"]) for d in result["diagnostics"]] == [
+        ("W007", 1), ("W007", 2), ("W007", 3)]
+
+
+def test_missing_links_through_external_symlink_are_ignored(tmp_path, capsys):
+    make_repo(tmp_path, {}, {"doc.md": "[external](outside/missing.py)\n"},
+              'glossary: []\ndocs: ["doc.md"]\n')
+    (tmp_path / "outside").symlink_to(tmp_path.parent, target_is_directory=True)
+    status, result = check_json(tmp_path, capsys)
+    assert status == 0
+    assert result["diagnostics"] == []
