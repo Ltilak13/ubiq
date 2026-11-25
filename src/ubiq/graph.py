@@ -305,6 +305,7 @@ class Layout:
     repositories: list[Repository] = field(default_factory=list)
     # An external repository could not be read, so unknown names may live there.
     partial: bool = False
+    unread: list[tuple[Path, str]] = field(default_factory=list)
     problems: list[Diagnostic] = field(default_factory=list)
 
     @classmethod
@@ -331,7 +332,7 @@ class Layout:
         layout.problems += [Diagnostic("W004", f"external repository {repo} {reason}; "
                                        "links into it are not checked", repo)
                             for repo, reason in unread]
-        layout.partial = bool(unread)
+        layout.partial, layout.unread = bool(unread), list(unread)
         return layout
 
     def home(self, doc: Path) -> Path | None:

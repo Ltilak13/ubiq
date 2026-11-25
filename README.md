@@ -150,6 +150,7 @@ That's the same check you can run on every pull request.
 | Find uses of a word | `ubiq refs session` |
 | Find possible new words | `ubiq candidates` |
 | See why a file is included | `ubiq explain` |
+| See what a change affects | `ubiq impact --since main` |
 
 For automated checks, use the [GitHub Action](action.yml) or the
 [pre-commit hook](.pre-commit-hooks.yaml). The

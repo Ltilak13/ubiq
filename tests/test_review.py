@@ -13,7 +13,6 @@ import pytest
 from ubiq.cli import main
 
 FIXTURES = Path(__file__).parent / "fixtures" / "review"
-IMPACT = pytest.mark.xfail(strict=True, reason="M4: ubiq impact is not implemented")
 COMPARE = pytest.mark.xfail(strict=True, reason="M5: ubiq compare is not implemented")
 
 SKILLS_CONFIG = """\
@@ -28,7 +27,9 @@ ref_fields: [uses]
 
 def skill(name: str, uses: str = "") -> str:
     """`uses:` sits on line 3, so every edge in the fixtures is declared there."""
-    return f"---\nname: {name}\n{'uses: [' + uses + ']' if uses else 'title: ' + name}\n---\n\nThe {name} skill.\n"
+    head = f"---\nname: {name}\n{'uses: [' + uses + ']' if uses else 'title: ' + name}\n---\n"
+    # Enough shared body that git pairs a moved, renamed skill as a rename.
+    return head + "\n## Steps\n\n1. Read the task.\n2. Plan the change.\n3. Make it.\n4. Check it.\n"
 
 
 def git(root: Path, *args: str) -> str:
@@ -80,14 +81,12 @@ def impact(root: Path, capsys, *extra: str) -> tuple[int, dict]:
     return code, out
 
 
-@IMPACT
 def test_impact_edit_of_owned_file(tmp_path, capsys):
     root = skills_repo(tmp_path)
     (root / "skills/c/reference.md").write_text("Reference notes for c, revised.\n")
     assert impact(root, capsys) == (0, expected("impact-edit"))
 
 
-@IMPACT
 def test_impact_untracked_addition(tmp_path, capsys):
     root = skills_repo(tmp_path)
     (root / "skills/f").mkdir()
@@ -95,14 +94,12 @@ def test_impact_untracked_addition(tmp_path, capsys):
     assert impact(root, capsys) == (0, expected("impact-add"))
 
 
-@IMPACT
 def test_impact_deletion_uses_baseline_callers(tmp_path, capsys):
     root = skills_repo(tmp_path)
     shutil.rmtree(root / "skills/c")
     assert impact(root, capsys) == (0, expected("impact-delete"))
 
 
-@IMPACT
 def test_impact_rename_is_one_change(tmp_path, capsys):
     """Unstaged moves still pair as renames; the index is not touched."""
     root = skills_repo(tmp_path)
@@ -114,7 +111,6 @@ def test_impact_rename_is_one_change(tmp_path, capsys):
     assert git(root, "diff", "--cached", "--name-only") == ""
 
 
-@IMPACT
 def test_impact_depth_limits_hops(tmp_path, capsys):
     root = skills_repo(tmp_path)
     (root / "skills/c/reference.md").write_text("Revised.\n")
@@ -122,7 +118,6 @@ def test_impact_depth_limits_hops(tmp_path, capsys):
     assert [a["record"] for a in out["affected"]] == ["skill:b", "skill:d"]
 
 
-@IMPACT
 def test_impact_unparsable_record_is_unknown_not_deleted(tmp_path, capsys):
     root = skills_repo(tmp_path)
     (root / "skills/c/SKILL.md").write_text("---\nname: [c\n---\n\nBroken.\n")
@@ -134,7 +129,6 @@ def test_impact_unparsable_record_is_unknown_not_deleted(tmp_path, capsys):
     assert [(i["side"], i["file"]) for i in out["incomplete"]] == [("head", "skills/c/SKILL.md")]
 
 
-@IMPACT
 def test_impact_reports_missing_dependency_data(tmp_path, capsys):
     root = skills_repo(tmp_path / "repo", SKILLS_CONFIG + 'edges:\n  external: ["../absent"]\n')
     (root / "skills/c/reference.md").write_text("---\nuses: [b\n---\n\nBroken.\n")
@@ -146,7 +140,6 @@ def test_impact_reports_missing_dependency_data(tmp_path, capsys):
     assert all(i["reason"] for i in out["incomplete"])
 
 
-@IMPACT
 @pytest.mark.parametrize("rev", ["nosuchref", "main~5"])
 def test_impact_invalid_rev_exits_2(tmp_path, capsys, rev):
     root = skills_repo(tmp_path)
@@ -155,14 +148,12 @@ def test_impact_invalid_rev_exits_2(tmp_path, capsys, rev):
     assert code == 2 and rev in out["error"] and "changed" not in out
 
 
-@IMPACT
 def test_impact_outside_git_exits_2(tmp_path, capsys):
     (tmp_path / "ubiq.yaml").write_text(SKILLS_CONFIG)
     assert main(["impact", "--since", "main", "--root", str(tmp_path)]) == 2
     assert "git" in capsys.readouterr().out
 
 
-@IMPACT
 def test_impact_baseline_with_invalid_config_exits_2(tmp_path, capsys):
     root = skills_repo(tmp_path, SKILLS_CONFIG + "bogus: 1\n")
     (root / "ubiq.yaml").write_text(SKILLS_CONFIG)
@@ -170,7 +161,6 @@ def test_impact_baseline_with_invalid_config_exits_2(tmp_path, capsys):
     assert code == 2 and "baseline" in out["error"]
 
 
-@IMPACT
 def test_impact_readable_output_explains_paths(tmp_path, capsys):
     root = skills_repo(tmp_path)
     (root / "skills/c/reference.md").write_text("Revised.\n")
@@ -256,3 +246,20 @@ def test_compare_markdown_summary(tmp_path, capsys):
     out = capsys.readouterr().out
     assert out.splitlines()[0] == "**ubiq:** 1 new, 1 resolved, 2 unchanged"
     assert "ghost3" in out and "ghost1" in out and "ghost2" not in out
+
+
+def test_impact_baseline_symlinks_leaving_the_repository_resolve(tmp_path, capsys):
+    """A committed relative link to a sibling checkout reads the same files on both sides."""
+    upstream = tmp_path / "upstream" / "skills" / "u"
+    upstream.mkdir(parents=True)
+    (upstream / "SKILL.md").write_text(skill("u"))
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "skills").mkdir()
+    (root / "skills" / "u").symlink_to("../../upstream/skills/u")
+    skills_repo(root)
+    (root / "skills/a/SKILL.md").write_text(skill("a", "u"))
+    code, out = impact(root, capsys)
+    assert code == 0 and out["complete"] is True
+    assert out["changed"] == [{"record": "skill:a", "change": "edited",
+                               "files": ["skills/a/SKILL.md"]}]

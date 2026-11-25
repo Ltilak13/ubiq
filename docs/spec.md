@@ -376,7 +376,8 @@ running the full checker on the head.
 the base a pull request diff uses. The head is the working tree, including
 uncommitted and untracked files. Ubiq builds each side with that side's own
 `ubiq.yaml`. Files git ignores exist only at the head and are never changes.
-`edges.external` repositories are read in their current state for both sides.
+Paths outside the repository are read in their current state for both sides:
+`edges.external` repositories, and the targets of committed symlinks that leave it.
 A `<rev>` that names no commit, a root outside a git work tree, or a baseline
 whose configuration cannot load is an invalid baseline: the command prints an
 `error` and exits 2. It never reports an empty change or zero findings instead.
@@ -396,8 +397,9 @@ are identified by qualified name. A changed record has `record`, `change`, and
 - `renamed`: the baseline record is gone, and the head record that replaces it
   is defined in the same file, or in the file git reports as its rename. It
   carries `from`, the baseline qualified name, and is not also added or deleted.
-- `unknown`: a changed record file reports E005 on one side, so ubiq cannot
-  tell what that side defines. It is never reported as added or deleted.
+- `unknown`: a changed file defines the record on one side and reports E005
+  on the other, so ubiq cannot tell what that side defines. It is never
+  reported as added or deleted.
 
 **Affected records.** An affected record is not changed itself but depends on
 a changed record through invoke or include edges, at any depth (`--depth`

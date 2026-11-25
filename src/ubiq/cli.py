@@ -7,6 +7,8 @@
   ubiq discover [--root DIR] [--json] groups, schema proposals, and candidate contexts
   ubiq candidates [--root DIR] [--json] [--min-files N]
                                      marked names (candidate_shapes) in N+ docs with no record
+  ubiq impact --since REV [--root DIR] [--json] [--depth N]
+                                     changed records and the callers they affect
 """
 
 from __future__ import annotations
@@ -16,12 +18,12 @@ import json
 import sys
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
 
-from . import __version__
+from . import __version__, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
@@ -162,9 +164,9 @@ def _glossary(cfg: Config, trace: ScanTrace | None = None) -> tuple[Glossary, li
                              ref_fields=cfg.ref_fields), overlay_files
 
 
-def build(root: Path, trace: ScanTrace | None = None) -> Build:
+def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None) -> Build:
     root = root.resolve()
-    cfg = load_config(root)
+    cfg = cfg or load_config(root)
     glossary, overlay_files = _glossary(cfg, trace)
 
     if trace is not None:
@@ -464,6 +466,77 @@ def cmd_graph(args) -> int:
     return 0
 
 
+def _side(name: str, root: Path, cfg: Config | None = None) -> review.Side:
+    """One side of a change review: its records, dependency edges, and gaps."""
+    built = build(root, cfg=cfg)
+    layout = _layout(built.config)
+    live = [path for path in built.docs if path not in built.historical]
+    owner = owners(built.glossary, root, layout.local)
+    edges = (build_edges(built.glossary, built.refs, built.config.edges, root, layout.local)
+             + cross_edges(live, layout, owner))
+    side = review.Side(name, root.resolve(), {t.qualified: t for t in built.glossary.terms},
+                       owner, edges, {}, layout.unread)
+    for diag in _assembly_errors(built.glossary, built.diagnostics):
+        side.invalid.setdefault(side.rel(diag.file), diag.message)
+    return side
+
+
+def _baseline_config(base_root: Path, head_root: Path) -> Config:
+    """The baseline's configuration, reading edges.external from the real checkout:
+    other repositories are read in their current state on both sides."""
+    try:
+        cfg = load_config(base_root)
+    except (InvalidConfig, ConflictingGlossary) as exc:
+        raise review.BaselineError(f"baseline configuration cannot load: {exc}") from exc
+    external = tuple(head_root / p.relative_to(base_root) if p.is_relative_to(base_root) else p
+                     for p in cfg.edges.external)
+    return replace(cfg, edges=replace(cfg.edges, external=external))
+
+
+def _review_error(message: str, as_json: bool) -> int:
+    print(json.dumps({"error": message}, indent=2) if as_json else f"error: {message}")
+    return 2
+
+
+def cmd_impact(args) -> int:
+    root = Path(args.root).resolve()
+    try:
+        baseline = review.resolve_baseline(root, args.since)
+        files = review.changed_files(baseline)
+        with review.checkout(baseline) as base_root:
+            try:
+                base = _side("baseline", base_root, _baseline_config(base_root, root))
+            except (GlobError, ConflictingGlossary) as exc:
+                raise review.BaselineError(f"baseline cannot be built: {exc}") from exc
+            head = _side("head", root)
+            changes = review.classify(files, base, head)
+            affected = review.affected(changes, base, head, args.depth)
+            gaps = review.incomplete(base, head)
+    except review.BaselineError as exc:
+        return _review_error(str(exc), args.json)
+    if args.json:
+        print(json.dumps({"baseline": baseline.as_json(), "complete": not gaps,
+                          "incomplete": gaps,
+                          "changed_files": [c.as_json() for c in files],
+                          "changed": [c.as_json() for c in changes],
+                          "affected": affected}, indent=2))
+        return 0
+    print(f"baseline {args.since} ({baseline.commit[:12]})")
+    for c in changes:
+        note = f" (from {c.source})" if c.source else ""
+        print(f"{c.change} {c.record}{note}  {', '.join(c.files)}")
+    for a in affected:
+        chain = " ".join(f"-{e['kind']}-> {e['target']}" for e in a["via"])
+        where = ", ".join(f"{e['file']}:{e['line']}" for e in a["via"])
+        side = " (baseline)" if a["via"][0]["side"] == "baseline" else ""
+        print(f"affected {a['record']} {chain}{side}  {where}")
+    for gap in gaps:
+        print(f"incomplete ({gap['side']}) {gap['file']}: {gap['reason']}")
+    print(f"{len(files)} files, {len(changes)} records changed, {len(affected)} affected"
+          + ("" if not gaps else f", INCOMPLETE: {len(gaps)} gap{'s' * (len(gaps) != 1)}"))
+    return 0
+
+
 def cmd_overlap(args) -> int:
     root = Path(args.root).resolve()
     built = build(root)
@@ -691,6 +764,15 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--depth", type=_positive, default=None,
                    help="stop after this many hops from the target (default: no limit)")
     g.set_defaults(fn=cmd_graph)
+
+    im = sub.add_parser("impact", help="records a change touches and the callers it affects")
+    im.add_argument("--since", required=True, metavar="REV",
+                    help="baseline: the merge base of REV and HEAD")
+    im.add_argument("--root", default=".")
+    im.add_argument("--json", action="store_true")
+    im.add_argument("--depth", type=_positive, default=None,
+                    help="stop after this many caller hops (default: no limit)")
+    im.set_defaults(fn=cmd_impact)
 
     o = sub.add_parser("overlap", help="list near-duplicate prose shared across records")
     o.add_argument("--root", default=".")
