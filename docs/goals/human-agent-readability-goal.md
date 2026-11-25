@@ -32,7 +32,7 @@ criteria:
     gap: Criterion needs a recorded review against its acceptance text.
 ---
 
-# Goal: files that humans and agents can use equally well
+# Goal: human and agent usability
 
 This goal defines outcomes and acceptance evidence. It does
 not claim that Ubiq currently checks readability or produces Markdown previews.
@@ -98,7 +98,7 @@ wrapping changes that obscure a substantive edit.
 
 ## Keep one authoritative meaning
 
-The [domain schema goal](domain-schema-goal.md) owns the division between
+The [explicit domain models goal](domain-schema-goal.md) owns the division between
 structured facts and explanatory prose. This goal adds a usability requirement:
 readers must reach those facts from either reading form.
 
@@ -110,7 +110,7 @@ A [[reference]] must lead to the intended [[glossary record]] in the supported
 reading environments. A [[term]] keeps its meaning across metadata, prose, and
 link labels. Presentation changes must preserve identities and relationships.
 
-The [composable skills goal](composable-skills-goal.md) owns reuse through a
+The [composable knowledge goal](composable-knowledge-goal.md) owns reuse through a
 [[shared part]] and a [[composition edge]]. Evaluate the reading cost of that
 reuse here: readers must know when to follow an included procedure and how to
 return to the task. Count required file visits and navigation failures alongside

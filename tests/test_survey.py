@@ -1,5 +1,5 @@
 """Pinned `ubiq overlap` results for the two repositories surveyed for the
-composable skills goal (docs/goals/composable-skills-goal.md).
+composable knowledge goal (docs/goals/composable-knowledge-goal.md).
 
 mattpocock/skills is vendored (MIT) under fixtures/mattpocock-skills at the
 surveyed commit, so CI pins its clusters, text included. The personal skill

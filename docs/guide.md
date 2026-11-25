@@ -158,7 +158,7 @@ Initialization preserves source files and refuses to overwrite existing configur
 The current schema proposals describe naming-field mappings and available metadata.
 Opt-in [native schema validation](schema-validation.md) checks typed frontmatter,
 structured inventories, record relationships, coverage, and evidence through `ubiq check`.
-The broader goal is [domain-aware frontmatter and a knowledge tree](goals/domain-schema-goal.md).
+The broader goal is [explicit domain models](goals/domain-schema-goal.md).
 
 For setup or maintenance, inspect the current structure without writing files:
 
@@ -375,4 +375,4 @@ existing]}`; each include then names one after the link, as in ``Follow
 
 `ubiq graph` shows all four kinds, `ubiq overlap` finds text worth extracting,
 and `check` reports include cycles (E011). The
-[composable skills goal](goals/composable-skills-goal.md) covers what is still open.
+[composable knowledge goal](goals/composable-knowledge-goal.md) covers what is still open.
