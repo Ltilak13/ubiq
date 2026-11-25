@@ -776,9 +776,12 @@ def cmd_query(args) -> int:
         cfg = load_config(root)
         glossary, _ = _glossary(cfg)
         report = query.select(cfg, glossary, kind=args.kind, domain=args.domain,
-                              ident=args.id, document=args.document)
+                              ident=args.id, document=args.document,
+                              direction=args.direction, relation=args.relation)
     except (InvalidConfig, ConflictingGlossary, GlobError, OSError, UnicodeError) as exc:
         report = query.unavailable(root, str(exc))
+    if args.direction is not None or args.relation is not None:
+        report.setdefault("relationships", [])
     print(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False)
           if args.json else query.render(report))
     return query.exit_code(report)
@@ -1045,6 +1048,12 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--domain", help="match the exact declared domain")
     q.add_argument("--id", help="resolve an exact record identity before applying other filters")
     q.add_argument("--document", help="match the exact repository-relative metadata document")
+    direction = q.add_mutually_exclusive_group()
+    direction.add_argument("--incoming", dest="direction", action="store_const", const="incoming",
+                           help="return records with declared edges to the selected ID")
+    direction.add_argument("--outgoing", dest="direction", action="store_const", const="outgoing",
+                           help="return records with declared edges from the selected ID")
+    q.add_argument("--relation", help="match an exact edge kind (default direction: outgoing)")
     q.add_argument("--json", action="store_true")
     q.set_defaults(fn=cmd_query)
 
@@ -1058,6 +1067,8 @@ def main(argv: list[str] | None = None) -> int:
     o.set_defaults(fn=cmd_overlap)
 
     args = p.parse_args(argv)
+    if args.cmd == "query" and (args.direction is not None or args.relation is not None) and args.id is None:
+        p.error("relationship queries require --id")
     try:
         return args.fn(args)
     except GlobError as exc:

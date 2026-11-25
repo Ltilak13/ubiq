@@ -49,10 +49,113 @@ def _assessment(binding: Binding, target: Target, ident: str, file: str) -> dict
             'findings': findings}
 
 
+def _wrap(record: dict, file: str, pointer: str, repository: dict) -> dict:
+    return {'identity': {'repository': repository['root'], 'document': file, 'id': record.get('id')},
+            'repository': repository, 'metadata': {'file': file, 'pointer': pointer}, 'record': record}
+
+
+def _annotate(item: dict, bindings: list[tuple[Binding, Target]], owner: str, file: str) -> None:
+    checked = [_assessment(b, t, owner, file) for b, t in bindings]
+    item['assessments'] = checked
+    item['conformance'] = ('invalid' if any(a['conformance'] == 'invalid' for a in checked)
+                           else 'valid')
+    evidence = {a['evidence_status'] for a, (b, _) in zip(checked, bindings)
+                if b.extension is not None}
+    item['evidence_status'] = ('not_assessed' if item['conformance'] == 'invalid' else
+                               next((s for s in ('not_assessed', 'invalid', 'missing', 'stale')
+                                     if s in evidence), 'fresh'))
+
+
+def _matches(item: dict, kind: str | None, domain: str | None) -> bool:
+    return ((kind is None or item['record'].get('kind') == kind)
+            and (domain is None or item['record'].get('domain') == domain))
+
+
+def _endpoint(declared_id, candidates: list[dict], owners: set[int],
+              record_bindings: dict[tuple[str, str], set[int]]) -> dict:
+    endpoint: dict = {'declared_id': declared_id}
+    if not isinstance(declared_id, str) or not declared_id.strip():
+        return {**endpoint, 'status': 'invalid'}
+    candidates = [item for item in candidates if owners & record_bindings[
+        (item['metadata']['file'], item['metadata']['pointer'])]]
+    if len(candidates) == 1:
+        item = candidates[0]
+        if owners <= record_bindings[(item['metadata']['file'], item['metadata']['pointer'])]:
+            return {**endpoint, 'status': 'resolved', 'identity': item['identity'],
+                    'metadata': item['metadata']}
+    endpoint['status'] = 'ambiguous' if len(candidates) > 1 else 'missing'
+    if candidates:
+        endpoint['candidates'] = [{'identity': item['identity'], 'metadata': item['metadata']}
+                                  for item in candidates]
+    return endpoint
+
+
+def _follow(seed: dict, direction: str, relation: str | None, kind: str | None,
+            domain: str | None, records: dict[tuple[str, str], dict],
+            edges: dict[tuple[str, str], dict], record_bindings: dict[tuple[str, str], set[int]],
+            edge_bindings: dict[tuple[str, str], set[int]],
+            assessments: dict[str, list[tuple[Binding, Target]]]) -> tuple[list[dict], list[dict], list[dict]]:
+    source, neighbor_end = ('to', 'from') if direction == 'incoming' else ('from', 'to')
+    file = seed['metadata']['file']
+    indexed: dict[str, list[dict]] = {}
+    for (document, _), item in sorted(records.items()):
+        if document == file:
+            indexed.setdefault(item['identity']['id'], []).append(item)
+    neighbors: dict[tuple[str, str], dict] = {}
+    relationships, diagnostics = [], []
+    for key, edge in sorted(edges.items()):
+        declaration = edge['record']
+        if key[0] != file or declaration.get(source) != seed['identity']['id']:
+            continue
+        if relation is not None and declaration.get('kind') != relation:
+            continue
+        endpoints = {}
+        for end in ('from', 'to'):
+            ident = declaration.get(end)
+            candidates = indexed.get(ident, []) if isinstance(ident, str) else []
+            endpoints[end] = _endpoint(ident, candidates, edge_bindings[key], record_bindings)
+        edge['endpoints'] = endpoints
+        owner = declaration.get('from')
+        _annotate(edge, assessments[file], owner if isinstance(owner, str) else '', file)
+        edge['evidence_scope'] = 'source_record'
+        statuses = {endpoint['status'] for endpoint in endpoints.values()}
+        edge['resolution'] = next((state for state in ('invalid', 'ambiguous', 'missing')
+                                   if state in statuses), 'resolved')
+        if edge['conformance'] == 'invalid':
+            edge['resolution'] = 'invalid'
+        if edge['resolution'] == 'resolved':
+            for binding, _ in assessments[file]:
+                if binding.index not in edge_bindings[key] or binding.extension is None:
+                    continue
+                role = (binding.extension['roles'].get(declaration.get('kind'))
+                        if isinstance(declaration.get('kind'), str) else None)
+                if role is None or any(records[(file, endpoints[end]['metadata']['pointer'])]['record'].get('kind')
+                                       not in role[end] for end in ('from', 'to')):
+                    edge['resolution'] = 'invalid'
+                    break
+        endpoint = endpoints[neighbor_end]
+        neighbor = (records[(file, endpoint['metadata']['pointer'])]
+                    if endpoint['status'] == 'resolved' else None)
+        if edge['resolution'] != 'resolved':
+            diagnostics.append({'code': 'Q002', 'file': file, 'pointer': key[1],
+                                'message': f"relationship {key[1]} has {edge['resolution']} endpoints or types"})
+        elif neighbor is not None and not _matches(neighbor, kind, domain):
+            continue
+        relationships.append(edge)
+        if neighbor is not None and _matches(neighbor, kind, domain):
+            neighbors[(file, neighbor['metadata']['pointer'])] = neighbor
+    return [item for _, item in sorted(neighbors.items())], relationships, diagnostics
+
+
 def select(cfg: Config, glossary: Glossary, *, kind: str | None = None,
            domain: str | None = None, ident: str | None = None,
-           document: str | None = None) -> dict:
+           document: str | None = None, direction: str | None = None,
+           relation: str | None = None) -> dict:
     """Select local declarations. Integrity diagnostics do not assert semantic truth."""
+    if direction is None and relation is not None:
+        direction = 'outgoing'
+    if direction not in (None, 'incoming', 'outgoing') or direction is not None and ident is None:
+        raise ValueError('relationship queries require an ID and an incoming or outgoing direction')
     bindings = assess_schemas(cfg, glossary, retain_scan_errors=True)
     repository = _repository(cfg.root)
     diagnostics: list[dict] = []
@@ -60,6 +163,9 @@ def select(cfg: Config, glossary: Glossary, *, kind: str | None = None,
     documents: set[str] = set()
     collections: set[tuple[str, str]] = set()
     records: dict[tuple[str, str], dict] = {}
+    edges: dict[tuple[str, str], dict] = {}
+    record_bindings: dict[tuple[str, str], set[int]] = {}
+    edge_bindings: dict[tuple[str, str], set[int]] = {}
     assessments: dict[str, list[tuple[Binding, Target]]] = {}
 
     # Assess every overlapping binding, including ordinary structural schemas.
@@ -100,10 +206,18 @@ def select(cfg: Config, glossary: Glossary, *, kind: str | None = None,
                     if not isinstance(record, dict) or not isinstance(record.get('id'), str):
                         continue
                     pointer = _pointer((collection, index))
-                    records.setdefault((file, pointer), {
-                        'identity': {'repository': str(cfg.root), 'document': file, 'id': record['id']},
-                        'repository': repository, 'metadata': {'file': file, 'pointer': pointer},
-                        'record': record})
+                    records.setdefault((file, pointer), _wrap(record, file, pointer, repository))
+                    record_bindings.setdefault((file, pointer), set()).add(binding.index)
+            if direction is not None:
+                collection = binding.extension['relationships']
+                items = target.data.get(collection)
+                if isinstance(items, list):
+                    for index, edge in enumerate(items):
+                        if not isinstance(edge, dict):
+                            continue
+                        pointer = _pointer((collection, index))
+                        edges.setdefault((file, pointer), _wrap(edge, file, pointer, repository))
+                        edge_bindings.setdefault((file, pointer), set()).add(binding.index)
 
     # Non-collection documents are not query inputs. A non-collection schema that
     # also selects a queried document still contributes its conformance result.
@@ -119,15 +233,7 @@ def select(cfg: Config, glossary: Glossary, *, kind: str | None = None,
                                for f in target.integrity or [])
 
     for (file, _), item in sorted(records.items()):
-        checked = [_assessment(b, t, item['identity']['id'], file) for b, t in assessments[file]]
-        item['assessments'] = checked
-        item['conformance'] = ('invalid' if any(a['conformance'] == 'invalid' for a in checked)
-                               else 'valid')
-        evidence = {a['evidence_status'] for a, (b, _) in zip(checked, assessments[file])
-                    if b.extension is not None}
-        item['evidence_status'] = ('not_assessed' if item['conformance'] == 'invalid' else
-                                   next((s for s in ('not_assessed', 'invalid', 'missing', 'stale')
-                                         if s in evidence), 'fresh'))
+        _annotate(item, assessments[file], item['identity']['id'], file)
 
     available = [item for (file, _), item in sorted(records.items())
                  if document is None or file == document]
@@ -142,18 +248,31 @@ def select(cfg: Config, glossary: Glossary, *, kind: str | None = None,
             selection['candidates'] = [{**item['identity'], 'pointer': item['metadata']['pointer']}
                                        for item in available]
             available = []
-    results = [item for item in available
-               if (kind is None or item['record'].get('kind') == kind)
-               and (domain is None or item['record'].get('domain') == domain)]
+    results = [item for item in available if _matches(item, kind, domain)]
+    relationships: list[dict] = []
+    if direction is not None:
+        selection.update(direction=direction, relation=relation)
+        results = []
+        if len(available) == 1:
+            seed = available[0]
+            selection['seed'] = {'identity': seed['identity'], 'metadata': seed['metadata']}
+            results, relationships, failures = _follow(
+                seed, direction, relation, kind, domain, records, edges,
+                record_bindings, edge_bindings, assessments)
+            diagnostics.extend(failures)
+            complete = complete and not failures
     status = 'partial' if not complete else (
         selection['status'] if selection['status'] in ('not_found', 'ambiguous') else 'ok')
     # Identical overlapping bindings can produce identical findings apart from the
     # binding index. Retain both so each schema assessment stays attributable.
     diagnostics.sort(key=lambda d: json.dumps(d, sort_keys=True))
-    return {'version': VERSION, 'status': status, 'complete': complete,
+    report = {'version': VERSION, 'status': status, 'complete': complete,
             'scope': {'repository': str(cfg.root), 'documents': sorted(documents),
                       'collections': len(collections)},
             'selection': selection, 'results': results, 'diagnostics': diagnostics}
+    if direction is not None:
+        report['relationships'] = relationships
+    return report
 
 
 def exit_code(report: dict) -> int:
@@ -166,6 +285,10 @@ def render(report: dict) -> str:
     for item in report['results']:
         lines.append(f"\n{item['identity']['id']} — {item['metadata']['file']}#{item['metadata']['pointer']}")
         lines.append(json.dumps(item, indent=2, sort_keys=True, ensure_ascii=False))
+    for edge in report.get('relationships', []):
+        lines.append(f"\nrelationship {edge['identity']['id']} — "
+                     f"{edge['metadata']['file']}#{edge['metadata']['pointer']}")
+        lines.append(json.dumps(edge, indent=2, sort_keys=True, ensure_ascii=False))
     if report['selection'].get('candidates'):
         lines.append(json.dumps(report['selection'], indent=2, sort_keys=True, ensure_ascii=False))
     for diagnostic in report['diagnostics']:
