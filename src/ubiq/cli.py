@@ -9,6 +9,8 @@
                                      marked names (candidate_shapes) in N+ docs with no record
   ubiq impact --since REV [--root DIR] [--json] [--depth N]
                                      changed records and the callers they affect
+  ubiq compare --since REV [--root DIR] [--json | --markdown]
+                                     new, resolved, and unchanged findings
 """
 
 from __future__ import annotations
@@ -363,7 +365,13 @@ def _assembly_errors(glossary, extra) -> list[Diagnostic]:
 
 def cmd_check(args) -> int:
     root = Path(args.root).resolve()
-    result = build(root)
+    diags, terms, refs = _check(root)
+    return _report(diags, root, args.json, terms, refs)
+
+
+def _check(root: Path, cfg: Config | None = None) -> tuple[list[Diagnostic], int, int]:
+    """Every check diagnostic, with the term and reference counts."""
+    result = build(root, cfg=cfg)
     glossary, cfg = result.glossary, result.config
     layout = _layout(cfg)
     refs = across_repositories(result.refs, layout, tuple(r.glob for r in cfg.part_rules))
@@ -380,7 +388,7 @@ def cmd_check(args) -> int:
         diags.extend(check_schemas(cfg, glossary))
     live = [path for path in result.docs if path not in result.historical]
     diags.extend(check_edges(glossary, refs, cfg.edges, root, live, layout))
-    return _report(diags, root, args.json, len(glossary.terms), len(result.refs))
+    return diags, len(glossary.terms), len(result.refs)
 
 
 def _installed(cfg: Config) -> list[Path]:
@@ -538,6 +546,47 @@ def cmd_impact(args) -> int:
     print(f"{len(files)} files, {len(changes)} records changed, {len(affected)} affected"
           + ("" if not gaps else f", INCOMPLETE: {len(gaps)} gap{'s' * (len(gaps) != 1)}"))
     return 0
+
+
+def _findings(diags: list[Diagnostic], root: Path) -> list[dict]:
+    return [{"code": d.code, "severity": d.severity, "file": _display_path(d.file, root),
+             "line": d.line, "message": d.message} for d in diags]
+
+
+def cmd_compare(args) -> int:
+    root = Path(args.root).resolve()
+    try:
+        baseline = review.resolve_baseline(root, args.since)
+        renamed = {c.source: c.file for c in review.changed_files(baseline) if c.source}
+        with review.checkout(baseline) as base_root:
+            try:
+                base_diags, _, _ = _check(base_root, _baseline_config(base_root, root))
+            except (GlobError, ConflictingGlossary) as exc:
+                raise review.BaselineError(f"baseline cannot be checked: {exc}") from exc
+            base = _findings(base_diags, base_root)
+            for f in base:
+                f["file"] = renamed.get(f["file"], f["file"])
+                f["message"] = f["message"].replace(str(base_root), str(root))
+        try:
+            head = _findings(_check(root)[0], root)
+        except (InvalidConfig, ConflictingGlossary, GlobError) as exc:
+            raise review.BaselineError(f"head cannot be checked: {exc}") from exc
+    except review.BaselineError as exc:
+        result = {"status": "unavailable", "reason": str(exc)}
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"{'**ubiq:** ' if args.markdown else ''}comparison unavailable: {exc}")
+        return 2
+    new, resolved, unchanged = review.compare_findings(base, head)
+    if args.json:
+        print(json.dumps({"baseline": baseline.as_json(), "status": "ok",
+                          "counts": {"new": len(new), "resolved": len(resolved),
+                                     "unchanged": len(unchanged)},
+                          "new": new, "resolved": resolved, "unchanged": unchanged}, indent=2))
+    else:
+        print(review.summary(new, resolved, unchanged, markdown=args.markdown))
+    return 1 if any(f["severity"] == "error" for f in new) else 0
 
 
 def cmd_overlap(args) -> int:
@@ -776,6 +825,15 @@ def main(argv: list[str] | None = None) -> int:
     im.add_argument("--depth", type=_positive, default=None,
                     help="stop after this many caller hops (default: no limit)")
     im.set_defaults(fn=cmd_impact)
+
+    cp = sub.add_parser("compare", help="new, resolved, and unchanged findings since a baseline")
+    cp.add_argument("--since", required=True, metavar="REV",
+                    help="baseline: the merge base of REV and HEAD")
+    cp.add_argument("--root", default=".")
+    out = cp.add_mutually_exclusive_group()
+    out.add_argument("--json", action="store_true")
+    out.add_argument("--markdown", action="store_true", help="a PR-ready summary")
+    cp.set_defaults(fn=cmd_compare)
 
     o = sub.add_parser("overlap", help="list near-duplicate prose shared across records")
     o.add_argument("--root", default=".")

@@ -291,3 +291,42 @@ def incomplete(*sides: Side) -> list[dict]:
     out += [{"side": s.name, "file": f, "reason": r}
             for s in sides for f, r in sorted(s.invalid.items())]
     return sorted(out, key=lambda i: (i["side"] != "baseline", i["file"]))
+
+
+def _order(f: dict) -> tuple:
+    return (f["file"], f["line"], f["code"], f["message"])
+
+
+def compare_findings(base: list[dict], head: list[dict]) -> tuple[list, list, list]:
+    """(new, resolved, unchanged). Identity is code, file, and message; identical
+    findings pair in line order, so the extra ones are the latest lines."""
+    def group(findings: list[dict]) -> dict[tuple, list[dict]]:
+        out: dict[tuple, list[dict]] = {}
+        for f in sorted(findings, key=_order):
+            out.setdefault((f["code"], f["file"], f["message"]), []).append(f)
+        return out
+    before, after = group(base), group(head)
+    new, resolved, unchanged = [], [], []
+    for key in before.keys() | after.keys():
+        old, now = before.get(key, []), after.get(key, [])
+        kept = min(len(old), len(now))
+        unchanged += now[:kept]
+        new += now[kept:]
+        resolved += old[kept:]
+    return sorted(new, key=_order), sorted(resolved, key=_order), sorted(unchanged, key=_order)
+
+
+def summary(new: list[dict], resolved: list[dict], unchanged: list[dict],
+            markdown: bool) -> str:
+    """Counts, then new and resolved findings. Unchanged findings are only counted."""
+    counts = f"{len(new)} new, {len(resolved)} resolved, {len(unchanged)} unchanged"
+    lines = [f"**ubiq:** {counts}" if markdown else counts]
+    for title, findings in (("New", new), ("Resolved", resolved)):
+        if not findings:
+            continue
+        lines += ["", f"{title}:"] if markdown else []
+        for f in findings:
+            where = f"{f['file']}:{f['line']}" if f["line"] else f["file"]
+            lines.append(f"- `{f['code']}` {where} {f['message']}" if markdown
+                         else f"{title.lower()} {where}: {f['code']} {f['message']}")
+    return "\n".join(lines)

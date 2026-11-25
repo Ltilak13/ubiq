@@ -246,6 +246,7 @@ ubiq graph skill:ship                  # invoke, include, and route edges from a
 ubiq graph part:checkout --callers     # who reuses a shared part
 ubiq overlap --unit line               # prose that several records repeat
 ubiq impact --since main              # changed records and the callers they affect
+ubiq compare --since main --markdown  # new and resolved findings for a PR comment
 ```
 
 `--kind` is repeatable: results include any selected kind (`explicit`, `id`,

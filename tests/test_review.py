@@ -13,7 +13,6 @@ import pytest
 from ubiq.cli import main
 
 FIXTURES = Path(__file__).parent / "fixtures" / "review"
-COMPARE = pytest.mark.xfail(strict=True, reason="M5: ubiq compare is not implemented")
 
 SKILLS_CONFIG = """\
 glossary:
@@ -185,28 +184,24 @@ def compare(root: Path, capsys) -> tuple[int, dict]:
     return code, out
 
 
-@COMPARE
 def test_compare_classifies_by_identity_not_line(tmp_path, capsys):
     root = ghosts_repo(tmp_path, "[[ghost1]] there.\n\n[[ghost2]] here.\n")
     (root / "doc.md").write_text("Intro.\n\nMore.\n\n[[ghost2]] here.\n\n[[ghost3]] there.\n")
     assert compare(root, capsys) == (1, expected("compare-classify"))
 
 
-@COMPARE
 def test_compare_follows_renamed_files(tmp_path, capsys):
     root = ghosts_repo(tmp_path, "Intro.\n\n[[ghost2]] here.\n")
     shutil.move(root / "doc.md", root / "guide.md")
     assert compare(root, capsys) == (0, expected("compare-rename"))
 
 
-@COMPARE
 def test_compare_counts_duplicate_findings(tmp_path, capsys):
     root = ghosts_repo(tmp_path, "[[ghost]]\n[[ghost]]\n")
     (root / "doc.md").write_text("[[ghost]]\n[[ghost]]\n[[ghost]]\n")
     assert compare(root, capsys) == (1, expected("compare-duplicates"))
 
 
-@COMPARE
 def test_compare_new_warning_only_exits_0(tmp_path, capsys):
     root = ghosts_repo(tmp_path, "Uses [[tdd]].\n")
     (root / "doc.md").write_text("No links.\n")
@@ -214,7 +209,6 @@ def test_compare_new_warning_only_exits_0(tmp_path, capsys):
     assert code == 0 and [f["code"] for f in out["new"]] == ["W001"]
 
 
-@COMPARE
 def test_compare_unavailable_baseline_is_not_zero_findings(tmp_path, capsys):
     root = ghosts_repo(tmp_path, "[[ghost]]\n", GHOSTS_CONFIG + "bogus: 1\n")
     (root / "ubiq.yaml").write_text(GHOSTS_CONFIG)
@@ -223,7 +217,6 @@ def test_compare_unavailable_baseline_is_not_zero_findings(tmp_path, capsys):
     assert not {"new", "resolved", "unchanged", "counts"} & out.keys()
 
 
-@COMPARE
 def test_compare_unavailable_head_is_not_zero_findings(tmp_path, capsys):
     root = ghosts_repo(tmp_path, "[[ghost]]\n")
     (root / "ubiq.yaml").write_text(GHOSTS_CONFIG + "bogus: 1\n")
@@ -231,14 +224,12 @@ def test_compare_unavailable_head_is_not_zero_findings(tmp_path, capsys):
     assert code == 2 and out["status"] == "unavailable" and "head" in out["reason"]
 
 
-@COMPARE
 def test_compare_invalid_rev_is_unavailable(tmp_path, capsys):
     root = ghosts_repo(tmp_path, "[[ghost]]\n")
     code, out = run_json(capsys, "compare", "--since", "nosuchref", "--root", str(root))
     assert code == 2 and out["status"] == "unavailable" and "nosuchref" in out["reason"]
 
 
-@COMPARE
 def test_compare_markdown_summary(tmp_path, capsys):
     root = ghosts_repo(tmp_path, "[[ghost1]] there.\n\n[[ghost2]] here.\n")
     (root / "doc.md").write_text("[[ghost2]] here.\n\n[[ghost3]] there.\n")
