@@ -569,9 +569,15 @@ def cmd_compare(args) -> int:
             except (GlobError, ConflictingGlossary) as exc:
                 raise review.BaselineError(f"baseline cannot be checked: {exc}") from exc
             base = _findings(base_diags, base_root)
+            # The temporary checkout stands for the real repository: its root and
+            # top level (reached through in-repo links) take the real paths.
+            tree = str(base_root)[:-len(baseline.prefix) - 1] if baseline.prefix else str(base_root)
             for f in base:
+                for temp, real in ((str(base_root), str(root)), (tree, str(baseline.toplevel))):
+                    f["message"] = f["message"].replace(temp, real)
+                    if f["file"].startswith(temp + "/"):
+                        f["file"] = _display_path(Path(real + f["file"][len(temp):]), root)
                 f["file"] = renamed.get(f["file"], f["file"])
-                f["message"] = f["message"].replace(str(base_root), str(root))
         try:
             head = _findings(_check(root)[0], root)
         except (InvalidConfig, ConflictingGlossary, GlobError) as exc:

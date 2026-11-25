@@ -329,3 +329,21 @@ def test_compare_includes_untracked_files(tmp_path, capsys):
     (root / "notes.md").write_text("[[ghost]]\n")
     code, out = compare(root, capsys)
     assert code == 1 and [(f["file"], f["code"]) for f in out["new"]] == [("notes.md", "E002")]
+
+
+def test_compare_maps_in_repo_links_from_a_subdirectory_root(tmp_path, capsys):
+    """A link from the root to another folder of the repository reads the baseline
+    checkout; its findings carry the real path, not the temporary one."""
+    repo = tmp_path / "repo"
+    (repo / "shared/s").mkdir(parents=True)
+    (repo / "shared/s/doc.md").write_text("[[ghost]]\n")
+    (repo / "docs/glossary").mkdir(parents=True)
+    (repo / "docs/glossary/tdd.md").write_text(TDD)
+    (repo / "docs/ubiq.yaml").write_text(GHOSTS_CONFIG)
+    (repo / "docs/a.md").write_text("Body.\n")
+    (repo / "docs/s").symlink_to("../shared/s")
+    commit_repo(repo, {})
+    (repo / "docs/a.md").write_text("Edited body.\n")
+    code, out = compare(repo / "docs", capsys)
+    assert code == 0 and out["counts"] == {"new": 0, "resolved": 0, "unchanged": 2}
+    assert "ubiq-baseline" not in json.dumps(out)
