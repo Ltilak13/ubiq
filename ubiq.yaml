@@ -1,5 +1,8 @@
 # ubiq self-configuration — ubiq lints its own docs (dogfood).
 glossary:
+  - glob: "docs/goals/*-goal.md"
+    term_field: name
+    ns: goal
   - "glossary/**/*.md"
   - glob: "skills/**/SKILL.md"
     term_field: name
@@ -34,6 +37,9 @@ edges:
 
 # Typed contracts for each owned asset family.
 schemas:
+  - schema: ".ubiq/schemas/goal.json"
+    files: ["docs/goals/*-goal.md"]
+    format: frontmatter
   - schema: ".ubiq/schemas/glossary-record.json"
     files: ["glossary/*.md", ".ubiq/glossary/*.md"]
     format: frontmatter
@@ -61,6 +67,7 @@ schemas:
 # selecting one later means adding its schema, not an exclusion.
 coverage:
   files:
+    - "docs/goals/*-goal.md"
     - "**/SKILL.md"
     - "skills/*/agents/*.yaml"
     - "glossary/*.md"

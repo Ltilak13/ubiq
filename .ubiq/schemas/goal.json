@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Goal frontmatter",
+  "type": "object",
+  "required": [
+    "name",
+    "status",
+    "criteria"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "in-progress"
+      ]
+    },
+    "criteria": {
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^AC[1-9][0-9]*$": {
+          "type": "object",
+          "required": [
+            "assessment",
+            "support",
+            "gap"
+          ],
+          "properties": {
+            "assessment": {
+              "enum": [
+                "unassessed",
+                "partial"
+              ]
+            },
+            "support": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "feature",
+                  "implementation",
+                  "check"
+                ],
+                "properties": {
+                  "feature": {
+                    "type": "string",
+                    "pattern": "\\S"
+                  },
+                  "implementation": {
+                    "$ref": "#/$defs/location"
+                  },
+                  "check": {
+                    "$ref": "#/$defs/location"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "gap": {
+              "type": "string",
+              "pattern": "\\S"
+            }
+          },
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "assessment": {
+                    "const": "partial"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "support": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "location": {
+      "type": "object",
+      "required": [
+        "path",
+        "anchor"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+        },
+        "anchor": {
+          "type": "string",
+          "pattern": "\\S"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
