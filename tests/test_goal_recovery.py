@@ -12,11 +12,25 @@ from ubiq.cli import main
 from ubiq.schemas import load_data
 
 
-def test_goal_evidence_repair_and_rollback(tmp_path, capsys):
-    root = tmp_path / 'repository'
-    shutil.copytree(ROOT, root, ignore=shutil.ignore_patterns(
+def copy_repository(source, target):
+    shutil.copytree(source, target, symlinks=True, ignore=shutil.ignore_patterns(
         '.git', '.venv', '.pytest_cache', '.mypy_cache', '.ruff_cache',
         '__pycache__', 'node_modules', '.claude', '*.egg-info'))
+
+
+def test_recovery_copy_preserves_dangling_symlinks(tmp_path):
+    source = tmp_path / 'source'
+    source.mkdir()
+    (source / 'tool').symlink_to('missing-tool')
+    target = tmp_path / 'copy'
+    copy_repository(source, target)
+    assert (target / 'tool').is_symlink()
+    assert (target / 'tool').readlink() == Path('missing-tool')
+
+
+def test_goal_evidence_repair_and_rollback(tmp_path, capsys):
+    root = tmp_path / 'repository'
+    copy_repository(ROOT, root)
     source = Path('docs/goals/domain-schema-goal.md')
     originals = {path: (ROOT / path).read_bytes() for path in (source, Path(MODEL))}
 

@@ -13,7 +13,8 @@ PYTHONPATH=src python -m pytest tests/test_goal_recovery.py -q
 
 The [test](../tests/test_goal_recovery.py) copies the repository into pytest's
 temporary directory. It excludes Git state, caches, installed dependencies, and
-local agent worktrees. All edits occur in that copy. The original source and
+local agent worktrees. It preserves symlinks without reading their targets,
+including links to tools that are absent on another machine. All edits occur in that copy. The original source and
 metadata must remain unchanged.
 
 ## Acceptance sequence
