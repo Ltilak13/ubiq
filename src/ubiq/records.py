@@ -229,7 +229,7 @@ class Glossary:
         if ns is None:
             ns, name = self.split(name)
         if ns is not None and "/" in ns and normalize(ns) not in self.namespaces:
-            dependency, _, namespace = ns.rpartition("/")
+            dependency, _, namespace = ns.partition("/")
             other = self.external.get(dependency)
             return other.resolve(name, namespace) if other is not None else []
         candidates = self.by_name.get(normalize(name), [])
