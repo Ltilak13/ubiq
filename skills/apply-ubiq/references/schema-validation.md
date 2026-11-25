@@ -105,5 +105,5 @@ Schema conformance errors include the file and JSON Pointer. These errors fail
 
 When a source changes, inspect its meaning before updating its evidence digest.
 Stage the schema and corresponding metadata changes together. Use the
-[schema change workflow](schema-workflow.md) for migration, review, and promotion.
+[schema change workflow](../../references/schema-workflow.md) for migration, review, and promotion.
 The normal checker validates; it never rewrites source files or promotes a candidate.

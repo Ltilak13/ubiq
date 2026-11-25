@@ -1,6 +1,7 @@
 """Composition edges (`ubiq graph`), their checks (E011, W003, W004), and `ubiq overlap`."""
 
 import json
+from pathlib import Path
 
 from test_ubiq import make_repo
 
@@ -677,3 +678,18 @@ def test_reference_severity_preserves_target_validation(tmp_path, capsys):
             assert not drift
         else:
             assert len(drift) == 1 and drift[0]["severity"] == ("warning" if severity == "warn" else "error")
+
+
+def test_bundled_skills_include_schema_workflow(capsys):
+    root = Path(__file__).resolve().parents[1]
+    status, out = run(root, capsys, "graph")
+    assert status == 0
+    callers = {
+        (edge["source"], edge["file"])
+        for edge in out["edges"]
+        if edge["kind"] == "include" and edge["target"] == "part:schema change workflow"
+    }
+    assert {
+        ("skill:apply ubiq", "skills/apply-ubiq/SKILL.md"),
+        ("skill:maintain ubiq", "skills/maintain-ubiq/SKILL.md"),
+    } <= callers
