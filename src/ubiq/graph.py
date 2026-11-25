@@ -159,14 +159,16 @@ def blocks_invoke(term: Term, blocked_by: str | None) -> bool:
     return blocked_by is not None and str(_meta(term).get(blocked_by)).lower() == "true"
 
 
-def _blocked_invokes(edges: list[Edge], cfg: EdgeConfig) -> list[Diagnostic]:
+def _blocked_invokes(edges: list[Edge], cfg: EdgeConfig,
+                     layout: Layout | None = None) -> list[Diagnostic]:
     """W003: an invoke edge to a record that the model cannot invoke."""
     diags = []
     for e in edges:
-        if e.kind == "invoke" and blocks_invoke(e.target, cfg.blocked_by):
+        target_cfg = layout.settings(e.target, cfg) if layout else cfg
+        if e.kind == "invoke" and blocks_invoke(e.target, target_cfg.blocked_by):
             diags.append(Diagnostic(
                 "W003", f"{e.source.qualified} invokes {e.target.qualified}, which sets "
-                f"{cfg.blocked_by}: true — include its file or allow model invocation",
+                f"{target_cfg.blocked_by}: true — include its file or allow model invocation",
                 e.file, e.line))
     return diags
 
@@ -228,7 +230,8 @@ def _declared_inputs(term: Term, name: str) -> dict[str, list[str]] | None:
     return raw
 
 
-def _part_inputs(glossary: Glossary, edges: list[Edge], cfg: EdgeConfig) -> list[Diagnostic]:
+def _part_inputs(glossary: Glossary, edges: list[Edge], cfg: EdgeConfig,
+                 layout: Layout | None = None) -> list[Diagnostic]:
     """E012: an include names a declared value for each input of its part.
 
     A part lists enumerated inputs in frontmatter (`inputs: {mode: [new, existing]}`).
@@ -237,12 +240,14 @@ def _part_inputs(glossary: Glossary, edges: list[Edge], cfg: EdgeConfig) -> list
     """
     diags: list[Diagnostic] = []
     declared: dict[int, dict[str, list[str]]] = {}
-    for t in glossary.terms:
-        if t.ns not in cfg.include_ns:
+    terms = {id(t): t for t in [*glossary.terms, *(e.target for e in edges)]}
+    for t in terms.values():
+        target_cfg = layout.settings(t, cfg) if layout else cfg
+        if t.ns not in target_cfg.include_ns:
             continue
-        inputs = _declared_inputs(t, cfg.inputs)
+        inputs = _declared_inputs(t, target_cfg.inputs)
         if inputs is None:
-            diags.append(Diagnostic("E012", f"{t.qualified} {cfg.inputs}: expected a mapping "
+            diags.append(Diagnostic("E012", f"{t.qualified} {target_cfg.inputs}: expected a mapping "
                                     "of input names to lists of values", t.file))
         elif inputs:
             declared[id(t)] = inputs
@@ -258,7 +263,14 @@ def _part_inputs(glossary: Glossary, edges: list[Edge], cfg: EdgeConfig) -> list
         target = e.target.file.resolve()
         for start, end, spec in links:
             dest = _doc_link_path(e.file, spec)
-            if line_of(start) != e.line or dest is None or dest.resolve() != target:
+            if line_of(start) != e.line or dest is None:
+                continue
+            matches = dest.resolve() == target
+            if not matches and layout is not None and (home := layout.home(e.file)):
+                landed, directory = layout.land(e.file, home, dest)
+                owner = layout.external.get(directory) if directory is not None else None
+                matches = landed is not None and owner is not None and owner(landed) is e.target
+            if not matches:
                 continue
             stop = min([s for s, _, _ in links if s >= end]
                        + [i if (i := text.find("\n", end)) >= 0 else len(text)])
@@ -289,6 +301,8 @@ class Repository:
     root: Path
     installed: list[Path]
     glossary: Glossary
+    named: bool = False
+    config: EdgeConfig | None = None
 
     def __post_init__(self):
         for t in self.glossary.terms:
@@ -313,6 +327,10 @@ class Layout:
     partial: bool = False
     unread: list[tuple[Path, str]] = field(default_factory=list)
     problems: list[Diagnostic] = field(default_factory=list)
+
+    def settings(self, term: Term, default: EdgeConfig) -> EdgeConfig:
+        return next((repo.config for repo in self.repositories
+                     if repo.config is not None and any(t is term for t in repo.glossary.terms)), default)
 
     @classmethod
     def build(cls, local: list[Path], external: Sequence[Repository] = (),
@@ -492,8 +510,8 @@ def check_edges(glossary: Glossary, refs: list[Ref], cfg: EdgeConfig, root: Path
     edges = build_edges(glossary, refs, cfg, root, layout.local) + cross_edges(docs, layout, owner)
     # W004 and a missing-edge W005 check links, not edges, so no edge kind sets them.
     return (at(cfg.severity.get("include"),
-               _include_cycles(edges) + _part_inputs(glossary, edges, cfg))
-            + at(cfg.severity.get("invoke"), _blocked_invokes(edges, cfg))
+               _include_cycles(edges) + _part_inputs(glossary, edges, cfg, layout))
+            + at(cfg.severity.get("invoke"), _blocked_invokes(edges, cfg, layout))
             + _install_layout(docs, layout)
             + _drift(glossary, refs, edges, cfg, owner))
 

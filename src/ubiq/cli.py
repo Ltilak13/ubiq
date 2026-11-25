@@ -32,6 +32,7 @@ from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
 from .config import Config, InvalidConfig, load_config
+from .dependencies import validate_checkout
 from .discovery import discover, init_assets
 from .globs import Glob, GlobError, first_match
 from .graph import KINDS as GRAPH_KINDS
@@ -154,6 +155,7 @@ class Build:
     diagnostics: list[Diagnostic]  # assembly errors: catalogs, unreadable files
     docs: list[Path]               # every scanned document, resolved
     historical: set[Path]          # the historical subset of `docs`
+    layout: Layout
 
 
 def _glossary(cfg: Config, trace: ScanTrace | None = None) -> tuple[Glossary, list[Path]]:
@@ -172,6 +174,9 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None)
     root = root.resolve()
     cfg = cfg or load_config(root)
     glossary, overlay_files = _glossary(cfg, trace)
+    layout = _layout(cfg)
+    for repository in layout.repositories:
+        glossary.add_external(repository.name, repository.glossary)
 
     if trace is not None:
         for term in glossary.terms:
@@ -211,7 +216,7 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None)
         except CatalogError as e:
             extra.append(Diagnostic("E005", str(e), spec.file))
 
-    return Build(glossary, refs, cfg, extra, doc_files, hist_set)
+    return Build(glossary, refs, cfg, extra, doc_files, hist_set, layout)
 
 
 INIT_CONFIG = """\
@@ -375,7 +380,7 @@ def _check(root: Path, cfg: Config | None = None) -> tuple[list[Diagnostic], int
     """Every check diagnostic, with the term and reference counts."""
     result = build(root, cfg=cfg)
     glossary, cfg = result.glossary, result.config
-    layout = _layout(cfg)
+    layout = result.layout
     refs = [r for r in across_repositories(result.refs, layout,
                                            tuple(r.glob for r in cfg.part_rules))
             if not (r.kind == "link" and layout.covers_missing_link(r.file, r.target))]
@@ -404,27 +409,44 @@ def _layout(cfg: Config) -> Layout:
     installed files and records. Only that repository's glossary is read: one
     frontmatter per record, none of its other documents."""
     external, unread = [], []
-    names = Counter(repo.resolve().name for repo in cfg.edges.external)
-    for repo in cfg.edges.external:
+    names = Counter(dep.path.resolve().name for dep in cfg.edges.external)
+    for dependency in cfg.edges.external:
+        repo = dependency.path
         if not repo.is_dir():
+            if dependency.name is not None:
+                if dependency.required or repo.exists():
+                    raise InvalidConfig(f"dependency {dependency.name!r} at {repo}: checkout directory not found")
+                continue
             unread.append((repo, "was not found"))
             continue
         try:
-            other = load_config(repo)
+            other = load_config(repo.resolve())
             glossary, _ = _glossary(other)
+            if dependency.name is not None and glossary.invalid:
+                raise InvalidConfig(f"dependency {dependency.name!r}: {glossary.invalid}")
             files = _installed(other)
+            if dependency.revision:
+                docs = _close_docs(other.root, _expand(other.docs, other.ignore, None, "docs"),
+                                   other.ignore, None)
+                validate_checkout(dependency, other,
+                                  [*docs, *files, *(t.file for t in glossary.terms),
+                                   *glossary.overlay_sources, *glossary.overlay_sources.values()])
         except GlobError as exc:
+            if dependency.name is not None:
+                raise InvalidConfig(f"dependency {dependency.name!r} at {repo}: {exc}") from exc
             unread.append((repo, f"cannot be scanned ({exc})"))
             continue
         except (InvalidConfig, ConflictingGlossary) as exc:
+            if dependency.name is not None:
+                raise InvalidConfig(f"dependency {dependency.name!r} at {repo}: {exc}") from exc
             unread.append((repo, f"has invalid configuration ({exc})"))
             continue
-        if not files:
+        if not files and dependency.name is None:
             unread.append((repo, "installs nothing (no edges.install match)"))
         # Records take the directory name, or the full path when two repositories share it.
-        name = repo.resolve().name
-        external.append(Repository(name if names[name] == 1 else str(repo.resolve()),
-                                   repo, files, glossary))
+        name = dependency.name or repo.resolve().name
+        external.append(Repository(name if dependency.name or names[name] == 1 else str(repo.resolve()),
+                                   repo, files, glossary, dependency.name is not None, other.edges))
     return Layout.build(_installed(cfg), external, unread)
 
 
@@ -437,7 +459,7 @@ def _resolve_one(glossary, query: str, others: Sequence[Repository] = ()):
     prefixed = [(r.glossary, query[len(r.name) + 1:]) for r in others
                 if query.startswith(f"{r.name}/")]
     matches = find(*prefixed[0]) if prefixed else (
-        find(glossary, query) or [t for r in others for t in find(r.glossary, query)])
+        find(glossary, query) or [t for r in others if not r.named for t in find(r.glossary, query)])
     matches = list({id(t): t for t in matches}.values())
     if len(matches) != 1:
         found = ", ".join(t.qualified for t in matches) or "no record"
@@ -451,7 +473,7 @@ def cmd_graph(args) -> int:
     errors = _assembly_errors(built.glossary, built.diagnostics)
     if errors:
         return _report(errors, root, args.json)
-    layout = _layout(built.config)
+    layout = built.layout
     live = [path for path in built.docs if path not in built.historical]
     edges = (build_edges(built.glossary, built.refs, built.config.edges, root, layout.local)
              + cross_edges(live, layout, owners(built.glossary, root, layout.local)))
@@ -481,7 +503,7 @@ def cmd_graph(args) -> int:
 def _side(name: str, root: Path, cfg: Config | None = None) -> review.Side:
     """One side of a change review: its records, dependency edges, and gaps."""
     built = build(root, cfg=cfg)
-    layout = _layout(built.config)
+    layout = built.layout
     live = [path for path in built.docs if path not in built.historical]
     owner = owners(built.glossary, root, layout.local)
     edges = (build_edges(built.glossary, built.refs, built.config.edges, root, layout.local)
@@ -500,8 +522,8 @@ def _baseline_config(base_root: Path, head_root: Path) -> Config:
         cfg = load_config(base_root)
     except (InvalidConfig, ConflictingGlossary) as exc:
         raise review.BaselineError(f"baseline configuration cannot load: {exc}") from exc
-    external = tuple(head_root / p.relative_to(base_root) if p.is_relative_to(base_root) else p
-                     for p in cfg.edges.external)
+    external = tuple(replace(dep, path=head_root / dep.path.relative_to(base_root))
+                     if dep.path.is_relative_to(base_root) else dep for dep in cfg.edges.external)
     return replace(cfg, edges=replace(cfg.edges, external=external))
 
 
