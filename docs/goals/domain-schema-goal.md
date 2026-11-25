@@ -58,7 +58,7 @@ criteria:
     gap: Criterion needs a recorded review against its acceptance text.
 ---
 
-# Goal: domain-aware frontmatter and a knowledge tree
+# Goal: explicit domain models
 
 Discovery identifies file groups and naming-field mappings.
 [Native validation](../schema-validation.md) enforces explicit type schemas and declared graph integrity.
@@ -75,6 +75,31 @@ Frontmatter should have the quality of a completed form: named fields, clear
 instructions, typed answers, required information, and checkable constraints.
 Markdown should explain rationale, examples, and nuance that do not fit structured
 fields. Avoid maintaining the same fact independently in both places.
+
+## Scope and ownership
+
+This goal owns domain discovery, record identities, types, schemas, and supported
+file formats. Its stable record name remains `domain-schema-goal`.
+
+The [contracts and evidence goal](checkable-contracts-evidence-goal.md) owns validation
+outcomes and the limits of evidence. The [adoption and evolution goal](safe-adoption-evolution-goal.md)
+owns setup, migration, and maintenance outcomes. Existing AC1–AC10 and their evidence
+remain here as shared acceptance obligations. The goal index maps their ownership.
+
+## Formats and taxonomy
+
+Format controls storage, record type controls structure, and domain controls meaning.
+Folder location organizes files. Markdown, YAML, and JSON can represent records
+when their formats have declared support. Unsupported formats need explicit reporting.
+
+Use existing material to propose concepts and types. Use schemas and relationship
+checks to test those proposals, then refine them from the results. A taxonomy
+classifies records. A graph also expresses reuse, constraints, and other relationships
+across classifications. Neither a directory nor a schema alone proves a domain boundary.
+
+Mixed-format acceptance belongs to AC9. Equivalent records in supported formats
+must preserve identity, relevant facts, relationship meaning, and validation outcomes.
+This requirement does not claim that arbitrary text formats are supported today.
 
 ## Discover domains and responsibilities
 
