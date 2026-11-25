@@ -1,7 +1,67 @@
+---
+name: domain-schema-goal
+status: in-progress
+criteria:
+  AC1:
+    assessment: unassessed
+    support: []
+    gap: Criterion needs a recorded review against its acceptance text.
+  AC2:
+    assessment: partial
+    support:
+    - feature: Native schema validation
+      implementation:
+        path: src/ubiq/schemas.py
+        anchor: def assess_schemas(
+      check:
+        path: tests/test_schemas.py
+        anchor: def test_native_schema_validates_domain_contract_and_reports_pointer(
+    gap: Explicit contracts are supported. Domain inference still needs review.
+  AC3:
+    assessment: unassessed
+    support: []
+    gap: Criterion needs a recorded review against its acceptance text.
+  AC4:
+    assessment: unassessed
+    support: []
+    gap: Criterion needs a recorded review against its acceptance text.
+  AC5:
+    assessment: partial
+    support:
+    - feature: Graph integrity
+      implementation:
+        path: src/ubiq/integrity.py
+        anchor: def assess_integrity(
+      check:
+        path: tests/test_integrity.py
+        anchor: def test_graph_rejects_invalid_constraints(
+    gap: Structural validation does not establish semantic completeness.
+  AC6:
+    assessment: unassessed
+    support: []
+    gap: Criterion needs a recorded review against its acceptance text.
+  AC7:
+    assessment: unassessed
+    support: []
+    gap: Criterion needs a recorded review against its acceptance text.
+  AC8:
+    assessment: unassessed
+    support: []
+    gap: Criterion needs a recorded review against its acceptance text.
+  AC9:
+    assessment: unassessed
+    support: []
+    gap: Criterion needs a recorded review against its acceptance text.
+  AC10:
+    assessment: unassessed
+    support: []
+    gap: Criterion needs a recorded review against its acceptance text.
+---
+
 # Goal: domain-aware frontmatter and a knowledge tree
 
-Status: in progress. Discovery identifies file groups and naming-field mappings.
-[Native validation](schema-validation.md) enforces explicit type schemas and declared graph integrity.
+Discovery identifies file groups and naming-field mappings.
+[Native validation](../schema-validation.md) enforces explicit type schemas and declared graph integrity.
 Domain inference and semantic completeness still require evidence and review.
 
 ## Objective
@@ -95,7 +155,7 @@ of fields or a single successful example.
 
 ## Staged improvement loop
 
-Use the [schema change workflow](schema-workflow.md) for [[schema-staging]].
+Use the [schema change workflow](../schema-workflow.md) for [[schema-staging]].
 The setup or maintenance skill inspects repository changes and selects useful,
 evidence-backed additions. It stages each schema change with the corresponding
 record migration and tests. The skill tries the candidate against affected
@@ -109,16 +169,16 @@ versions for recovery. Sample success alone does not authorize or establish prom
 
 The goal is achieved when:
 
-1. Setup can propose evidenced domains, responsibilities, interactions, and record types from repository files.
-2. Each proposed type has an explicit, versioned schema with domain-specific differences where justified.
-3. Users can review uncertain classifications and schema proposals before migration changes existing records.
-4. A record author can use schema descriptions and constraints as a form, with actionable field-level validation errors.
-5. Validation checks individual records and their relationships, with reproducible quality measurements.
-6. Representative queries demonstrate that frontmatter captures most agreed facts about each file without reparsing its Markdown body.
-7. Maintenance detects new types, missing records, schema drift, and changed domain relationships without silently reclassifying existing records.
-8. Migration preserves file content, identities, aliases, and references, and reports unsupported cases explicitly.
-9. Tests cover multiple domains, different schemas within a domain, shared types across domains, mixed file formats, and ambiguous evidence.
-10. Setup and maintenance discover staged candidates, test useful additions, and distinguish rejected, staged, and successfully promoted changes.
+1. AC1: Setup can propose evidenced domains, responsibilities, interactions, and record types from repository files.
+2. AC2: Each proposed type has an explicit, versioned schema with domain-specific differences where justified.
+3. AC3: Users can review uncertain classifications and schema proposals before migration changes existing records.
+4. AC4: A record author can use schema descriptions and constraints as a form, with actionable field-level validation errors.
+5. AC5: Validation checks individual records and their relationships, with reproducible quality measurements.
+6. AC6: Representative queries demonstrate that frontmatter captures most agreed facts about each file without reparsing its Markdown body.
+7. AC7: Maintenance detects new types, missing records, schema drift, and changed domain relationships without silently reclassifying existing records.
+8. AC8: Migration preserves file content, identities, aliases, and references, and reports unsupported cases explicitly.
+9. AC9: Tests cover multiple domains, different schemas within a domain, shared types across domains, mixed file formats, and ambiguous evidence.
+10. AC10: Setup and maintenance discover staged candidates, test useful additions, and distinguish rejected, staged, and successfully promoted changes.
 
 Set the numerical coverage targets and representative repositories during design.
 The measurements and acceptance criteria must stay visible when the implementation
