@@ -192,8 +192,8 @@ def _integrity(checks: list[tuple[str, list[Finding] | None]]) -> tuple[str, str
                                  "records": list(r)} for data, c, k, m, r in findings]
 
 
-def _suggestions(root: Path, scope: _Scope, git: bool) -> list[str]:
-    """Discovered assets outside the selected scope. Advisory only."""
+def _suggestions(root: Path, spec: CoverageSpec, scope: _Scope, git: bool) -> list[str]:
+    """Discovered assets outside the selected scope and its exclusions. Advisory only."""
     from .discovery import discover
     try:
         report = discover(root)
@@ -202,6 +202,7 @@ def _suggestions(root: Path, scope: _Scope, git: bool) -> list[str]:
     found = {f for group in report["groups"].values() for files in group.values() for f in files}
     found |= {f for schema in report["schemas"] for f in schema["files"]}
     found -= scope.selected.keys()
+    found = {f for f in found if not any(e.glob.matches(root / f) for e in spec.exclude)}
     found -= git_ignored(root, sorted(found)) if git else set()
     return sorted(found)
 
@@ -268,7 +269,7 @@ def measure(cfg: Config, glossary: Glossary, *, git: bool = True,
         "ratio": {"typed": typed, "eligible": eligible},
         "typed_percent": percent(typed, eligible),
         "files": files,
-        "suggestions": _suggestions(root, scope, git) if suggest else [],
+        "suggestions": _suggestions(root, spec, scope, git) if suggest else [],
         "diagnostics": sorted(diagnostics, key=lambda f: (f["file"], f["line"], f["code"], f["message"])),
     }
 

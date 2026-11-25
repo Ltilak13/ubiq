@@ -525,3 +525,17 @@ def test_no_regression_with_incomplete_baseline_is_unavailable(tmp_path, capsys)
 def test_missing_baseline_rev_exits_2(tmp_path, capsys):
     root = regression_repo(tmp_path)
     assert run(capsys, root, "--since", "missing")[0] == 2
+
+
+def test_suggestions_come_from_discovery_outside_scope(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    (root / "skills" / "deploy").mkdir(parents=True)
+    (root / "skills" / "deploy" / "SKILL.md").write_text("---\nname: deploy\n---\n")
+    (root / "skills" / "upstream").mkdir()
+    (root / "skills" / "upstream" / "SKILL.md").write_text("---\nname: upstream\n---\n")
+    configure(root, "coverage:\n  files: ['src/**/*.py', 'services/*.yaml', 'glossary/*.md']\n"
+                    "  exclude: [{glob: 'skills/upstream/**', reason: 'Pinned copy.'}]\n")
+    _, report = run(capsys, root)
+    # Never in the denominator; excluded paths are not suggested.
+    assert report["suggestions"] == ["skills/deploy/SKILL.md"]
+    assert report["counts"]["selected"] == 5

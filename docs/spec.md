@@ -489,7 +489,8 @@ file is identified by its resolved repository-relative path, so overlapping
 globs and in-repository links count it once. A link that resolves outside the
 repository is listed under `scope.outside` and never counted. A pattern or
 exclusion that matches nothing is W006. `suggestions` lists discovered assets
-(`ubiq discover`) outside the selection; they never join the denominator.
+(`ubiq discover`) outside the selection and its exclusion globs; they never
+join the denominator.
 
 **Typed files.** An eligible file is typed when a `schemas` binding selects it
 directly, or when a record in an `x-ubiq` collection names it as `source`. Each
