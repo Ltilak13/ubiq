@@ -30,7 +30,7 @@ Done: upgrade work is completed, unnecessary, or reported as a blocker with its 
 
 ## Schema changes
 
-For maintenance tasks that add or revise a type or domain schema, follow the [schema change workflow](../apply-ubiq/references/schema-workflow.md).
+For maintenance tasks that add or revise a type or domain schema, follow the [schema change workflow](../references/schema-workflow.md).
 
 ## 1. Discover groups and run the check
 

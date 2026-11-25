@@ -1,19 +1,23 @@
+---
+term: schema change workflow
+---
+
 # Schema change workflow
 
 Use this workflow to develop a [[domain-schema]] through [[schema-staging]] and
 [[schema-promotion]]. The CLI provides discovery, linker checks, and
-[native schema validation](schema-validation.md) through `ubiq check`.
+[native schema validation](../apply-ubiq/references/schema-validation.md) through `ubiq check`.
 Use the native schema contract for file selection, type validation, and graph integrity. Keep candidate bindings separate until promotion.
 
 ## Select the workflow
 
 | Task | Skill or check | Result |
 | --- | --- | --- |
-| Adopt Ubiq in a repository | [apply-ubiq](../SKILL.md) | Initial discovery, configuration, and schema candidates |
-| Upgrade an existing installation | [upgrade-ubiq](../../upgrade-ubiq/SKILL.md) | Compatible pins, skill revisions, and capability decisions |
-| Reconcile an existing repository | [maintain-ubiq](../../maintain-ubiq/SKILL.md) | Evidence-backed changes to existing records or staged schemas |
+| Adopt Ubiq in a repository | [apply-ubiq](../apply-ubiq/SKILL.md) | Initial discovery, configuration, and schema candidates |
+| Upgrade an existing installation | [upgrade-ubiq](../upgrade-ubiq/SKILL.md) | Compatible pins, skill revisions, and capability decisions |
+| Reconcile an existing repository | [maintain-ubiq](../maintain-ubiq/SKILL.md) | Evidence-backed changes to existing records or staged schemas |
 | Resolve domain language or boundaries | domain-modeling, when installed, or direct glossary/code inspection | Proposed domains, responsibilities, interactions, and unresolved meanings |
-| Stage a candidate | The calling [apply-ubiq](../SKILL.md), [maintain-ubiq](../../maintain-ubiq/SKILL.md), or [upgrade-ubiq](../../upgrade-ubiq/SKILL.md) skill | Schema diff, record migration, evidence, and tests in one bundle |
+| Stage a candidate | The calling [apply-ubiq](../apply-ubiq/SKILL.md), [maintain-ubiq](../maintain-ubiq/SKILL.md), or [upgrade-ubiq](../upgrade-ubiq/SKILL.md) skill | Schema diff, record migration, evidence, and tests in one bundle |
 | Validate | Native repository checks and the candidate's documented schema tests; validate-change when installed | Passing and failing cases, compatibility results, and coverage limits |
 | Review and finish | The host's review/closeout workflow, when available | Requirement-to-evidence assessment |
 | Publish | commit-slices or push-slices when installed and authorized | Separate, explicit commit or commit-and-push action |

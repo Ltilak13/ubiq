@@ -46,7 +46,7 @@ Ask your agent:
 
 ### Install the skills
 
-Install `apply-ubiq`, `maintain-ubiq`, and `upgrade-ubiq` together from the same
+Install `apply-ubiq`, `maintain-ubiq`, `upgrade-ubiq`, and the shared `references` directory together from the same
 Ubiq revision. Copy or link their complete directories from `skills/` into one
 skill root, keeping their names and subdirectories. For example:
 
@@ -55,8 +55,9 @@ skill root, keeping their names and subdirectories. For example:
   apply-ubiq/
     SKILL.md
     references/
-      schema-workflow.md
       schema-validation.md
+  references/
+    schema-workflow.md
   maintain-ubiq/
     SKILL.md
   upgrade-ubiq/
@@ -65,8 +66,7 @@ skill root, keeping their names and subdirectories. For example:
       upgrade-report.md
 ```
 
-The shared schema docs live in `apply-ubiq/references/`. The other skills use
-relative links to that copy, so keep all three directories as siblings when
+The skills link to the shared workflow in `references/`. Keep all four directories as siblings when
 installing or upgrading. A standalone copy of `SKILL.md` is incomplete.
 Installing the CLI alone does not install the skills.
 

@@ -12,7 +12,7 @@ Install: `pip install ubiq` (or `pip install -e <path-to-ubiq>`). Run `python3 -
 
 ## Schema changes
 
-When adoption requires a new or revised type or domain schema, follow the [schema change workflow](references/schema-workflow.md).
+When adoption requires a new or revised type or domain schema, follow the [schema change workflow](../references/schema-workflow.md).
 
 ## 1. Discover the vocabulary
 
