@@ -532,3 +532,24 @@ rounded, to two decimals. Each file has `file` and `classification` (`typed`,
 `via` and `conformance`; typed files add `evidence`, `relationships`, and
 `findings`. Files, locations, and diagnostics sort
 deterministically.
+
+**Baselines.** `coverage --since REV` also measures the merge base of `REV`
+and `HEAD`, chosen and checked out as for `impact` and `compare`. Each side
+uses its own configuration: the baseline's `coverage` section supplies its
+historical scope. File identities follow git renames, so a renamed file is
+neither added nor removed. `baseline` has `rev`, `commit`, and `status`; with
+a configured baseline it adds `counts`, `ratio`, `typed_percent`, and
+`incomplete`. A baseline without a `coverage` section has status
+`unconfigured` and no delta. An unknown rev, a baseline whose configuration
+cannot load, or one that cannot be measured is `unavailable` (exit 2); an
+incomplete baseline makes the report `incomplete` (exit 2).
+
+`delta` reports `eligible` and `typed` (`baseline`, `head`, `change`),
+`typed_percent` on both sides, `added` and `removed` eligible files (each with
+its head or baseline `classification`), `newly_typed`, `newly_untyped`,
+`newly_excluded`, `no_longer_excluded`, `exclusions` (`added`, `removed`, and
+`changed` reasons by glob), and `findings`: counts plus `new` and `resolved`
+diagnostics, compared with the finding identity of `compare`. The readable and
+Markdown outputs state the denominator change before percentages. When the
+denominator shrinks they say so: removed or excluded files are not newly
+documented knowledge. `--markdown` prints a PR-ready summary.

@@ -249,3 +249,146 @@ def test_plain_schema_binding_does_not_assess_evidence(tmp_path, capsys):
     api = by_file(report)["services/api.yaml"]
     assert (api["evidence"], api["relationships"]) == ("not_assessed", "not_assessed")
     assert report["assessments"]["evidence"]["not_assessed"] == 1
+
+
+# Baselines: each side uses its own configuration; the baseline is the merge base.
+
+def git(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
+         "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", *args],
+        cwd=root, check=True, capture_output=True, text=True).stdout
+
+
+def committed(tmp_path: Path) -> Path:
+    """The ordinary fixture committed on `main`, checked out on a feature branch."""
+    root = ordinary(tmp_path)
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    git(root, "checkout", "-qb", "feature")
+    return root
+
+
+def since(capsys, root: Path, *extra: str) -> tuple[int, dict]:
+    code, report = run(capsys, root, "--since", "main", *extra)
+    if "baseline" in report:
+        assert report["baseline"]["commit"] == git(root, "rev-parse", "main").strip()
+    return code, report
+
+
+def test_baseline_rename_is_neither_added_nor_removed(tmp_path, capsys):
+    root = committed(tmp_path)
+    git(root, "mv", "src/util.py", "src/money.py")
+    code, report = since(capsys, root)
+    d = report["delta"]
+    assert code == 0
+    assert (d["added"], d["removed"], d["eligible"]["change"]) == ([], [], 0)
+
+
+def test_baseline_deletion_shrinks_the_denominator_visibly(tmp_path, capsys):
+    root = committed(tmp_path)
+    (root / "src" / "util.py").unlink()
+    _, report = since(capsys, root)
+    d = report["delta"]
+    assert d["removed"] == [{"file": "src/util.py", "classification": "untyped"}]
+    assert d["eligible"] == {"baseline": 4, "head": 3, "change": -1}
+    assert (d["typed"]["change"], d["newly_typed"]) == (0, [])  # not newly documented
+    assert d["typed_percent"] == {"baseline": 50.0, "head": 66.66}
+    main(["coverage", "--root", str(root), "--since", "main"])
+    text = capsys.readouterr().out
+    assert "eligible files 4 -> 3 (-1): 0 added, 1 removed" in text
+    assert "the denominator shrank by 1" in text
+
+
+def test_baseline_exclusion_changes(tmp_path, capsys):
+    root = committed(tmp_path)
+    configure(root, "coverage:\n  files: ['src/**/*.py', 'services/*.yaml', 'glossary/*.md']\n"
+                    "  exclude:\n"
+                    "    - {glob: 'src/vendor/**', reason: 'Upstream copy.'}\n"
+                    "    - {glob: 'src/util.py', reason: 'Generated.'}\n")
+    _, report = since(capsys, root)
+    d = report["delta"]
+    assert d["newly_excluded"] == ["src/util.py"] and d["removed"] == [
+        {"file": "src/util.py", "classification": "excluded"}]
+    assert d["exclusions"] == {
+        "added": [{"glob": "src/util.py", "reason": "Generated."}], "removed": [],
+        "changed": [{"glob": "src/vendor/**",
+                     "from": "Vendored upstream copy; its metadata belongs upstream.",
+                     "to": "Upstream copy."}]}
+
+
+def test_baseline_untracked_and_untyped_changes(tmp_path, capsys):
+    root = committed(tmp_path)
+    (root / "src" / "new.py").write_text("x = 1\n")  # untracked
+    text = (root / "ubiq.yaml").read_text()
+    (root / "ubiq.yaml").write_text(text.replace('    files: ["services/*.yaml"]\n', '    files: ["nothing/*.yaml"]\n'))
+    _, report = since(capsys, root)
+    d = report["delta"]
+    assert d["added"] == [{"file": "src/new.py", "classification": "untyped"}]
+    assert d["newly_untyped"] == ["services/api.yaml"]
+    assert d["findings"]["counts"]["new"] == 1  # the binding now matches nothing (E009)
+
+
+def test_baseline_finding_changes_reuse_compare_identity(tmp_path, capsys):
+    root = committed(tmp_path)
+    with (root / "src" / "app.py").open("a") as f:
+        f.write("\n# edited\n")
+    _, report = since(capsys, root)
+    findings = report["delta"]["findings"]
+    assert findings["counts"] == {"new": 2, "resolved": 0, "unchanged": 0}
+    assert {f["message"] for f in findings["new"]} == {"evidence drift: src/app.py"}
+
+
+def test_unconfigured_baseline_has_no_delta(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    configured = (root / "ubiq.yaml").read_text()
+    configure(root, "")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    (root / "ubiq.yaml").write_text(configured)
+    code, report = since(capsys, root)
+    assert code == 0
+    assert report["baseline"]["status"] == "unconfigured" and report["delta"] is None
+
+
+@pytest.mark.parametrize("rev", ["nope", "--output=x"])
+def test_invalid_baseline_is_unavailable(tmp_path, capsys, rev):
+    root = committed(tmp_path)
+    code, report = run(capsys, root, f"--since={rev}")
+    assert code == 2 and report["status"] == "unavailable"
+    assert report["reason"].startswith("baseline unavailable")
+
+
+def test_baseline_with_invalid_configuration_is_unavailable(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    good = (root / "ubiq.yaml").read_text()
+    configure(root, "coverage: {files: []}\n")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    (root / "ubiq.yaml").write_text(good)
+    code, report = since(capsys, root)
+    assert code == 2 and "baseline configuration cannot load" in report["reason"]
+
+
+def test_incomplete_baseline_is_incomplete(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    good = (root / "schemas" / "model.json").read_text()
+    (root / "schemas" / "model.json").write_text("{not json")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    (root / "schemas" / "model.json").write_text(good)
+    code, report = since(capsys, root)
+    assert code == 2 and report["status"] == "incomplete"
+    assert report["incomplete"] == [] and report["baseline"]["incomplete"]
+
+
+def test_markdown_summary(tmp_path, capsys):
+    root = committed(tmp_path)
+    (root / "src" / "util.py").unlink()
+    assert main(["coverage", "--root", str(root), "--since", "main", "--markdown"]) == 0
+    out = capsys.readouterr().out.replace(git(root, "rev-parse", "main").strip()[:12], "<commit>")
+    assert out == (FIXTURES / "deletion.md").read_text()

@@ -17,6 +17,7 @@ from .check import Diagnostic
 from .config import Config, CoverageSpec
 from .integrity import Finding
 from .records import Glossary, InvalidRecord
+from .review import compare_findings
 from .schemas import Binding, Target, assess_schemas, check_schemas
 
 VERSION = 1
@@ -272,39 +273,161 @@ def measure(cfg: Config, glossary: Glossary, *, git: bool = True,
     }
 
 
+def attach_baseline(report: dict, summary: dict, base: dict | None) -> None:
+    """Add `baseline` and `delta` to a head report. Baseline gaps make the
+    whole comparison incomplete; an unconfigured baseline has no delta."""
+    report["baseline"] = summary
+    report["delta"] = None
+    if base is None:
+        return
+    summary.update(counts=base["counts"], ratio=base["ratio"],
+                   typed_percent=base["typed_percent"], incomplete=base["incomplete"])
+    if base["incomplete"]:
+        report["status"], report["complete"] = "incomplete", False
+    report["delta"] = delta(base, report)
+
+
+def delta(base: dict, head: dict) -> dict:
+    """What changed between two reports whose baseline paths use head names."""
+    before = {f["file"]: f for f in base["files"]}
+    after = {f["file"]: f for f in head["files"]}
+
+    def eligible(files: dict) -> set[str]:
+        return {name for name, f in files.items() if f["classification"] != "excluded"}
+
+    def entries(names) -> list[dict]:
+        return [{"file": n, "classification": (after.get(n) or before[n])["classification"]}
+                for n in sorted(names)]
+
+    both = eligible(before) & eligible(after)
+    rules = {e["glob"]: e["reason"] for e in base["scope"]["exclude"]}
+    now = {e["glob"]: e["reason"] for e in head["scope"]["exclude"]}
+    new, resolved, unchanged = compare_findings(base["diagnostics"], head["diagnostics"])
+    return {
+        "eligible": {"baseline": base["counts"]["eligible"], "head": head["counts"]["eligible"],
+                     "change": head["counts"]["eligible"] - base["counts"]["eligible"]},
+        "typed": {"baseline": base["counts"]["typed"], "head": head["counts"]["typed"],
+                  "change": head["counts"]["typed"] - base["counts"]["typed"]},
+        "typed_percent": {"baseline": base["typed_percent"], "head": head["typed_percent"]},
+        "added": entries(eligible(after) - eligible(before)),
+        "removed": entries(eligible(before) - eligible(after)),
+        "newly_typed": sorted(n for n in both if before[n]["classification"] == "untyped"
+                              and after[n]["classification"] == "typed"),
+        "newly_untyped": sorted(n for n in both if before[n]["classification"] == "typed"
+                                and after[n]["classification"] == "untyped"),
+        "newly_excluded": sorted(n for n, f in after.items() if f["classification"] == "excluded"
+                                 and n in before and before[n]["classification"] != "excluded"),
+        "no_longer_excluded": sorted(n for n, f in before.items() if f["classification"] == "excluded"
+                                     and n in after and after[n]["classification"] != "excluded"),
+        "exclusions": {
+            "added": [{"glob": g, "reason": now[g]} for g in sorted(now.keys() - rules.keys())],
+            "removed": [{"glob": g, "reason": rules[g]} for g in sorted(rules.keys() - now.keys())],
+            "changed": [{"glob": g, "from": rules[g], "to": now[g]}
+                        for g in sorted(rules.keys() & now.keys()) if rules[g] != now[g]],
+        },
+        "findings": {"counts": {"new": len(new), "resolved": len(resolved),
+                                "unchanged": len(unchanged)},
+                     "new": new, "resolved": resolved},
+    }
+
+
 def _shown(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.2f}%"
 
 
-def render(report: dict) -> str:
-    """Readable report: problems first, then one summary line."""
+def _denominator(d: dict) -> list[str]:
+    """The denominator change, stated before any percentage moves."""
+    e = d["eligible"]
+    lines = [(f"eligible files {e['baseline']} -> {e['head']} ({e['change']:+d}): "
+             f"{len(d['added'])} added, {len(d['removed'])} removed, "
+             f"{len(d['newly_excluded'])} newly excluded, "
+             f"{len(d['no_longer_excluded'])} no longer excluded")]
+    if e["change"] < 0:
+        lines.append(f"the denominator shrank by {-e['change']}; removed or excluded files "
+                     "are not newly documented knowledge")
+    return lines
+
+
+def render(report: dict, markdown: bool = False) -> str:
+    """Readable report: problems first, then one summary line. Markdown puts the
+    summary and the denominator first, for a PR comment."""
     if report["status"] == "unavailable":
-        lines = [f"coverage unavailable: {report['reason']}"]
+        lines = [f"{'**ubiq coverage:** ' if markdown else ''}coverage unavailable: {report['reason']}"]
         return "\n".join([*lines, f"hint: {report['guidance']}"] if report.get("guidance") else lines)
-    lines = []
+    c = report["counts"]
+    unassessed = report["assessments"]["evidence"]["not_assessed"]
+    headline = (f"{c['typed']} of {c['eligible']} eligible files typed "
+                f"({_shown(report['typed_percent'])}); {c['selected']} selected, "
+                f"{c['excluded']} excluded, {c['nonconforming']} nonconforming"
+                + (f", evidence not assessed for {unassessed}" if unassessed else ""))
+    base, d = report.get("baseline"), report.get("delta")
+    problems = []
     for f in report["files"]:
         if f["classification"] == "untyped":
-            lines.append(f"untyped {f['file']}")
+            problems.append(("untyped", f["file"], ""))
         elif f["classification"] == "typed" and f["conformance"] == "invalid":
-            lines.append(f"invalid {f['file']} (typed, but its metadata does not conform)")
+            problems.append(("invalid", f["file"], "typed, but its metadata does not conform"))
         elif f["classification"] == "typed":
-            problems = [f"{name} {f[name]}" for name in ("evidence", "relationships")
-                        if f[name] not in ("ok", "not_assessed")]
-            if problems:
-                lines.append(f"failing {f['file']} ({', '.join(problems)})")
+            failing = [f"{name} {f[name]}" for name in ("evidence", "relationships")
+                       if f[name] not in ("ok", "not_assessed")]
+            if failing:
+                problems.append(("failing", f["file"], ", ".join(failing)))
+    gaps = [("incomplete", g["file"], g["reason"]) for g in report["incomplete"]]
+    if base and base.get("incomplete"):
+        gaps += [("incomplete (baseline)", g["file"], g["reason"]) for g in base["incomplete"]]
+
+    if markdown:
+        lines = [f"**ubiq coverage:** {headline}"]
+        if base:
+            lines.append(f"**Baseline** {base['rev']} ({base['commit'][:12]}): "
+                         + ("no coverage configuration" if base["status"] == "unconfigured" else
+                            f"{base['counts']['typed']} of {base['counts']['eligible']} typed "
+                            f"({_shown(base['typed_percent'])})"))
+        if d:
+            first, *notes = _denominator(d)
+            lines += [f"**Denominator:** {first}." + "".join(f" {n[0].upper()}{n[1:]}." for n in notes)]
+            lines = [line for header in lines for line in (header, "")][:-1]
+            for title, names in (("Newly typed", d["newly_typed"]), ("Newly untyped", d["newly_untyped"]),
+                                 ("Added", [a["file"] for a in d["added"]]),
+                                 ("Removed", [r["file"] for r in d["removed"]]),
+                                 ("Newly excluded", d["newly_excluded"]),
+                                 ("No longer excluded", d["no_longer_excluded"])):
+                if names:
+                    lines += ["", f"{title}:", *(f"- `{n}`" for n in names)]
+            x = d["exclusions"]
+            changes = ([f"- added `{e['glob']}`: {e['reason']}" for e in x["added"]]
+                       + [f"- removed `{e['glob']}`: {e['reason']}" for e in x["removed"]]
+                       + [f"- `{e['glob']}`: {e['from']} -> {e['to']}" for e in x["changed"]])
+            if changes:
+                lines += ["", "Exclusions changed:", *changes]
+            fc = d["findings"]["counts"]
+            lines += ["", f"Findings: {fc['new']} new, {fc['resolved']} resolved, {fc['unchanged']} unchanged"]
+            for title, found in (("new", d["findings"]["new"]), ("resolved", d["findings"]["resolved"])):
+                lines += [f"- {title} `{f['code']}` {f['file']} {f['message']}" for f in found]
+        if problems:
+            lines += ["", "Gaps:", *(f"- {kind} `{name}`" + (f": {why}" if why else "")
+                                     for kind, name, why in problems)]
+        if gaps:
+            lines += ["", "**Incomplete:**", *(f"- {kind} `{name}`: {why}" for kind, name, why in gaps)]
+        return "\n".join(lines)
+
+    lines = [f"{kind} {name}" + (f" ({why})" if why else "") for kind, name, why in problems]
     for o in report["scope"]["outside"]:
         lines.append(f"outside {o['file']} -> {o['target']} (not counted)")
-    for d in report["diagnostics"]:
-        where = f"{d['file']}:{d['line']}" if d["line"] else d["file"]
-        lines.append(f"{where}: {d['code']} {d['message']}")
-    for gap in report["incomplete"]:
-        lines.append(f"incomplete {gap['file']}: {gap['reason']}")
-    c = report["counts"]
-    a = report["assessments"]
-    unassessed = a["evidence"]["not_assessed"]
-    lines.append(f"{'INCOMPLETE' if report['incomplete'] else 'coverage'}: "
-                 f"{c['typed']} of {c['eligible']} eligible files typed "
-                 f"({_shown(report['typed_percent'])}); {c['selected']} selected, "
-                 f"{c['excluded']} excluded, {c['nonconforming']} nonconforming"
-                 + (f", evidence not assessed for {unassessed}" if unassessed else ""))
+    for diag in report["diagnostics"]:
+        where = f"{diag['file']}:{diag['line']}" if diag["line"] else diag["file"]
+        lines.append(f"{where}: {diag['code']} {diag['message']}")
+    lines += [f"{kind} {name}: {why}" for kind, name, why in gaps]
+    if base and base["status"] == "unconfigured":
+        lines.append(f"baseline {base['rev']} ({base['commit'][:12]}) has no coverage configuration")
+    elif base:
+        lines.append(f"baseline {base['rev']} ({base['commit'][:12]}): {base['counts']['typed']} of "
+                     f"{base['counts']['eligible']} typed ({_shown(base['typed_percent'])})")
+    if d:
+        lines += _denominator(d)
+        lines += [f"newly typed {n}" for n in d["newly_typed"]]
+        lines += [f"newly untyped {n}" for n in d["newly_untyped"]]
+        fc = d["findings"]["counts"]
+        lines.append(f"findings: {fc['new']} new, {fc['resolved']} resolved, {fc['unchanged']} unchanged")
+    lines.append(f"{'INCOMPLETE' if not report['complete'] else 'coverage'}: {headline}")
     return "\n".join(lines)
