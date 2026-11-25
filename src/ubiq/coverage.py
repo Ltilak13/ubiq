@@ -58,7 +58,8 @@ def git_ignored(root: Path, files: list[str]) -> set[str]:
                           input="".join(f"{f}\0" for f in files),
                           capture_output=True, text=True, check=False)
     if proc.returncode not in (0, 1):  # 1: nothing ignored
-        raise MeasurementError(f"git check-ignore failed: {proc.stderr.strip()}")
+        raise MeasurementError(f"git check-ignore failed: {proc.stderr.strip()} "
+                               "(exclude such paths in coverage.exclude)")
     return {f for f in proc.stdout.split("\0") if f}
 
 
@@ -74,7 +75,8 @@ class _Scope:
 
     def __init__(self, cfg: Config, spec: CoverageSpec, git: bool):
         root = cfg.root
-        candidates: dict[str, set[str]] = {}
+        candidates: dict[str, set[str]] = {}  # resolved file -> include patterns
+        names: dict[str, set[str]] = {}  # resolved file -> every path that selected it
         outside: dict[str, str] = {}
         for glob in spec.files:
             for path in glob.walk(cfg.ignore):
@@ -82,21 +84,27 @@ class _Scope:
                     continue
                 real = path.resolve()
                 if real.is_relative_to(root):
-                    candidates.setdefault(real.relative_to(root).as_posix(), set()).add(glob.pattern)
+                    rel = real.relative_to(root).as_posix()
+                    candidates.setdefault(rel, set()).add(glob.pattern)
+                    names.setdefault(rel, {rel}).add(path.relative_to(root).as_posix())
                 else:
                     outside[path.relative_to(root).as_posix()] = str(real)
-        ignored = git_ignored(root, sorted(candidates)) if git else set()
+        # An exclusion matches the path that selected a file as well as its target,
+        # so excluding a directory of links never admits what they point at.
+        # Exclusions apply before the git probe, so they can remove paths git
+        # cannot probe, such as files inside a submodule.
+        hits = {f: [e for e in spec.exclude
+                    if any(e.glob.matches(root / name) for name in sorted(names[f]))]
+                for f in candidates}
+        probe = sorted(f for f in candidates if not hits[f])
+        ignored = git_ignored(root, probe) if git else set()
         self.selected = {f: p for f, p in candidates.items() if f not in ignored}
         matched = {p for patterns in self.selected.values() for p in patterns}
         self.unmatched = [g.pattern for g in spec.files if g.pattern not in matched]
         self.outside = outside
-        self.exclusions: dict[str, list[dict]] = {}
-        used: set[str] = set()
-        for file in self.selected:
-            hits = [e for e in spec.exclude if e.glob.matches(root / file)]
-            if hits:
-                used.update(e.glob.pattern for e in hits)
-                self.exclusions[file] = [{"glob": e.glob.pattern, "reason": e.reason} for e in hits]
+        self.exclusions = {f: [{"glob": e.glob.pattern, "reason": e.reason} for e in hits[f]]
+                           for f in self.selected if hits[f]}
+        used = {e["glob"] for found in self.exclusions.values() for e in found}
         self.unused = [e.glob.pattern for e in spec.exclude if e.glob.pattern not in used]
         self.eligible = sorted(f for f in self.selected if f not in self.exclusions)
 
@@ -362,11 +370,11 @@ def evaluate(report: dict, spec: CoverageSpec, since: str | None) -> int:
         if since is None:
             policy.update(result="unavailable", reason="coverage.no_regression needs a baseline: "
                           "run ubiq coverage --since REV (for example --since origin/main)")
+        elif not complete:
+            policy.update(result="unavailable", reason="the measurement is incomplete")
         elif base is not None and base["status"] == "unconfigured":
             policy.update(result="skipped", reason="the baseline has no coverage configuration, "
                           "so this change sets the first baseline")
-        elif not complete:
-            policy.update(result="unavailable", reason="the measurement is incomplete")
         else:
             assert base is not None, "--since always attaches a baseline"
             before, after = _ratio(base), _ratio(report)

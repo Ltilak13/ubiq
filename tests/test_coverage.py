@@ -539,3 +539,43 @@ def test_suggestions_come_from_discovery_outside_scope(tmp_path, capsys):
     # Never in the denominator; excluded paths are not suggested.
     assert report["suggestions"] == ["skills/deploy/SKILL.md"]
     assert report["counts"]["selected"] == 5
+
+
+def test_excluded_links_do_not_admit_their_targets(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    (root / "lib").mkdir()
+    (root / "lib" / "e.py").write_text("e = 1\n")
+    os.symlink("../../lib/e.py", root / "src" / "vendor" / "ext.py")
+    os.symlink("app.py", root / "src" / "alias.py")
+    _, report = run(capsys, root)
+    assert by_file(report)["lib/e.py"]["classification"] == "excluded"
+    assert report["counts"]["eligible"] == 4  # the in-repo alias of app.py counts once
+
+
+def test_submodule_files_can_be_excluded(tmp_path, capsys):
+    sub = tmp_path / "sub-src"
+    sub.mkdir()
+    (sub / "z.py").write_text("z = 1\n")
+    git(sub, "init", "-q")
+    git(sub, "add", "-A")
+    git(sub, "commit", "-qm", "sub")
+    root = committed(tmp_path)
+    git(root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(sub), "src/sub")
+    assert run(capsys, root)[0] == 2  # git cannot probe files inside a submodule
+    configure(root, "coverage:\n  files: ['src/**/*.py', 'services/*.yaml', 'glossary/*.md']\n"
+                    "  exclude:\n    - {glob: 'src/vendor/**', reason: upstream}\n"
+                    "    - {glob: 'src/sub/**', reason: 'Submodule; typed in its own repository.'}\n")
+    code, report = run(capsys, root)
+    assert code == 0 and by_file(report)["src/sub/z.py"]["classification"] == "excluded"
+
+
+def test_incomplete_head_makes_no_regression_unavailable_even_on_first_adoption(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    configure(root, "")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    configure(root, SCOPE + "  no_regression: true\n")
+    (root / "schemas" / "model.json").write_text("{not json")
+    code, report = since(capsys, root)
+    assert code == 2 and policy(report, "no_regression")["result"] == "unavailable"
