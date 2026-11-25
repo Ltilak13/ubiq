@@ -9,10 +9,11 @@ repeat the metadata in the document body.
 The [goal index](README.md) explains which fields own the current assessment.
 Read those fields before interpreting historical evidence in a goal's body.
 
-## Check the three goals
+## Check the five goals
 
-The sample is every goal linked from the index: domain schema, composable
-skills, and human and agent readability. This sample covers nested support
+The sample is every goal linked from the index: explicit domain models, composable
+knowledge, checkable contracts and evidence, human and agent usability, and safe
+adoption and evolution. This sample covers nested support
 records and empty support lists. Other Markdown documents, editor previews,
 GitHub Pages, and human comprehension are outside this check.
 
@@ -22,7 +23,7 @@ GitHub Pages, and human comprehension are outside this check.
    or **Raw**. Record the view used and whether the switch succeeds.
 3. Compare each answer with the frontmatter in the same commit. Record a
    missing value or a conflicting value as a failure.
-4. Record the three file URLs, reviewer or tool, questions checked, failures,
+4. Record the five file URLs, reviewer or tool, questions checked, failures,
    and number of source switches. Separate preview visibility from source
    access. A source fetch alone does not verify the browser's controls.
 
@@ -35,7 +36,7 @@ GitHub Pages, and human comprehension are outside this check.
 | Which features support each criterion, including none? | `criteria.<AC>.support` |
 | Where is each feature implemented and checked? | Each support entry's `implementation` and `check`, including both `path` and `anchor` |
 
-Require correct answers for all questions across all three files. Count each
+Require correct answers for all questions across all five files. Count each
 criterion and support entry separately within its question. Required values
 must be accessible, with zero missing or conflicting answers. Report direct
 preview visibility separately, even when source access succeeds.
@@ -79,5 +80,5 @@ nested mapping values. This was one external example at a moving branch,
 without a browser interaction or a pinned revision. It establishes a useful
 starting point, not a passing result for these goals.
 
-A recorded check of the three goals at a published commit is still required.
+A recorded check of the five goals at a published commit is still required.
 Local checks must not mark the broader readability goal as achieved.

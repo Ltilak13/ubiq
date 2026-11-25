@@ -8,7 +8,10 @@ from jsonschema import Draft202012Validator, ValidationError
 from ubiq.schemas import load_data
 
 ROOT = Path(__file__).resolve().parents[1]
-GOALS = ("domain-schema", "composable-skills", "human-agent-readability")
+GOALS = (
+    "domain-schema", "composable-knowledge", "human-agent-readability",
+    "checkable-contracts-evidence", "safe-adoption-evolution",
+)
 SCHEMA = load_data(ROOT / '.ubiq/schemas/goal.json')
 
 

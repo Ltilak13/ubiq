@@ -1,5 +1,5 @@
 ---
-name: composable-skills-goal
+name: composable-knowledge-goal
 status: in-progress
 criteria:
   AC1:
@@ -62,9 +62,21 @@ criteria:
         path: tests/test_graph.py
         anchor: def test_include_cycle_fails(
     gap: Cycle evidence is partial. Review the remaining nested and threshold cases.
+  AC7:
+    assessment: unassessed
+    support: []
+    gap: Broader composition needs implementation evidence and a recorded review.
+  AC8:
+    assessment: unassessed
+    support: []
+    gap: Broader composition needs implementation evidence and a recorded review.
+  AC9:
+    assessment: unassessed
+    support: []
+    gap: Broader composition needs implementation evidence and a recorded review.
 ---
 
-# Goal: composable skills
+# Goal: composable knowledge
 
 Prior acceptance evidence is recorded; see the last section. Shared parts
 register as records with configuration alone. `ubiq graph` shows invoke, include,
@@ -75,13 +87,42 @@ repositories too (W004), and drift between references and edges (W005).
 
 ## Objective
 
-Let a skill repository keep each rule in one place. Skills should build on other
-skills and on shared parts instead of copying their text. Ubiq should find logic
-that several skills repeat, show how skills depend on each other, and check that
-the agent running a skill can follow each dependency.
+Let repositories compose knowledge from records with stable identities, explicit
+contracts, and typed relationships. Keep each shared rule in one authoritative
+place. Skills are one application alongside goals, policies, decisions, and ideas.
 
-Ubiq stays deterministic. It reports overlap and broken edges. The maintainer
-decides what becomes a part, usually through the maintenance skill.
+Ubiq stays deterministic. It checks declared structure and reports broken edges
+and repeated text. Maintainers decide what becomes a shared part.
+
+## Scope and relationship semantics
+
+The skill examples and AC1–AC6 retain their original scope and evidence.
+They establish a concrete foundation, not proof of support for every record type.
+AC7–AC9 define the broader outcomes and remain unassessed.
+
+A [[composition edge]] must define its meaning and which constraints apply. Other relationships can organize knowledge without implying reuse or execution.
+The following relationships are proposed domain semantics, not new built-in edge kinds:
+
+| Source | Relationship | Target | Meaning |
+| --- | --- | --- | --- |
+| Goal | Decomposes into | Subgoal | Part of the desired outcome, with an explicit completion rule |
+| Goal | Is constrained by | Principle or policy | A condition that applies while pursuing the outcome |
+| Goal | Requires | Quality or trait | A property with observable acceptance criteria |
+| Goal | Is motivated by | Idea or hypothesis | Rationale that does not establish completion |
+| Acceptance criterion | Is supported by | Evidence | Grounds an assessment within a stated scope |
+| Skill | Contributes to | Goal | A procedure that can help achieve the outcome |
+
+A moral commitment can be recorded as a principle. Checks can establish declared
+constraints and evidence links, but cannot establish moral correctness.
+The [contracts and evidence goal](checkable-contracts-evidence-goal.md) owns that validation boundary.
+
+Records resemble objects, schemas resemble contracts, and shared procedures resemble
+functions with inputs. Links do not execute prose. Inclusion, invocation, and an
+informational reference require different rules. Decomposition does not imply that
+completing all children automatically completes the parent.
+
+The [domain model goal](domain-schema-goal.md) owns identities, types, and format support.
+A file extension does not determine whether a record can participate in composition.
 
 ## Vocabulary
 
@@ -313,9 +354,9 @@ Report each measure with its denominator:
 A falling overlap count alone isn't success. A repository can reach zero overlap
 by dropping the shared rules instead of extracting them.
 
-## Relation to the domain schema goal
+## Relation to explicit domain models
 
-This goal specializes the [domain schema goal](domain-schema-goal.md). A shared
+This goal uses the contracts from [explicit domain models](domain-schema-goal.md). A shared
 part is a record type. Invoke and include edges are typed relationships in the
 knowledge tree, and part inputs become schema fields.
 
@@ -337,6 +378,10 @@ The goal is achieved when:
    maintainer reviews each extraction.
 6. AC6: Tests cover nested includes, an include cycle, a legitimate invoke cycle, and
    near-duplicate blocks just below and just above the threshold.
+
+7. AC7: A representative repository composes non-skill records through typed relationships with checked targets and declaration locations.
+8. AC8: Examples distinguish subgoal decomposition, principle constraints, required qualities, motivation, evidence, and procedural contribution without treating them as equivalent dependencies.
+9. AC9: Tests enforce declared relationship semantics, including cycle rules and parent completion conditions, without inferring completion from links alone.
 
 Criteria 1, 2, 4, and 6 have tests in `tests/test_graph.py`. Criterion 3 has
 pinned results in `tests/test_survey.py`: the public collection is vendored at the
