@@ -90,6 +90,12 @@ Domain inference and semantic completeness still require evidence and review.
 See the [bounded evidence review](evidence-review-2026-11-25.md) for the scope
 and checks behind the current partial assessments.
 
+## Governing policy
+
+The [goal evidence policy](../policies/goal-evidence.md) governs this goal's
+evidence assessments. It explains what the model declares and which commands
+run the checks.
+
 ## Objective
 
 Make Ubiq discern a repository's domains, explain what each domain does and how
