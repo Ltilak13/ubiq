@@ -3,12 +3,18 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: Stable release version (for example, v0.7.4)
+      bump:
+        description: Version increment (auto uses Conventional Commits)
         required: true
-        type: string
-      notes:
-        description: Release notes in Markdown (leave empty to generate notes)
+        default: auto
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+      version:
+        description: Exact version override (optional, takes precedence over bump)
         required: false
         type: string
 
@@ -31,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -40,6 +46,8 @@ jobs:
         id: version
         env:
           RELEASE_TAG: ${{ inputs.version }}
+          RELEASE_BUMP: ${{ inputs.bump }}
+          RELEASE_BASE_SHA: ${{ github.sha }}
         run: |
           python - <<'PY'
           import os
@@ -48,19 +56,63 @@ jobs:
           import tomllib
           from pathlib import Path
 
-          requested = os.environ["RELEASE_TAG"]
-          if not re.fullmatch(r"v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", requested):
-              raise SystemExit("Expected a stable release version such as v1.2.3.")
-          version = requested.removeprefix("v")
-          tag = "v" + version
           path = Path("pyproject.toml")
+          # The dispatch SHA stays fixed on reruns, even after the version commit.
+          base = os.environ["RELEASE_BASE_SHA"]
+          base_source = subprocess.check_output(["git", "show", base + ":pyproject.toml"], text=True)
+          current = tomllib.loads(base_source)["project"]["version"]
+          stable = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+          if not re.fullmatch(stable, current):
+              raise SystemExit("The package version must be a stable version.")
+          requested = os.environ.get("RELEASE_TAG", "")
+          bump = os.environ["RELEASE_BUMP"]
+          if requested:
+              if not re.fullmatch("v?" + stable, requested):
+                  raise SystemExit("Expected a stable release version such as v1.2.3.")
+              version = requested.removeprefix("v")
+          else:
+              if bump not in {"auto", "major", "minor", "patch"}:
+                  raise SystemExit("Expected auto, major, minor, or patch.")
+              if bump == "auto":
+                  previous = "refs/tags/v" + current
+                  subprocess.run(["git", "merge-base", "--is-ancestor", previous, base], check=True)
+                  messages = subprocess.check_output(
+                      ["git", "log", "--format=%B%x00", previous + ".." + base], text=True,
+                  ).split("\0")
+                  rank = 0
+                  for message in messages:
+                      message = message.strip()
+                      header = re.match(r"([a-z]+)(?:\([^\n()]+\))?(!)?: .+", message, re.IGNORECASE)
+                      if not header:
+                          continue
+                      if header[2] or re.search(r"^BREAKING(?: CHANGE|-CHANGE): .+", message, re.MULTILINE):
+                          rank = 3
+                      elif header[1].lower() == "feat":
+                          rank = max(rank, 2)
+                      elif header[1].lower() == "fix":
+                          rank = max(rank, 1)
+                  if not rank:
+                      print("No release-worthy commits since " + previous)
+                      with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                          output.write("release=false\n")
+                      raise SystemExit(0)
+                  bump = ("patch", "minor", "major")[rank - 1]
+              parts = list(map(int, current.split(".")))
+              index = ("major", "minor", "patch").index(bump)
+              parts[index] += 1
+              parts[index + 1:] = [0] * (2 - index)
+              version = ".".join(map(str, parts))
+          tag = "v" + version
           exists = subprocess.run(["git", "show-ref", "--verify", "--quiet", "refs/tags/" + tag])
           if exists.returncode not in (0, 1):
               raise SystemExit("Cannot inspect release tags.")
           if exists.returncode == 0:
               # A retry validates and publishes the original tag without moving it.
               commit = subprocess.check_output(["git", "rev-parse", tag + "^{commit}"], text=True).strip()
-              subprocess.run(["git", "merge-base", "--is-ancestor", commit, "HEAD"], check=True)
+              subprocess.run(
+                  ["git", "merge-base", "--is-ancestor", commit, "refs/remotes/origin/" + os.environ["DEFAULT_BRANCH"]],
+                  check=True,
+              )
               source = subprocess.check_output(["git", "show", commit + ":pyproject.toml"], text=True)
               if tomllib.loads(source)["project"]["version"] != version:
                   raise SystemExit("Existing tag has a different package version. Refusing to move it.")
@@ -75,9 +127,10 @@ jobs:
                   raise SystemExit("Expected exactly one project version field.")
               path.write_text(updated)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write(f"tag={tag}\nexisting={'true' if exists.returncode == 0 else 'false'}\n")
+              output.write(f"release=true\ntag={tag}\nexisting={'true' if exists.returncode == 0 else 'false'}\n")
           PY
       - name: Validate the release
+        if: steps.version.outputs.release == 'true'
         run: |
           python -m pip install -e ".[dev]" build twine
           python -m mypy
@@ -87,7 +140,7 @@ jobs:
           python -m build
           python -m twine check --strict dist/*
       - name: Commit and push the version and tag
-        if: steps.version.outputs.existing == 'false'
+        if: steps.version.outputs.release == 'true' && steps.version.outputs.existing == 'false'
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -101,19 +154,14 @@ jobs:
           # If main advances or the tag appears, neither remote ref is changed.
           git push --atomic origin "HEAD:refs/heads/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG"
       - name: Publish GitHub release
+        if: steps.version.outputs.release == 'true'
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
-          RELEASE_NOTES: ${{ inputs.notes }}
         run: |
           if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > "$RUNNER_TEMP/release-draft"; then
             if [ "$(cat "$RUNNER_TEMP/release-draft")" = true ]; then
               gh release edit "$RELEASE_TAG" --draft=false
             fi
           else
-            notes=(--generate-notes)
-            if [ -n "$RELEASE_NOTES" ]; then
-              printf '%s\n' "$RELEASE_NOTES" > "$RUNNER_TEMP/release-notes.md"
-              notes=(--notes-file "$RUNNER_TEMP/release-notes.md")
-            fi
-            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" "${notes[@]}"
+            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes
           fi
