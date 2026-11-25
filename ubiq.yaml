@@ -22,6 +22,8 @@ catalogs:
     cover: ["skills/**/SKILL.md"]
 ignore:
   - ".git/**"
+  - ".venv/**"
+  - ".claude/worktrees/**"
 # Regex patterns whose matches must resolve to a record `id:` (e.g. requirement IDs like R3, T8).
 id_patterns:
   - "\\bUB-\\d+\\b"
@@ -29,3 +31,41 @@ id_patterns:
 # Skill directories install together as siblings under one root.
 edges:
   install: ["skills/*/SKILL.md"]
+
+# Typed contracts for each owned asset family.
+schemas:
+  - schema: ".ubiq/schemas/glossary-record.json"
+    files: ["glossary/*.md", ".ubiq/glossary/*.md"]
+    format: frontmatter
+  - schema: ".ubiq/schemas/skill.json"
+    files: ["skills/*/SKILL.md"]
+    format: frontmatter
+  - schema: ".ubiq/schemas/overlay.json"
+    files: [".ubiq/overlays/*.md"]
+    format: frontmatter
+  - schema: ".ubiq/schemas/skill-catalog.json"
+    files: [".ubiq/catalogs/skills.json"]
+  - schema: ".ubiq/schemas/agent-interface.json"
+    files: ["skills/*/agents/*.yaml"]
+  - schema: ".ubiq/schemas/cursor-rule.json"
+    files: [".cursor/rules/*.mdc"]
+    format: frontmatter
+  - schema: ".ubiq/schemas/schema-document.json"
+    files: [".ubiq/schemas/*.json"]
+
+# Every owned asset family must stay typed (`ubiq coverage --since <base>` in CI).
+coverage:
+  files:
+    - "**/SKILL.md"
+    - "skills/*/agents/*.yaml"
+    - "glossary/*.md"
+    - ".ubiq/glossary/*.md"
+    - ".ubiq/overlays/*.md"
+    - ".ubiq/catalogs/*.json"
+    - ".ubiq/schemas/*.json"
+    - ".cursor/rules/*.mdc"
+  exclude:
+    - glob: "tests/fixtures/**"
+      reason: "Pinned upstream skill repositories and synthetic test inputs; their metadata belongs to their sources."
+  min_typed_percent: 100
+  no_regression: true

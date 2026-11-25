@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent interface metadata for a skill",
+  "type": "object",
+  "required": ["interface", "policy"],
+  "properties": {
+    "interface": {
+      "type": "object",
+      "required": ["display_name", "short_description"],
+      "properties": {
+        "display_name": {"type": "string", "pattern": "\\S"},
+        "short_description": {"type": "string", "pattern": "\\S"}
+      },
+      "additionalProperties": false
+    },
+    "policy": {
+      "type": "object",
+      "required": ["allow_implicit_invocation"],
+      "properties": {"allow_implicit_invocation": {"type": "boolean"}},
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
