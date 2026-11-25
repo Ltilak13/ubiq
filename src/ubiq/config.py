@@ -171,6 +171,14 @@ class Config:
 
 
 @dataclass(frozen=True)
+class Dependency:
+    name: str | None
+    path: Path
+    revision: str | None = None
+    required: bool = False
+
+
+@dataclass(frozen=True)
 class EdgeConfig:
     invoke_fields: tuple[str, ...]
     route_fields: tuple[str, ...]
@@ -179,7 +187,7 @@ class EdgeConfig:
     include_ns: tuple[str, ...]
     inputs: str  # part frontmatter field: {input name: [allowed values]}
     install: tuple[Glob, ...]
-    external: tuple[Path, ...]  # other repositories that install into the same root
+    external: tuple[Dependency, ...]
     drift_ns: tuple[str, ...]  # namespaces whose mentions and edges must agree (W005)
     # Edge kind -> configured severity; a kind left out keeps each code's default.
     severity: Mapping[str, Severity]
@@ -220,9 +228,36 @@ def _edges(raw, ref_fields: tuple[str, ...], root: Path) -> EdgeConfig:
         raise InvalidConfig("edges.reference.fields: a field cannot also invoke or route")
     blocked = invoke.get("blocked_by")
     external = []
-    for value in _strings(raw.get("external", []), "edges.external", scalar=True):
-        path = Path(os.path.expanduser(value))
-        external.append(path if path.is_absolute() else root / path)
+    declarations = raw.get("external", [])
+    if isinstance(declarations, str):
+        declarations = [declarations]
+    if not isinstance(declarations, list):
+        raise InvalidConfig("edges.external: expected a list")
+    names: set[str] = set()
+    for i, value in enumerate(declarations):
+        label = f"edges.external[{i}]"
+        dependency_name: str | None = None
+        revision = None
+        required = False
+        if isinstance(value, dict):
+            _known(value, label, ("name", "path", "revision", "required"))
+            dependency_name = _string(value.get("name"), f"{label}.name")
+            if not re.fullmatch(r"[a-z][a-z0-9-]*", dependency_name):
+                raise InvalidConfig(f"{label}.name: expected lowercase letters, digits, or hyphens")
+            if dependency_name in names:
+                raise InvalidConfig(f"{label}.name: duplicate dependency name {dependency_name!r}")
+            names.add(dependency_name)
+            if not isinstance(value.get("required"), bool):
+                raise InvalidConfig(f"{label}.required: expected an explicit boolean")
+            required = value["required"]
+            revision = value.get("revision")
+            if "revision" in value and (not isinstance(revision, str)
+                                       or not re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", revision)):
+                raise InvalidConfig(f"{label}.revision: expected a full commit SHA")
+            value = value.get("path")
+        path = Path(os.path.expanduser(_string(value, f"{label}.path")))
+        external.append(Dependency(dependency_name, path if path.is_absolute() else root / path,
+                                   revision.lower() if revision else None, required))
     return EdgeConfig(
         invoke_fields=fields,
         route_fields=routes,
