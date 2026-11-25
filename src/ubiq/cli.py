@@ -60,6 +60,7 @@ from .records import (
     normalize,
 )
 from .scan import Ref, file_link_targets, scan_docs
+from .schemas import assess_schemas
 
 
 def _display_path(path: Path, root: Path) -> str:
@@ -770,16 +771,107 @@ def cmd_coverage(args) -> int:
     return code
 
 
+def _query_repositories(cfg: Config, args) -> dict:
+    loaded: dict[Path, query.Corpus] = {}
+    load_errors: dict[Path, str] = {}
+    accepted: dict[Path, query.Corpus] = {}
+    entries: list[dict] = []
+    failures: list[dict] = []
+
+    def load(root: Path) -> query.Corpus:
+        if root in load_errors:
+            raise InvalidConfig(load_errors[root])
+        if root not in loaded:
+            try:
+                other = cfg if root == cfg.root else load_config(root)
+                glossary, overlays = _glossary(other)
+                loaded[root] = query.Corpus(other, glossary,
+                                           assess_schemas(other, glossary, retain_scan_errors=True), overlays)
+            except (InvalidConfig, ConflictingGlossary, OSError, UnicodeError, RuntimeError) as exc:
+                load_errors[root] = str(exc)
+                raise
+        return loaded[root]
+
+    def unavailable(entry: dict, message: str) -> None:
+        entry.update(status='unavailable', reason=message)
+        failures.append({'code': 'Q001', 'repository': entry['root'], 'file': 'ubiq.yaml',
+                         'name': entry['name'], 'message': message})
+
+    declarations = list(cfg.edges.external)
+    if args.repository is not None:
+        declarations = [dep for dep in declarations if dep.name == args.repository]
+        if not declarations:
+            failures.append({'code': 'Q001', 'repository': str(cfg.root), 'file': 'ubiq.yaml',
+                             'message': f'unknown configured repository: {args.repository}'})
+    else:
+        entry = {'name': None, 'root': str(cfg.root), 'local': True, 'required': True,
+                 'revision': None, 'observed_revision': query._repository(cfg.root)['revision'],
+                 'status': 'available'}
+        entries.append(entry)
+        try:
+            accepted[cfg.root] = load(cfg.root)
+        except (InvalidConfig, ConflictingGlossary, OSError, UnicodeError, RuntimeError) as exc:
+            unavailable(entry, str(exc))
+    for dependency in declarations:
+        entry = {'name': dependency.name, 'root': str(dependency.path), 'local': False,
+                 'required': dependency.required, 'revision': dependency.revision,
+                 'observed_revision': None, 'status': 'available'}
+        entries.append(entry)
+        try:
+            # Only a genuinely absent optional named checkout can be skipped.
+            # Existing files, broken symlinks, and unreadable paths remain failures.
+            try:
+                dependency.path.lstat()
+            except FileNotFoundError:
+                entry['root'] = str(dependency.path.resolve())
+                if dependency.name is not None and not dependency.required and args.repository is None:
+                    entry.update(status='skipped_optional', reason='optional checkout is absent')
+                    continue
+                raise InvalidConfig(f'dependency {dependency.name!r}: checkout directory not found') from None
+            root = dependency.path.resolve()
+            entry['root'] = str(root)
+            if not root.is_dir():
+                raise InvalidConfig(f'dependency {dependency.name!r}: checkout directory not found')
+            entry['observed_revision'] = query._repository(root)['revision']
+            corpus = load(root)
+            if corpus.glossary.invalid:
+                raise InvalidConfig(f'dependency {dependency.name!r}: {corpus.glossary.invalid}')
+            if dependency.revision is not None:
+                other = corpus.config
+                docs = _close_docs(root, [*_expand((*other.docs, *other.historical), other.ignore),
+                                          *corpus.overlays], other.ignore)
+                validate_checkout(dependency, other,
+                                  [*docs, *_installed(other), *(t.file for t in corpus.glossary.terms),
+                                   *corpus.glossary.overlay_sources, *corpus.glossary.overlay_sources.values(),
+                                   *query.declared_inputs(corpus)])
+            accepted[root] = corpus
+        except (InvalidConfig, ConflictingGlossary, OSError, UnicodeError, RuntimeError) as exc:
+            unavailable(entry, str(exc))
+    entries.sort(key=lambda e: (not e['local'], e['name'] or '', e['root']))
+    return query.select_repositories(cfg.root, accepted, entries, failures,
+                                     requested_repository=args.repository, kind=args.kind,
+                                     domain=args.domain, ident=args.id, document=args.document,
+                                     direction=args.direction, relation=args.relation)
+
+
 def cmd_query(args) -> int:
     root = Path(args.root).resolve()
     try:
         cfg = load_config(root)
-        glossary, _ = _glossary(cfg)
-        report = query.select(cfg, glossary, kind=args.kind, domain=args.domain,
-                              ident=args.id, document=args.document,
-                              direction=args.direction, relation=args.relation)
+        if args.repository is not None or args.all_repositories:
+            report = _query_repositories(cfg, args)
+        else:
+            glossary, _ = _glossary(cfg)
+            report = query.select(cfg, glossary, kind=args.kind, domain=args.domain,
+                                  ident=args.id, document=args.document,
+                                  direction=args.direction, relation=args.relation)
     except (InvalidConfig, ConflictingGlossary, GlobError, OSError, UnicodeError) as exc:
         report = query.unavailable(root, str(exc))
+        if args.repository is not None or args.all_repositories:
+            report['scope'].update(mode='repository' if args.repository is not None else 'all_repositories',
+                                   requested_repository=args.repository, repositories=[])
+            for diagnostic in report['diagnostics']:
+                diagnostic['repository'] = str(root)
     if args.direction is not None or args.relation is not None:
         report.setdefault("relationships", [])
     print(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False)
@@ -1044,6 +1136,10 @@ def main(argv: list[str] | None = None) -> int:
 
     q = sub.add_parser("query", help="select complete records from declared metadata collections")
     q.add_argument("--root", default=".")
+    repositories = q.add_mutually_exclusive_group()
+    repositories.add_argument("--repository", help="select a configured dependency by its declared name")
+    repositories.add_argument("--all-repositories", action="store_true",
+                              help="select local records and available direct dependencies")
     q.add_argument("--kind", help="match the exact declared record kind")
     q.add_argument("--domain", help="match the exact declared domain")
     q.add_argument("--id", help="resolve an exact record identity before applying other filters")

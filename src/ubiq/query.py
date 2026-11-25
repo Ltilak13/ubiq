@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from .config import Config
@@ -69,6 +70,23 @@ def _annotate(item: dict, bindings: list[tuple[Binding, Target]], owner: str, fi
 def _matches(item: dict, kind: str | None, domain: str | None) -> bool:
     return ((kind is None or item['record'].get('kind') == kind)
             and (domain is None or item['record'].get('domain') == domain))
+
+
+def _resolve(records: list[dict], complete: bool, ident: str | None, document: str | None,
+             kind: str | None, domain: str | None) -> tuple[list[dict], dict]:
+    available = [item for item in records if document is None or item['metadata']['file'] == document]
+    selection: dict = {'kind': kind, 'domain': domain, 'id': ident, 'document': document,
+                      'status': 'matched'}
+    if ident is not None:
+        available = [item for item in available if item['identity']['id'] == ident]
+        if not available:
+            selection['status'] = 'not_found' if complete else 'unresolved'
+        elif len(available) > 1:
+            selection['status'] = 'ambiguous'
+            selection['candidates'] = [{**item['identity'], 'pointer': item['metadata']['pointer']}
+                                       for item in available]
+            available = []
+    return available, selection
 
 
 def _endpoint(declared_id, candidates: list[dict], owners: set[int],
@@ -150,13 +168,14 @@ def _follow(seed: dict, direction: str, relation: str | None, kind: str | None,
 def select(cfg: Config, glossary: Glossary, *, kind: str | None = None,
            domain: str | None = None, ident: str | None = None,
            document: str | None = None, direction: str | None = None,
-           relation: str | None = None) -> dict:
+           relation: str | None = None, bindings: list[Binding] | None = None) -> dict:
     """Select local declarations. Integrity diagnostics do not assert semantic truth."""
     if direction is None and relation is not None:
         direction = 'outgoing'
     if direction not in (None, 'incoming', 'outgoing') or direction is not None and ident is None:
         raise ValueError('relationship queries require an ID and an incoming or outgoing direction')
-    bindings = assess_schemas(cfg, glossary, retain_scan_errors=True)
+    if bindings is None:
+        bindings = assess_schemas(cfg, glossary, retain_scan_errors=True)
     repository = _repository(cfg.root)
     diagnostics: list[dict] = []
     complete = True
@@ -235,19 +254,8 @@ def select(cfg: Config, glossary: Glossary, *, kind: str | None = None,
     for (file, _), item in sorted(records.items()):
         _annotate(item, assessments[file], item['identity']['id'], file)
 
-    available = [item for (file, _), item in sorted(records.items())
-                 if document is None or file == document]
-    selection: dict = {'kind': kind, 'domain': domain, 'id': ident, 'document': document,
-                      'status': 'matched'}
-    if ident is not None:
-        available = [item for item in available if item['identity']['id'] == ident]
-        if not available:
-            selection['status'] = 'not_found' if complete else 'unresolved'
-        elif len(available) > 1:
-            selection['status'] = 'ambiguous'
-            selection['candidates'] = [{**item['identity'], 'pointer': item['metadata']['pointer']}
-                                       for item in available]
-            available = []
+    available, selection = _resolve([item for _, item in sorted(records.items())],
+                                    complete, ident, document, kind, domain)
     results = [item for item in available if _matches(item, kind, domain)]
     relationships: list[dict] = []
     if direction is not None:
@@ -275,6 +283,104 @@ def select(cfg: Config, glossary: Glossary, *, kind: str | None = None,
     return report
 
 
+@dataclass
+class Corpus:
+    config: Config
+    glossary: Glossary
+    bindings: list[Binding]
+    overlays: list[Path]
+
+
+def declared_inputs(corpus: Corpus) -> list[Path]:
+    """Collect every declared source and snapshot before applying query filters."""
+    paths: set[Path] = set()
+    for binding in corpus.bindings:
+        spec = binding.extension
+        if spec is None:
+            continue
+        for target in binding.targets:
+            paths.add(target.path)
+            if not target.loaded or not isinstance(target.data, dict):
+                continue
+            for name in [*spec['collections'], spec['domains'], spec['relationships']]:
+                records = target.data.get(name)
+                if not isinstance(records, list):
+                    continue
+                for record in records:
+                    if not isinstance(record, dict):
+                        continue
+                    source = record.get('source') if name in spec['collections'] else None
+                    if isinstance(source, str) and source.strip():
+                        paths.add(corpus.config.root / source)
+                    snapshots = record.get('evidence', [])
+                    if isinstance(snapshots, dict):
+                        snapshots = [snapshots]
+                    if isinstance(snapshots, list):
+                        for snapshot in snapshots:
+                            path = snapshot.get('path') if isinstance(snapshot, dict) else None
+                            if isinstance(path, str) and path.strip():
+                                paths.add(corpus.config.root / path)
+    # validate_checkout retains these lexical paths and also checks resolved targets.
+    return sorted(paths)
+
+
+def select_repositories(root: Path, corpora: dict[Path, Corpus], entries: list[dict],
+                        failures: list[dict], *, requested_repository: str | None = None,
+                        kind: str | None = None, domain: str | None = None,
+                        ident: str | None = None, document: str | None = None,
+                        direction: str | None = None, relation: str | None = None) -> dict:
+    """Resolve identities over accepted checkouts before filtering or traversal."""
+    if direction is None and relation is not None:
+        direction = 'outgoing'
+    reports = {str(path): select(c.config, c.glossary, bindings=c.bindings)
+               for path, c in sorted(corpora.items())}
+    diagnostics = list(failures)
+    for path, report in reports.items():
+        diagnostics.extend({**d, 'repository': path} for d in report['diagnostics'])
+    for entry in entries:
+        if entry['status'] != 'available':
+            continue
+        report = reports[entry['root']]
+        entry.update(documents=report['scope']['documents'], collections=report['scope']['collections'])
+        if not report['complete']:
+            entry['status'] = 'partial'
+    complete = all(e['status'] in ('available', 'skipped_optional') for e in entries) and not failures
+    available, selection = _resolve([item for report in reports.values() for item in report['results']],
+                                    complete, ident, document, kind, domain)
+    results = [item for item in available if _matches(item, kind, domain)]
+    relationships: list[dict] = []
+    if direction is not None:
+        selection.update(direction=direction, relation=relation)
+        results = []
+        if len(available) == 1:
+            seed = available[0]
+            path = seed['identity']['repository']
+            corpus = corpora[Path(path)]
+            traversed = select(corpus.config, corpus.glossary, kind=kind, domain=domain,
+                               ident=ident, document=seed['metadata']['file'], direction=direction,
+                               relation=relation, bindings=corpus.bindings)
+            selection['seed'] = traversed['selection']['seed']
+            results, relationships = traversed['results'], traversed['relationships']
+            diagnostics.extend({**d, 'repository': path} for d in traversed['diagnostics'])
+            complete = complete and traversed['complete']
+    status = ('unavailable' if not reports else 'partial') if not complete else (
+        selection['status'] if selection['status'] in ('not_found', 'ambiguous') else 'ok')
+    diagnostics = [value for _, value in sorted({json.dumps(d, sort_keys=True): d
+                                                for d in diagnostics}.items())]
+    report = {'version': VERSION, 'status': status, 'complete': complete,
+              'scope': {'repository': str(root),
+                        'mode': 'repository' if requested_repository is not None else 'all_repositories',
+                        'requested_repository': requested_repository,
+                        'repositories': entries,
+                        'documents': sorted(str(Path(path) / file) for path, r in reports.items()
+                                            for file in r['scope']['documents']),
+                        'collections': sum(r['scope']['collections'] for r in reports.values())},
+              'selection': selection, 'results': results, 'diagnostics': diagnostics}
+    if direction is not None:
+        report['relationships'] = relationships
+    return report
+
+
 def exit_code(report: dict) -> int:
     return {'ok': 0, 'partial': 1, 'unavailable': 1, 'not_found': 3, 'ambiguous': 4}[report['status']]
 
@@ -291,8 +397,13 @@ def render(report: dict) -> str:
         lines.append(json.dumps(edge, indent=2, sort_keys=True, ensure_ascii=False))
     if report['selection'].get('candidates'):
         lines.append(json.dumps(report['selection'], indent=2, sort_keys=True, ensure_ascii=False))
+    for entry in report['scope'].get('repositories', []):
+        label = entry['name'] if entry['name'] is not None else entry['root']
+        lines.append(f"repository {label}: {entry['status']}" +
+                     (f" ({entry['reason']})" if entry.get('reason') else ''))
     for diagnostic in report['diagnostics']:
-        lines.append(f"{diagnostic['code']} {diagnostic['file']}: {diagnostic['message']}")
+        repository = f" [{diagnostic['repository']}]" if 'repository' in diagnostic else ''
+        lines.append(f"{diagnostic['code']}{repository} {diagnostic['file']}: {diagnostic['message']}")
     if not report['scope']['collections']:
         lines.append('No schema-declared record collections are available.')
     return '\n'.join(lines)
