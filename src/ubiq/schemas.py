@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,8 @@ from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
 
 from .check import Diagnostic
+from .config import SchemaSpec
+from .integrity import Finding, assess_integrity, validate_spec
 from .records import FRONTMATTER_RE
 
 if TYPE_CHECKING:
@@ -154,38 +157,78 @@ def _validator(root: Path, location: str):
     return selected, validator
 
 
-def check_schemas(cfg, glossary):
-    """Return E008 schema/config errors and E009 target conformance errors."""
-    diagnostics = []
-    for spec in cfg.schemas:
+@dataclass
+class Target:
+    """One file a binding selects: what loaded, and how it conforms."""
+    path: Path
+    errors: list[str] = field(default_factory=list)  # E009 messages; empty when conforming
+    data: object = None
+    loaded: bool = False
+    # E010 findings; None when not assessed (no x-ubiq extension, or not conforming).
+    integrity: list[Finding] | None = None
+
+
+@dataclass
+class Binding:
+    """One `schemas` entry, assessed: the schema, its extension, and its targets."""
+    index: int
+    spec: SchemaSpec
+    error: str | None = None  # the schema or its x-ubiq extension cannot load (E008)
+    extension: dict | None = None
+    unmatched: list[str] = field(default_factory=list)  # file patterns that matched nothing
+    targets: list[Target] = field(default_factory=list)
+
+
+def assess_schemas(cfg, glossary) -> list[Binding]:
+    """Structured results for every schema binding. `check_schemas` renders them."""
+    bindings = []
+    for index, spec in enumerate(cfg.schemas):
+        binding = Binding(index, spec)
+        bindings.append(binding)
         try:
             schema, validator = _validator(cfg.root, spec.schema)
-            has_integrity = isinstance(schema, dict) and "x-ubiq" in schema
-            integrity = schema.get("x-ubiq") if has_integrity else None
-            if has_integrity:
-                from .integrity import validate_spec
-                validate_spec(integrity)
+            if isinstance(schema, dict) and "x-ubiq" in schema:
+                validate_spec(schema["x-ubiq"])
+                binding.extension = schema["x-ubiq"]
         except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, SchemaError,
                 Unresolvable, RecursionError) as exc:
-            diagnostics.append(Diagnostic("E008", f"schema {spec.schema}: {exc}", cfg.root / "ubiq.yaml"))
+            binding.error = str(exc)
             continue
         paths = set()
         for pattern in spec.files:
             matches = {p for p in pattern.walk(cfg.ignore)
                        if not any(g.matches(p) for g in cfg.ignore)}
             if not matches:
-                diagnostics.append(Diagnostic("E009", f"schema target pattern matched no files: {pattern.pattern}",
-                                              cfg.root / "ubiq.yaml"))
+                binding.unmatched.append(pattern.pattern)
             paths.update(matches)
         for path in sorted(paths):
+            target = Target(path)
+            binding.targets.append(target)
             try:
-                value = load_data(path, frontmatter=spec.format == "frontmatter")
-                errors = list(validator.iter_errors(value))
-                diagnostics.extend(Diagnostic("E009", f"{_pointer(e.absolute_path)}: {e.message}", path)
-                                   for e in errors)
-                if not errors and integrity is not None:
-                    from .integrity import check_integrity
-                    diagnostics.extend(check_integrity(value, integrity, cfg.root, glossary, path))
+                target.data = load_data(path, frontmatter=spec.format == "frontmatter")
+                target.loaded = True
+                target.errors = [f"{_pointer(e.absolute_path)}: {e.message}"
+                                 for e in validator.iter_errors(target.data)]
+                if not target.errors and binding.extension is not None:
+                    target.integrity = assess_integrity(target.data, binding.extension,
+                                                        cfg.root, glossary)
             except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, Unresolvable, RecursionError) as exc:
-                diagnostics.append(Diagnostic("E009", f"schema validation failed: {exc}", path))
+                target.errors = [f"schema validation failed: {exc}"]
+    return bindings
+
+
+def check_schemas(cfg, glossary, bindings: list[Binding] | None = None):
+    """Return E008 schema/config errors and E009 target conformance errors."""
+    diagnostics = []
+    for binding in assess_schemas(cfg, glossary) if bindings is None else bindings:
+        if binding.error is not None:
+            diagnostics.append(Diagnostic("E008", f"schema {binding.spec.schema}: {binding.error}",
+                                          cfg.root / "ubiq.yaml"))
+            continue
+        diagnostics.extend(Diagnostic("E009", f"schema target pattern matched no files: {pattern}",
+                                      cfg.root / "ubiq.yaml") for pattern in binding.unmatched)
+        for target in binding.targets:
+            diagnostics.extend(Diagnostic("E009", message, target.path) for message in target.errors)
+            diagnostics.extend(Diagnostic("E010", f.message, target.path)
+                               for f in target.integrity or [])
     return diagnostics

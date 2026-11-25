@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Overlay frontmatter",
+  "type": "object",
+  "required": ["source"],
+  "properties": {
+    "source": {"type": "string", "pattern": "\\S"},
+    "uses": {"type": "array", "items": {"type": "string", "pattern": "\\S"}, "uniqueItems": true}
+  },
+  "additionalProperties": false
+}

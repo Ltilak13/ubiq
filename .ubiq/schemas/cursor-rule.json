@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cursor rule frontmatter",
+  "type": "object",
+  "required": ["description", "alwaysApply"],
+  "properties": {
+    "description": {"type": "string", "pattern": "\\S"},
+    "globs": {"type": "string", "pattern": "\\S"},
+    "alwaysApply": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}

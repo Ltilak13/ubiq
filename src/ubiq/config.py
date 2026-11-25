@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from collections.abc import Mapping
@@ -22,7 +23,7 @@ class InvalidConfig(ValueError):
     """Invalid configuration, reported as E008."""
 
 
-DEFAULT_CONFIG = {
+DEFAULT_CONFIG: dict = {
     "glossary": ["glossary/**/*.md", ".ubiq/glossary/**/*.md"],
     "docs": [
         "README.md",
@@ -96,6 +97,10 @@ DEFAULT_CONFIG = {
     # invoke.severity, route.severity, include.severity: error|warn|off for what
     #   checks of that kind's edges report; unset, each code keeps its letter.
     "edges": {},
+    # Typed-metadata coverage (`ubiq coverage`). Unset: the command reports
+    # setup guidance and exits 2. `files` selects the denominator; each
+    # `exclude` entry needs a `reason`.
+    "coverage": None,
 }
 
 
@@ -124,6 +129,20 @@ class SchemaSpec:
 
 
 @dataclass(frozen=True)
+class Exclusion:
+    glob: Glob
+    reason: str
+
+
+@dataclass(frozen=True)
+class CoverageSpec:
+    files: tuple[Glob, ...]
+    exclude: tuple[Exclusion, ...]
+    min_typed_percent: int | float | None
+    no_regression: bool
+
+
+@dataclass(frozen=True)
 class Config:
     root: Path
     glossary: tuple[GlossaryRule, ...]
@@ -143,6 +162,7 @@ class Config:
     unlinked_except: tuple[str, ...]
     candidate_shapes: Shape
     edges: EdgeConfig
+    coverage: CoverageSpec | None = None
 
     @property
     def part_rules(self) -> tuple[GlossaryRule, ...]:
@@ -215,6 +235,51 @@ def _edges(raw, ref_fields: tuple[str, ...], root: Path) -> EdgeConfig:
         drift_ns=tuple(_strings(drift.get("ns", []), "edges.drift.ns", scalar=True)),
         severity=severity,
     )
+
+
+def _relative(pattern: str, field: str) -> str:
+    if os.path.isabs(pattern) or ".." in Path(pattern).parts:
+        raise InvalidConfig(f"{field}: expected a repository-relative pattern")
+    return pattern
+
+
+def _coverage(raw, root: Path) -> CoverageSpec | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise InvalidConfig("coverage: expected a mapping")
+    _known(raw, "coverage", ("files", "exclude", "min_typed_percent", "no_regression"))
+    if "files" not in raw:
+        raise InvalidConfig("coverage.files: list the repository files to measure")
+    files = _strings(raw["files"], "coverage.files")
+    if not files:
+        raise InvalidConfig("coverage.files: expected at least one pattern")
+    exclude = raw.get("exclude") or []
+    if not isinstance(exclude, list):
+        raise InvalidConfig("coverage.exclude: expected a list")
+    exclusions: list[Exclusion] = []
+    for i, item in enumerate(exclude):
+        field = f"coverage.exclude[{i}]"
+        if not isinstance(item, dict):
+            raise InvalidConfig(f"{field}: expected a mapping with glob and reason")
+        _known(item, field, ("glob", "reason"))
+        pattern = _relative(_string(item.get("glob"), f"{field}.glob"), f"{field}.glob")
+        if item.get("reason") is None:
+            raise InvalidConfig(f"{field}.reason: explain why {pattern} is excluded")
+        exclusions.append(Exclusion(Glob.parse(pattern, root),
+                                    _string(item["reason"], f"{field}.reason")))
+    patterns = [e.glob.pattern for e in exclusions]
+    if len(set(patterns)) != len(patterns):
+        raise InvalidConfig("coverage.exclude: each glob may appear once")
+    floor = raw.get("min_typed_percent")
+    if floor is not None and (isinstance(floor, bool) or not isinstance(floor, (int, float))
+                              or not math.isfinite(floor) or not 0 <= floor <= 100):
+        raise InvalidConfig("coverage.min_typed_percent: expected a number from 0 through 100")
+    no_regression = raw.get("no_regression", False)
+    if not isinstance(no_regression, bool):
+        raise InvalidConfig("coverage.no_regression: expected true or false")
+    return CoverageSpec(tuple(Glob.parse(_relative(f, "coverage.files"), root) for f in files),
+                        tuple(exclusions), floor, no_regression)
 
 
 def _strings(value, field: str, scalar: bool = False) -> list[str]:
@@ -416,6 +481,7 @@ def load_config(root: Path) -> Config:
         unlinked_except=tuple(cfg["unlinked_except"]),
         candidate_shapes=shapes,
         edges=_edges(cfg["edges"], tuple(cfg["ref_fields"]), root),
+        coverage=_coverage(cfg["coverage"], root),
     )
     broken = broken_guarantees(config)
     if broken:

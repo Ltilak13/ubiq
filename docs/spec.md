@@ -118,6 +118,8 @@ include link that resolves nowhere always fails it (see Composition edges).
   URLs, emails, HTML tags, and HTML comments are not mentions; a mention in another
   link's label counts as linked. Off unless `unlinked_mentions: warn`;
   `unlinked_except` lists terms by name or qualified name.
+- `W006` coverage scope — a `coverage.files` pattern matches no file, or a
+  `coverage.exclude` glob matches no selected file. Only `ubiq coverage` reports it.
 - `E011` include cycle — a [[shared part]] includes itself through Markdown links
   to other parts. The agent would read the same files forever.
 - `E012` part input — an include names no value, or an undeclared value, for an
@@ -457,3 +459,120 @@ Invalid schemas and bindings report E008. Instance failures report E009.
 The optional `x-ubiq` extension checks graph integrity and registered source coverage with E010.
 These explicit contracts add validation without changing lexical vocabulary parsing or reference policies.
 See [native schema validation](schema-validation.md) for the contract and limits.
+
+## Coverage
+
+`ubiq coverage` reports how much explicitly selected repository content has
+typed metadata. It measures declared coverage and integrity, not semantic
+correctness. `ubiq check` remains the validation gate.
+
+```yaml
+coverage:
+  files: ["src/**/*.py", "services/*.yaml"]   # required, nonempty
+  exclude:
+    - glob: "src/vendor/**"
+      reason: "Vendored upstream copy"         # required
+  min_typed_percent: 100                       # optional, 0 through 100
+  no_regression: true                          # optional, default false
+```
+
+Patterns are repository-relative. A missing `reason`, a repeated exclusion
+glob, or any other malformed field is E008. Without a `coverage` section the
+command reports `unavailable` with setup guidance and exits 2; every other
+command behaves as before.
+
+**Scope.** Selected files are the unique existing files that `files` matches,
+minus `ignore` and files git ignores. Excluded files are selected files that
+an `exclude` glob matches; each keeps every matching glob and reason. Eligible
+files are selected files that are not excluded. They are the denominator. A
+file is identified by its resolved repository-relative path, so overlapping
+globs and in-repository links count it once. A link that resolves outside the
+repository is listed under `scope.outside` and never counted. A pattern or
+exclusion that matches nothing is W006. `suggestions` lists discovered assets
+(`ubiq discover`) outside the selection and its exclusion globs; they never
+join the denominator.
+
+**Typed files.** An eligible file is typed when a `schemas` binding selects it
+directly, or when a record in an `x-ubiq` collection names it as `source`. Each
+typed file lists its supporting locations in `via`: the binding, or the data
+file, JSON pointer, and record id. A glossary record is not typed by being
+registered. `conformance` is `invalid` when any supporting file fails its
+schema or the `x-ubiq` graph shape, so a typed but invalid file never reads as
+healthy. E008, E009, and E010 diagnostics for the bindings appear under
+`diagnostics`.
+
+**Evidence and relationships.** Each typed file also has `evidence`,
+`relationships`, and `findings`, taken from the categorized E010 results of
+`x-ubiq` integrity checking, never from message text. A file typed by a record
+gets the findings that name that record; a bound `x-ubiq` data file gets all of
+its own. `evidence` is the worst of `invalid` (an unreadable or non-relative
+snapshot path), `missing` (no snapshot of the primary source, or a missing
+snapshot file), and `stale` (a changed digest or a missing anchor), else `ok`.
+`relationships` is `unresolved` when a declared endpoint or reference field
+names no record, `invalid` when types are incompatible or the matching
+relationship is not declared, else `ok`. Both are `not_assessed` when nothing
+requires them: a binding without `x-ubiq`, or data that does not conform.
+`assessments` counts typed files by each status. Each finding has `file` (the
+data file), `category`, `kind`, `message`, and `records`.
+
+**Completeness.** A measurement is incomplete when typing cannot be known: a
+bound schema cannot load, an `x-ubiq` data file cannot load, or a collection or
+record source cannot be read. `incomplete` lists each `file` and `reason`, the
+status is `incomplete`, and the command exits 2. Missing data never counts as
+untyped or as passing.
+
+`coverage --json` returns `version` (1), `status` (`ok`, `incomplete`, or
+`unavailable` with a `reason`), `complete`, `incomplete`, `scope` (`files`,
+`exclude` with per-glob file counts, `outside`), `counts` (`selected`,
+`excluded`, `eligible`, `typed`, `untyped`, `nonconforming`), `assessments`,
+`ratio` (`typed`
+and `eligible`), `typed_percent`, `files`, `suggestions`, and `diagnostics`.
+`typed_percent` is null when no file is eligible, and is truncated, not
+rounded, to two decimals. Each file has `file` and `classification` (`typed`,
+`untyped`, or `excluded`); excluded files carry `exclusions`, and the others
+`via` and `conformance`; typed files add `evidence`, `relationships`, and
+`findings`. Files, locations, and diagnostics sort
+deterministically.
+
+**Baselines.** `coverage --since REV` also measures the merge base of `REV`
+and `HEAD`, chosen and checked out as for `impact` and `compare`. Each side
+uses its own configuration: the baseline's `coverage` section supplies its
+historical scope. File identities follow git renames, so a renamed file is
+neither added nor removed. `baseline` has `rev`, `commit`, and `status`; with
+a configured baseline it adds `counts`, `ratio`, `typed_percent`, and
+`incomplete`. A baseline without a `coverage` section has status
+`unconfigured` and no delta. An unknown rev, a baseline whose configuration
+cannot load, or one that cannot be measured is `unavailable` (exit 2); an
+incomplete baseline makes the report `incomplete` (exit 2).
+
+`delta` reports `eligible` and `typed` (`baseline`, `head`, `change`),
+`typed_percent` on both sides, `added` and `removed` eligible files (each with
+its head or baseline `classification`), `newly_typed`, `newly_untyped`,
+`newly_excluded`, `no_longer_excluded`, `exclusions` (`added`, `removed`, and
+`changed` reasons by glob), and `findings`: counts plus `new` and `resolved`
+diagnostics, compared with the finding identity of `compare`. The readable and
+Markdown outputs state the denominator change before percentages. When the
+denominator shrinks they say so: removed or excluded files are not newly
+documented knowledge. `--markdown` prints a PR-ready summary.
+
+**Policies.** The head's configuration sets the policies, also when comparing:
+the baseline supplies its historical scope, never its historical enforcement.
+Ratios compare unrounded (`typed / eligible`), never the displayed percentage.
+
+- `min_typed_percent`: passes when the current ratio reaches the floor.
+- `no_regression`: passes when the current ratio is at least the baseline
+  ratio. It needs `--since`; without it the policy is `unavailable` and the
+  message says to run `ubiq coverage --since REV`. When the baseline has no
+  `coverage` section, the policy is `skipped` with that reason: the change sets
+  the first baseline.
+
+A zero denominator on the side a policy reads fails it, since no percentage
+can pass on it. An incomplete measurement makes every policy `unavailable`.
+`policies` lists each enabled policy with `policy`, `result` (`pass`, `fail`,
+`skipped`, or `unavailable`), and `reason`; the floor adds `threshold`.
+
+Exit codes: 0 when the report is available and every enabled policy passes or
+is skipped; 1 when an enabled policy fails; 2 when the configuration, the
+baseline, or a required measurement is unavailable, or a policy is
+`unavailable`. Diagnostics never change the exit code: `ubiq check` remains the
+validation gate.

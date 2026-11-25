@@ -11,6 +11,8 @@
                                      changed records and the callers they affect
   ubiq compare --since REV [--root DIR] [--json | --markdown]
                                      new, resolved, and unchanged findings
+  ubiq coverage [--since REV] [--root DIR] [--json | --markdown]
+                                     how much selected content has typed metadata
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, review
+from . import __version__, coverage, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
@@ -549,13 +551,22 @@ def cmd_impact(args) -> int:
 
 
 def _findings(diags: list[Diagnostic], root: Path) -> list[dict]:
-    """Findings keyed for comparison: a path outside the root is resolved, so
-    `root/../other` names the same file from either side."""
-    def where(path: Path) -> str:
-        resolved = path.resolve() if path.is_absolute() else (root / path).resolve()
-        return _display_path(resolved, root) if resolved.is_relative_to(root) else str(resolved)
-    return [{"code": d.code, "severity": d.severity, "file": where(d.file),
-             "line": d.line, "message": d.message} for d in diags]
+    return [coverage.finding(d, root) for d in diags]
+
+
+def _as_head(findings: list[dict], base_root: Path, baseline: review.Baseline,
+             root: Path, renamed: dict[str, str]) -> list[dict]:
+    """Baseline findings named as the head names them. The temporary checkout
+    stands for the real repository: its root and top level (reached through
+    in-repo links) take the real paths, and renamed files take their head path."""
+    tree = str(base_root)[:-len(baseline.prefix) - 1] if baseline.prefix else str(base_root)
+    for f in findings:
+        for temp, real in ((str(base_root), str(root)), (tree, str(baseline.toplevel))):
+            f["message"] = f["message"].replace(temp, real)
+            if f["file"].startswith(temp + "/"):
+                f["file"] = _display_path(Path(real + f["file"][len(temp):]), root)
+        f["file"] = renamed.get(f["file"], f["file"])
+    return findings
 
 
 def cmd_compare(args) -> int:
@@ -568,16 +579,7 @@ def cmd_compare(args) -> int:
                 base_diags, _, _ = _check(base_root, _baseline_config(base_root, root))
             except (GlobError, ConflictingGlossary) as exc:
                 raise review.BaselineError(f"baseline cannot be checked: {exc}") from exc
-            base = _findings(base_diags, base_root)
-            # The temporary checkout stands for the real repository: its root and
-            # top level (reached through in-repo links) take the real paths.
-            tree = str(base_root)[:-len(baseline.prefix) - 1] if baseline.prefix else str(base_root)
-            for f in base:
-                for temp, real in ((str(base_root), str(root)), (tree, str(baseline.toplevel))):
-                    f["message"] = f["message"].replace(temp, real)
-                    if f["file"].startswith(temp + "/"):
-                        f["file"] = _display_path(Path(real + f["file"][len(temp):]), root)
-                f["file"] = renamed.get(f["file"], f["file"])
+            base = _as_head(_findings(base_diags, base_root), base_root, baseline, root, renamed)
         try:
             head = _findings(_check(root)[0], root)
         except (InvalidConfig, ConflictingGlossary, GlobError) as exc:
@@ -598,6 +600,53 @@ def cmd_compare(args) -> int:
     else:
         print(review.summary(new, resolved, unchanged, markdown=args.markdown))
     return 1 if any(f["severity"] == "error" for f in new) else 0
+
+
+def _coverage_baseline(root: Path, rev: str) -> tuple[dict, dict | None]:
+    """(baseline summary, baseline report). The report is None when the baseline
+    has no coverage section; each side uses its own configuration."""
+    baseline = review.resolve_baseline(root, rev)
+    renamed = {c.source: c.file for c in review.changed_files(baseline) if c.source}
+    summary = baseline.as_json()
+    with review.checkout(baseline) as base_root:
+        cfg = _baseline_config(base_root, root)
+        if cfg.coverage is None:
+            return {**summary, "status": "unconfigured"}, None
+        try:
+            built = build(base_root, cfg=cfg)
+            report = coverage.measure(built.config, built.glossary, git=False, suggest=False)
+        except (GlobError, ConflictingGlossary, coverage.MeasurementError) as exc:
+            raise review.BaselineError(f"baseline cannot be measured: {exc}") from exc
+        _as_head(report["diagnostics"], base_root, baseline, root, renamed)
+        for f in report["files"]:
+            f["file"] = renamed.get(f["file"], f["file"])
+        for gap in report["incomplete"]:
+            gap["file"] = renamed.get(gap["file"], gap["file"])
+            gap["reason"] = gap["reason"].replace(str(base_root), str(root))
+    return {**summary, "status": report["status"]}, report
+
+
+def cmd_coverage(args) -> int:
+    root = Path(args.root).resolve()
+    code = 2
+    try:
+        cfg = load_config(root)
+        if cfg.coverage is None:
+            report = coverage.unavailable("coverage is not configured", coverage.GUIDANCE)
+        else:
+            built = build(root, cfg=cfg)
+            report = coverage.measure(built.config, built.glossary)
+            if args.since:
+                summary, base = _coverage_baseline(root, args.since)
+                coverage.attach_baseline(report, summary, base)
+            code = coverage.evaluate(report, cfg.coverage, args.since)
+    except (InvalidConfig, ConflictingGlossary, GlobError, coverage.MeasurementError) as exc:
+        report = coverage.unavailable(f"{exc}")
+    except review.BaselineError as exc:
+        report = coverage.unavailable(f"baseline unavailable: {exc}")
+    print(json.dumps(report, indent=2) if args.json
+          else coverage.render(report, markdown=args.markdown))
+    return code
 
 
 def cmd_overlap(args) -> int:
@@ -845,6 +894,15 @@ def main(argv: list[str] | None = None) -> int:
     out.add_argument("--json", action="store_true")
     out.add_argument("--markdown", action="store_true", help="a PR-ready summary")
     cp.set_defaults(fn=cmd_compare)
+
+    cv = sub.add_parser("coverage", help="how much selected repository content has typed metadata")
+    cv.add_argument("--root", default=".")
+    cv.add_argument("--since", metavar="REV", default=None,
+                    help="compare with the merge base of REV and HEAD")
+    cv_out = cv.add_mutually_exclusive_group()
+    cv_out.add_argument("--json", action="store_true")
+    cv_out.add_argument("--markdown", action="store_true", help="a PR-ready summary")
+    cv.set_defaults(fn=cmd_coverage)
 
     o = sub.add_parser("overlap", help="list near-duplicate prose shared across records")
     o.add_argument("--root", default=".")

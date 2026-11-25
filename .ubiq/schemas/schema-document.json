@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Repository schema document",
+  "type": "object",
+  "required": ["$schema", "title", "type"],
+  "properties": {
+    "$schema": {"const": "https://json-schema.org/draft/2020-12/schema"},
+    "title": {"type": "string", "pattern": "\\S"},
+    "type": {"const": "object"}
+  }
+}

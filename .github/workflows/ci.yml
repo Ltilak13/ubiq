@@ -53,6 +53,29 @@ jobs:
       # dogfood: this repo's own docs must pass their own vocabulary check
       - run: ubiq check
 
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the baseline is the merge base, so CI needs history
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      # Typed metadata coverage: a 100% floor and no regression against the
+      # pull request base, or the previous main commit on push. `ubiq check`
+      # in the test job stays the validation gate.
+      - name: Typed metadata coverage
+        shell: bash
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: |
+          # A force-push can leave the previous main commit unreachable.
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || BASE=HEAD~1
+          ubiq coverage --since "$BASE" --markdown | tee -a "$GITHUB_STEP_SUMMARY"
+
   package:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Glossary record frontmatter",
+  "type": "object",
+  "required": ["term"],
+  "properties": {
+    "term": {"$ref": "#/$defs/text"},
+    "ns": {"$ref": "#/$defs/text"},
+    "id": {"type": "string", "pattern": "^UB-[0-9]+$"},
+    "aliases": {"type": "array", "items": {"$ref": "#/$defs/text"}, "minItems": 1, "uniqueItems": true}
+  },
+  "additionalProperties": false,
+  "$defs": {"text": {"type": "string", "pattern": "\\S"}}
+}

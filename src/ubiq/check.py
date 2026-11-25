@@ -21,6 +21,7 @@ Warnings (reported, exit 0):
   W003 blocked-invoke         an invoke edge the model cannot follow (graph.py)
   W004 install-layout         a link that resolves in only one of source tree and install
   W005 drift                  a reference without an edge, or an edge the text never names
+  W006 coverage-scope         a coverage pattern or exclusion matches nothing (coverage.py)
 
 A reference kind's policy (kinds.py) sets the severity of what its refs report:
 `references.id.severity: warn` keeps E004 visible without failing the build.
