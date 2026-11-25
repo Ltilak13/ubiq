@@ -15,8 +15,9 @@ from pathlib import Path
 
 from .check import Diagnostic
 from .config import Config, CoverageSpec
+from .integrity import Finding
 from .records import Glossary, InvalidRecord
-from .schemas import Binding, assess_schemas, check_schemas
+from .schemas import Binding, Target, assess_schemas, check_schemas
 
 VERSION = 1
 GUIDANCE = ('add a coverage section to ubiq.yaml, for example: coverage: '
@@ -99,10 +100,25 @@ class _Scope:
         self.eligible = sorted(f for f in self.selected if f not in self.exclusions)
 
 
+_EVIDENCE = ("invalid", "missing", "stale")  # worst first
+_RELATIONSHIPS = {"unresolved": "unresolved", "incompatible": "invalid", "undeclared": "invalid"}
+
+
+def _assessed(t: Target, b: Binding) -> list[Finding] | None:
+    """Integrity findings for a target, or None when integrity was not assessed:
+    no x-ubiq extension, nonconforming data, or a graph shape failure."""
+    if b.extension is None or t.integrity is None:
+        return None
+    return None if any(f.category == "shape" for f in t.integrity) else t.integrity
+
+
 def _typing(cfg: Config, bindings: list[Binding], eligible: set[str]):
-    """(file -> supporting locations, incompleteness reasons)."""
+    """(file -> supporting locations, file -> integrity checks, incompleteness reasons).
+
+    A check is (data file, findings), with None findings when not assessed."""
     root = cfg.root
     via: dict[str, list[dict]] = {}
+    checks: dict[str, list[tuple[str, list[Finding] | None]]] = {}
     gaps: list[dict] = []
 
     def local(path: Path) -> str | None:
@@ -119,11 +135,15 @@ def _typing(cfg: Config, bindings: list[Binding], eligible: set[str]):
                          "reason": f"{label} ({b.spec.schema}) cannot load, so its files are unknown: {b.error}"})
             continue
         for t in b.targets:
-            conformance = "invalid" if t.errors else "valid"
+            # x-ubiq shape failures are nonconformance too: the graph contract is part of the schema.
+            shape = any(f.category == "shape" for f in t.integrity or [])
+            conformance = "invalid" if t.errors or shape else "valid"
             data_file = _display(t.path, root)
+            findings = _assessed(t, b)
             if (rel := local(t.path)) is not None:
                 via.setdefault(rel, []).append({"kind": "schema", "binding": label,
                                                 "schema": b.spec.schema, "conformance": conformance})
+                checks.setdefault(rel, []).append((data_file, findings))
             if b.extension is None:
                 continue
             if not t.loaded:
@@ -150,7 +170,25 @@ def _typing(cfg: Config, bindings: list[Binding], eligible: set[str]):
                             "kind": "record", "file": data_file, "pointer": f"/{collection}/{i}",
                             "id": ident if isinstance(ident, str) else None,
                             "conformance": conformance})
-    return via, gaps
+                        mine = None if findings is None or not isinstance(ident, str) else [
+                            f for f in findings if ident in f.records]
+                        checks.setdefault(rel, []).append((data_file, mine))
+    return via, checks, gaps
+
+
+def _integrity(checks: list[tuple[str, list[Finding] | None]]) -> tuple[str, str, list[dict]]:
+    """(evidence status, relationship status, findings) from a file's checks."""
+    assessed = [(data, found) for data, found in checks if found is not None]
+    if not assessed:
+        return "not_assessed", "not_assessed", []
+    findings = sorted({(data, f.category, f.kind, f.message, f.records)
+                       for data, found in assessed for f in found})
+    kinds = {(category, kind) for _, category, kind, _, _ in findings}
+    evidence = next((k for k in _EVIDENCE if ("evidence", k) in kinds), "ok")
+    relationships = {_RELATIONSHIPS[k] for c, k in kinds if c == "relationship"}
+    relation = next((k for k in ("unresolved", "invalid") if k in relationships), "ok")
+    return evidence, relation, [{"file": data, "category": c, "kind": k, "message": m,
+                                 "records": list(r)} for data, c, k, m, r in findings]
 
 
 def _suggestions(root: Path, scope: _Scope, git: bool) -> list[str]:
@@ -176,7 +214,7 @@ def measure(cfg: Config, glossary: Glossary, *, git: bool = True,
     root = cfg.root
     scope = _Scope(cfg, spec, git)
     bindings = assess_schemas(cfg, glossary)
-    via, gaps = _typing(cfg, bindings, set(scope.eligible))
+    via, checks, gaps = _typing(cfg, bindings, set(scope.eligible))
 
     files = []
     for file in sorted(scope.selected):
@@ -190,6 +228,8 @@ def measure(cfg: Config, glossary: Glossary, *, git: bool = True,
         if support:
             entry["conformance"] = ("invalid" if any(v["conformance"] == "invalid" for v in support)
                                     else "valid")
+            evidence, relationships, findings = _integrity(checks.get(file, []))
+            entry.update(evidence=evidence, relationships=relationships, findings=findings)
         files.append(entry)
 
     typed = sum(f["classification"] == "typed" for f in files)
@@ -219,6 +259,11 @@ def measure(cfg: Config, glossary: Glossary, *, git: bool = True,
             "eligible": eligible, "typed": typed, "untyped": eligible - typed,
             "nonconforming": sum(f.get("conformance") == "invalid" for f in files),
         },
+        "assessments": {
+            name: {status: sum(f.get(name) == status for f in files) for status in statuses}
+            for name, statuses in (("evidence", ("ok", *_EVIDENCE, "not_assessed")),
+                                   ("relationships", ("ok", "unresolved", "invalid", "not_assessed")))
+        },
         "ratio": {"typed": typed, "eligible": eligible},
         "typed_percent": percent(typed, eligible),
         "files": files,
@@ -242,6 +287,11 @@ def render(report: dict) -> str:
             lines.append(f"untyped {f['file']}")
         elif f["classification"] == "typed" and f["conformance"] == "invalid":
             lines.append(f"invalid {f['file']} (typed, but its metadata does not conform)")
+        elif f["classification"] == "typed":
+            problems = [f"{name} {f[name]}" for name in ("evidence", "relationships")
+                        if f[name] not in ("ok", "not_assessed")]
+            if problems:
+                lines.append(f"failing {f['file']} ({', '.join(problems)})")
     for o in report["scope"]["outside"]:
         lines.append(f"outside {o['file']} -> {o['target']} (not counted)")
     for d in report["diagnostics"]:
@@ -250,8 +300,11 @@ def render(report: dict) -> str:
     for gap in report["incomplete"]:
         lines.append(f"incomplete {gap['file']}: {gap['reason']}")
     c = report["counts"]
+    a = report["assessments"]
+    unassessed = a["evidence"]["not_assessed"]
     lines.append(f"{'INCOMPLETE' if report['incomplete'] else 'coverage'}: "
                  f"{c['typed']} of {c['eligible']} eligible files typed "
                  f"({_shown(report['typed_percent'])}); {c['selected']} selected, "
-                 f"{c['excluded']} excluded, {c['nonconforming']} nonconforming")
+                 f"{c['excluded']} excluded, {c['nonconforming']} nonconforming"
+                 + (f", evidence not assessed for {unassessed}" if unassessed else ""))
     return "\n".join(lines)

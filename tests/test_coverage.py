@@ -4,6 +4,7 @@ The ordinary-software fixture lives in tests/fixtures/coverage/ordinary/. See
 "Coverage" in docs/spec.md.
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -182,4 +183,69 @@ def test_output_is_deterministic(tmp_path, capsys):
     assert run(capsys, root) == first
     assert main(["coverage", "--root", str(root)]) == 0
     assert capsys.readouterr().out.splitlines()[-1] == (
-        "coverage: 2 of 4 eligible files typed (50.00%); 5 selected, 1 excluded, 0 nonconforming")
+        "coverage: 2 of 4 eligible files typed (50.00%); 5 selected, 1 excluded, 0 nonconforming,"
+        " evidence not assessed for 1")
+
+
+def model_edit(root: Path, old: str, new: str) -> None:
+    text = (root / "model.yaml").read_text()
+    assert old in text
+    (root / "model.yaml").write_text(text.replace(old, new, 1))
+
+
+def assessed(capsys, root: Path) -> tuple[int, dict, dict]:
+    code, report = run(capsys, root)
+    return code, report, by_file(report)["src/app.py"]
+
+
+def test_assessments_distinguish_invalid_data_from_absent_metadata(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    model_edit(root, "kind: module", "kind: 7")
+    code, report, app = assessed(capsys, root)
+    assert code == 0
+    assert (app["classification"], app["conformance"]) == ("typed", "invalid")
+    # Integrity cannot run on nonconforming data: not assessed, never "ok".
+    assert (app["evidence"], app["relationships"]) == ("not_assessed", "not_assessed")
+    assert by_file(report)["src/util.py"]["classification"] == "untyped"
+
+
+def test_unresolved_relationship_is_reported(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    digest = hashlib.sha256((root / "src" / "app.py").read_bytes()).hexdigest()
+    model_edit(root, "relationships: []", "relationships:\n  - id: pays\n    from: app\n    to: ghost\n"
+               "    kind: calls\n    evidence:\n      path: src/app.py\n"
+               f"      sha256: {digest}\n      anchor: def main\n")
+    _, report, app = assessed(capsys, root)
+    assert (app["conformance"], app["relationships"], app["evidence"]) == ("valid", "unresolved", "ok")
+    assert [(f["category"], f["kind"], f["records"]) for f in app["findings"]] == [
+        ("relationship", "unresolved", ["app"])]
+    assert report["assessments"]["relationships"]["unresolved"] == 1
+
+
+@pytest.mark.parametrize("change, status", [
+    (lambda root: (root / "src" / "app.py").write_text('"""Payment service entry point."""\n'), "stale"),
+    (lambda root: model_edit(root, "      - path: src/app.py\n        sha256",
+                             "      - path: services/api.yaml\n        sha256"), "missing"),
+    (lambda root: (root / "src" / "app.py").write_bytes(b"\xff def main"), "invalid"),
+])
+def test_evidence_failures_are_categorized(tmp_path, capsys, change, status):
+    root = ordinary(tmp_path)
+    model = (root / "model.yaml").read_text()
+    # Keep the domain's snapshot on its own file so only the module's evidence fails.
+    model_edit(root, model[model.index("domains:"):model.index("modules:")],
+               "domains:\n  - id: payments\n    evidence:\n      - path: services/api.yaml\n"
+               "        sha256: " + hashlib.sha256(
+                   (root / "services" / "api.yaml").read_bytes()).hexdigest()
+               + "\n        anchor: payments\n")
+    change(root)
+    _, report, app = assessed(capsys, root)
+    assert app["conformance"] == "valid" and app["evidence"] == status
+    assert all(f["category"] == "evidence" for f in app["findings"])
+    assert report["assessments"]["evidence"][status] == 1
+
+
+def test_plain_schema_binding_does_not_assess_evidence(tmp_path, capsys):
+    _, report = run(capsys, ordinary(tmp_path))
+    api = by_file(report)["services/api.yaml"]
+    assert (api["evidence"], api["relationships"]) == ("not_assessed", "not_assessed")
+    assert report["assessments"]["evidence"]["not_assessed"] == 1

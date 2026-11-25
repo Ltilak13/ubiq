@@ -496,8 +496,23 @@ directly, or when a record in an `x-ubiq` collection names it as `source`. Each
 typed file lists its supporting locations in `via`: the binding, or the data
 file, JSON pointer, and record id. A glossary record is not typed by being
 registered. `conformance` is `invalid` when any supporting file fails its
-schema, so a typed but invalid file never reads as healthy. E008, E009, and
-E010 diagnostics for the bindings appear under `diagnostics`.
+schema or the `x-ubiq` graph shape, so a typed but invalid file never reads as
+healthy. E008, E009, and E010 diagnostics for the bindings appear under
+`diagnostics`.
+
+**Evidence and relationships.** Each typed file also has `evidence`,
+`relationships`, and `findings`, taken from the categorized E010 results of
+`x-ubiq` integrity checking, never from message text. A file typed by a record
+gets the findings that name that record; a bound `x-ubiq` data file gets all of
+its own. `evidence` is the worst of `invalid` (an unreadable or non-relative
+snapshot path), `missing` (no snapshot of the primary source, or a missing
+snapshot file), and `stale` (a changed digest or a missing anchor), else `ok`.
+`relationships` is `unresolved` when a declared endpoint or reference field
+names no record, `invalid` when types are incompatible or the matching
+relationship is not declared, else `ok`. Both are `not_assessed` when nothing
+requires them: a binding without `x-ubiq`, or data that does not conform.
+`assessments` counts typed files by each status. Each finding has `file` (the
+data file), `category`, `kind`, `message`, and `records`.
 
 **Completeness.** A measurement is incomplete when typing cannot be known: a
 bound schema cannot load, an `x-ubiq` data file cannot load, or a collection or
@@ -508,10 +523,12 @@ untyped or as passing.
 `coverage --json` returns `version` (1), `status` (`ok`, `incomplete`, or
 `unavailable` with a `reason`), `complete`, `incomplete`, `scope` (`files`,
 `exclude` with per-glob file counts, `outside`), `counts` (`selected`,
-`excluded`, `eligible`, `typed`, `untyped`, `nonconforming`), `ratio` (`typed`
+`excluded`, `eligible`, `typed`, `untyped`, `nonconforming`), `assessments`,
+`ratio` (`typed`
 and `eligible`), `typed_percent`, `files`, `suggestions`, and `diagnostics`.
 `typed_percent` is null when no file is eligible, and is truncated, not
 rounded, to two decimals. Each file has `file` and `classification` (`typed`,
 `untyped`, or `excluded`); excluded files carry `exclusions`, and the others
-`via` and `conformance`. Files, locations, and diagnostics sort
+`via` and `conformance`; typed files add `evidence`, `relationships`, and
+`findings`. Files, locations, and diagnostics sort
 deterministically.

@@ -26,6 +26,21 @@
     "untyped": 2,
     "nonconforming": 0
   },
+  "assessments": {
+    "evidence": {
+      "ok": 1,
+      "invalid": 0,
+      "missing": 0,
+      "stale": 0,
+      "not_assessed": 1
+    },
+    "relationships": {
+      "ok": 1,
+      "unresolved": 0,
+      "invalid": 0,
+      "not_assessed": 1
+    }
+  },
   "ratio": {
     "typed": 2,
     "eligible": 4
@@ -49,7 +64,10 @@
           "conformance": "valid"
         }
       ],
-      "conformance": "valid"
+      "conformance": "valid",
+      "evidence": "not_assessed",
+      "relationships": "not_assessed",
+      "findings": []
     },
     {
       "file": "src/app.py",
@@ -63,7 +81,10 @@
           "conformance": "valid"
         }
       ],
-      "conformance": "valid"
+      "conformance": "valid",
+      "evidence": "ok",
+      "relationships": "ok",
+      "findings": []
     },
     {
       "file": "src/util.py",
