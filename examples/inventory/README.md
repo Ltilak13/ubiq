@@ -51,11 +51,22 @@ Use an existing coding agent in this checkout. No new agent runtime is required.
 
 1. Query `REQ-RELEASE` and its outgoing relationships.
 2. Read the returned source files and acceptance scenarios.
-3. Ask the owner to resolve contradictory requirements before changing behavior.
-4. For an approved change, update the requirement and scenarios before the implementation.
-5. Run `npm run check`. Inspect every failure.
-6. Review source changes before running `npm run evidence`.
-7. Run `npm run check` again. Review the metadata diff with the code diff.
+3. Search the example for callers, expectations, and descriptions of the changed behavior. The declared graph does not include every dependency.
+   For release changes, inspect `tests/inventory.test.ts`, this README, and `scripts/mutations.ts` in addition to the linked files.
+4. Ask the owner to resolve contradictory requirements before changing behavior.
+5. For an approved change, update the requirement and scenarios before the implementation.
+6. Run the affected scenarios directly from `examples/inventory/`:
+
+   ```sh
+   node --import tsx node_modules/@cucumber/cucumber/bin/cucumber.js --import 'features/steps/*.ts' features/release.feature
+   ```
+
+   Check that the old implementation fails the new behavior assertion. `npm run check` stops at stale evidence before executing behavior tests.
+   The direct command tests behavior without refreshing evidence. It does not replace the full check.
+7. Update the implementation and affected tests, documentation, and mutation targets for the approved change.
+8. Run the affected scenarios again. Run `npm run check` and inspect every failure.
+9. Review source changes before running `npm run evidence`.
+10. Run `npm run check` and `npm run test:mutations`. Review the metadata diff with the code diff.
 
 The evidence command refreshes declared snapshots. It cannot decide whether a relationship is true. Never refresh evidence merely to hide a failing check. Do not weaken expected results to match an implementation.
 
