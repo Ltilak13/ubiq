@@ -21,8 +21,8 @@ import argparse
 import json
 import sys
 from collections import Counter
-from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml
@@ -30,7 +30,7 @@ import yaml
 from . import __version__, coverage, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
-from .check import Diagnostic, run_checks
+from .check import Diagnostic, at, run_checks
 from .config import Config, InvalidConfig, load_config
 from .dependencies import validate_checkout
 from .discovery import discover, init_assets
@@ -39,6 +39,7 @@ from .graph import KINDS as GRAPH_KINDS
 from .graph import (
     Layout,
     Repository,
+    _include_cycles,
     across_repositories,
     build_edges,
     check_edges,
@@ -156,6 +157,7 @@ class Build:
     docs: list[Path]               # every scanned document, resolved
     historical: set[Path]          # the historical subset of `docs`
     layout: Layout
+    dependencies: list[Build] = field(default_factory=list)
 
 
 def _glossary(cfg: Config, trace: ScanTrace | None = None) -> tuple[Glossary, list[Path]]:
@@ -170,11 +172,27 @@ def _glossary(cfg: Config, trace: ScanTrace | None = None) -> tuple[Glossary, li
                              ref_fields=cfg.ref_fields), overlay_files
 
 
-def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None) -> Build:
+def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None, *,
+          _loaded: dict[Path, Build] | None = None, _namespace: str | None = None) -> Build:
     root = root.resolve()
+    loaded = {} if _loaded is None else _loaded
+    if root in loaded:
+        return loaded[root]
     cfg = cfg or load_config(root)
     glossary, overlay_files = _glossary(cfg, trace)
-    layout = _layout(cfg)
+    for term in glossary.terms:
+        term.repository = _namespace
+    result = Build(glossary, [], cfg, [], [], set(), Layout([]))
+    loaded[root] = result
+
+    def load_dependency(other: Config, name: str) -> Glossary:
+        namespace = f"{_namespace}/{name}" if _namespace else name
+        child = build(other.root, cfg=other, _loaded=loaded, _namespace=namespace)
+        result.dependencies.append(child)
+        return child.glossary
+
+    layout = _layout(cfg, load_dependency)
+    result.layout = layout
     for repository in layout.repositories:
         glossary.add_external(repository.name, repository.glossary)
 
@@ -216,7 +234,46 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None)
         except CatalogError as e:
             extra.append(Diagnostic("E005", str(e), spec.file))
 
-    return Build(glossary, refs, cfg, extra, doc_files, hist_set, layout)
+    result.refs.extend(refs)
+    result.diagnostics.extend(extra)
+    result.docs.extend(doc_files)
+    result.historical.update(hist_set)
+    if _loaded is None:
+        configurations = {id(t): item.config.edges for item in loaded.values()
+                          for t in item.glossary.terms}
+        for item in loaded.values():
+            item.layout.configurations = configurations
+    return result
+
+
+def _composition(built: Build) -> list[Build]:
+    found: dict[Path, Build] = {}
+    pending = [built]
+    while pending:
+        item = pending.pop()
+        if item.config.root not in found:
+            found[item.config.root] = item
+            pending.extend(reversed(item.dependencies))
+    return list(found.values())
+
+
+def _composition_edges(built: Build) -> list:
+    edges = []
+    for item in _composition(built):
+        layout, cfg = item.layout, item.config
+        live = [path for path in item.docs if path not in item.historical]
+        edges.extend(build_edges(item.glossary, item.refs, cfg.edges, cfg.root, layout.local))
+        edges.extend(cross_edges(live, layout, owners(item.glossary, cfg.root, layout.local)))
+    return edges
+
+
+def _composition_path(path: Path, built: Build) -> str:
+    for item in _composition(built):
+        if path.is_relative_to(item.config.root):
+            namespace = next((t.repository for t in item.glossary.terms), None)
+            relative = path.relative_to(item.config.root).as_posix()
+            return f"{namespace}/{relative}" if namespace else relative
+    return str(path)
 
 
 INIT_CONFIG = """\
@@ -379,7 +436,19 @@ def cmd_check(args) -> int:
 def _check(root: Path, cfg: Config | None = None) -> tuple[list[Diagnostic], int, int]:
     """Every check diagnostic, with the term and reference counts."""
     result = build(root, cfg=cfg)
+    composition = _composition(result)
+    diags = [diag for item in composition for diag in _check_build(item)]
+    cycles = _include_cycles(_composition_edges(result))
+    cycles = [diag for item in composition for diag in at(item.config.edges.severity.get("include"),
+              [d for d in cycles if d.file in item.docs])]
+    existing = {(d.code, d.message, d.file, d.line) for d in diags}
+    diags.extend(d for d in cycles if (d.code, d.message, d.file, d.line) not in existing)
+    return diags, len(result.glossary.terms), len(result.refs)
+
+
+def _check_build(result: Build) -> list[Diagnostic]:
     glossary, cfg = result.glossary, result.config
+    root = cfg.root
     layout = result.layout
     refs = [r for r in across_repositories(result.refs, layout,
                                            tuple(r.glob for r in cfg.part_rules))
@@ -397,14 +466,14 @@ def _check(root: Path, cfg: Config | None = None) -> tuple[list[Diagnostic], int
         diags.extend(check_schemas(cfg, glossary))
     live = [path for path in result.docs if path not in result.historical]
     diags.extend(check_edges(glossary, refs, cfg.edges, root, live, layout))
-    return diags, len(glossary.terms), len(result.refs)
+    return diags
 
 
 def _installed(cfg: Config) -> list[Path]:
     return _expand(cfg.edges.install, cfg.ignore, None, "install")
 
 
-def _layout(cfg: Config) -> Layout:
+def _layout(cfg: Config, load: Callable[[Config, str], Glossary] | None = None) -> Layout:
     """This repository's installed files, plus each edges.external repository's
     installed files and records. Only that repository's glossary is read: one
     frontmatter per record, none of its other documents."""
@@ -412,6 +481,8 @@ def _layout(cfg: Config) -> Layout:
     names = Counter(dep.path.resolve().name for dep in cfg.edges.external)
     for dependency in cfg.edges.external:
         repo = dependency.path
+        name = dependency.name or repo.resolve().name
+        name = name if dependency.name or names[name] == 1 else str(repo.resolve())
         if not repo.is_dir():
             if dependency.name is not None:
                 if dependency.required or repo.exists():
@@ -421,7 +492,7 @@ def _layout(cfg: Config) -> Layout:
             continue
         try:
             other = load_config(repo.resolve())
-            glossary, _ = _glossary(other)
+            glossary = load(other, name) if load and dependency.name else _glossary(other)[0]
             if dependency.name is not None and glossary.invalid:
                 raise InvalidConfig(f"dependency {dependency.name!r}: {glossary.invalid}")
             files = _installed(other)
@@ -444,9 +515,8 @@ def _layout(cfg: Config) -> Layout:
         if not files and dependency.name is None:
             unread.append((repo, "installs nothing (no edges.install match)"))
         # Records take the directory name, or the full path when two repositories share it.
-        name = dependency.name or repo.resolve().name
-        external.append(Repository(name if dependency.name or names[name] == 1 else str(repo.resolve()),
-                                   repo, files, glossary, dependency.name is not None, other.edges))
+        external.append(Repository(name, repo, files, glossary, dependency.name is not None,
+                                   other.edges, not (load and dependency.name)))
     return Layout.build(_installed(cfg), external, unread)
 
 
@@ -474,9 +544,7 @@ def cmd_graph(args) -> int:
     if errors:
         return _report(errors, root, args.json)
     layout = built.layout
-    live = [path for path in built.docs if path not in built.historical]
-    edges = (build_edges(built.glossary, built.refs, built.config.edges, root, layout.local)
-             + cross_edges(live, layout, owners(built.glossary, root, layout.local)))
+    edges = _composition_edges(built)
     if args.kind:
         edges = [e for e in edges if e.kind in args.kind]
     try:
@@ -491,11 +559,11 @@ def cmd_graph(args) -> int:
                           "view": "callers" if args.callers else "dependencies",
                           "count": len(shown), "edges": [
             {"kind": e.kind, "source": e.source.qualified, "target": e.target.qualified,
-             "file": _display_path(e.file, root), "line": e.line} for e in shown]}, indent=2))
+             "file": _composition_path(e.file, built), "line": e.line} for e in shown]}, indent=2))
     else:
         for e in shown:
             print(f"{e.source.qualified} -{e.kind}-> {e.target.qualified}"
-                  f"  {_display_path(e.file, root)}:{e.line}")
+                  f"  {_composition_path(e.file, built)}:{e.line}")
         print(f"{len(shown)} edge{'s' if len(shown) != 1 else ''}")
     return 0
 
@@ -504,10 +572,8 @@ def _side(name: str, root: Path, cfg: Config | None = None) -> review.Side:
     """One side of a change review: its records, dependency edges, and gaps."""
     built = build(root, cfg=cfg)
     layout = built.layout
-    live = [path for path in built.docs if path not in built.historical]
     owner = owners(built.glossary, root, layout.local)
-    edges = (build_edges(built.glossary, built.refs, built.config.edges, root, layout.local)
-             + cross_edges(live, layout, owner))
+    edges = _composition_edges(built)
     side = review.Side(name, root.resolve(), {t.qualified: t for t in built.glossary.terms},
                        owner, edges, {}, layout.unread)
     for diag in _assembly_errors(built.glossary, built.diagnostics):
@@ -762,7 +828,7 @@ def cmd_terms(args) -> int:
 def cmd_refs(args) -> int:
     root = Path(args.root).resolve()
     built = build(root)
-    glossary, refs = built.glossary, built.refs
+    glossary = built.glossary
     errors = _assembly_errors(glossary, built.diagnostics)
     if errors:
         return _report(errors, root, args.json)
@@ -770,9 +836,9 @@ def cmd_refs(args) -> int:
     wanted_ids = {id(term) for term in wanted}
     # `--kind explicit` selects wiki-links and delimiters; `--kind wiki` one of them.
     hits = sorted(
-        (ref for ref in refs
+        (ref for item in _composition(built) for ref in item.refs
          if (not args.kind or ref.kind in args.kind or ref.policy.name in args.kind)
-         and any(id(term) in wanted_ids for term in ref.resolve(glossary))),
+         and any(id(term) in wanted_ids for term in ref.resolve(item.glossary))),
         key=lambda ref: (str(ref.file), ref.line))
     if args.json:
         result = {
@@ -784,7 +850,7 @@ def cmd_refs(args) -> int:
                 for term in sorted(wanted, key=lambda term: (term.qualified, str(term.file)))],
             "references": [
                 {"kind": ref.kind, "policy": ref.policy.name,
-                 "file": _display_path(ref.file, root),
+                 "file": _composition_path(ref.file, built),
                  "line": ref.line, "raw": ref.raw, "target": ref.target,
                  "destination": _display_path(ref.destination, root) if ref.destination else None,
                  "historical": ref.historical} for ref in hits],

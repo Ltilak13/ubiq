@@ -303,10 +303,12 @@ class Repository:
     glossary: Glossary
     named: bool = False
     config: EdgeConfig | None = None
+    qualify: bool = True
 
     def __post_init__(self):
-        for t in self.glossary.terms:
-            t.repository = self.name
+        if self.qualify:
+            for t in self.glossary.terms:
+                t.repository = self.name
 
 
 @dataclass
@@ -327,8 +329,11 @@ class Layout:
     partial: bool = False
     unread: list[tuple[Path, str]] = field(default_factory=list)
     problems: list[Diagnostic] = field(default_factory=list)
+    configurations: dict[int, EdgeConfig] = field(default_factory=dict)
 
     def settings(self, term: Term, default: EdgeConfig) -> EdgeConfig:
+        if id(term) in self.configurations:
+            return self.configurations[id(term)]
         return next((repo.config for repo in self.repositories
                      if repo.config is not None and any(t is term for t in repo.glossary.terms)), default)
 
