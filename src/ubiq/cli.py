@@ -22,6 +22,7 @@ import json
 import sys
 from collections import Counter
 from collections.abc import Callable, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -32,7 +33,7 @@ from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, at, run_checks
 from .config import Config, InvalidConfig, load_config
-from .dependencies import validate_checkout
+from .dependencies import Snapshots, validate_checkout
 from .discovery import discover, init_assets
 from .globs import Glob, GlobError, first_match
 from .graph import KINDS as GRAPH_KINDS
@@ -173,7 +174,8 @@ def _glossary(cfg: Config, trace: ScanTrace | None = None) -> tuple[Glossary, li
 
 
 def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None, *,
-          _loaded: dict[Path, Build] | None = None, _namespace: str | None = None) -> Build:
+          _loaded: dict[Path, Build] | None = None, _namespace: str | None = None,
+          configs: dict[Path, Config] | None = None) -> Build:
     root = root.resolve()
     loaded = {} if _loaded is None else _loaded
     if root in loaded:
@@ -187,11 +189,11 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
 
     def load_dependency(other: Config, name: str) -> Glossary:
         namespace = f"{_namespace}/{name}" if _namespace else name
-        child = build(other.root, cfg=other, _loaded=loaded, _namespace=namespace)
+        child = build(other.root, cfg=other, _loaded=loaded, _namespace=namespace, configs=configs)
         result.dependencies.append(child)
         return child.glossary
 
-    layout = _layout(cfg, load_dependency)
+    layout = _layout(cfg, load_dependency, configs)
     result.layout = layout
     for repository in layout.repositories:
         glossary.add_external(repository.name, repository.glossary)
@@ -433,9 +435,10 @@ def cmd_check(args) -> int:
     return _report(diags, root, args.json, terms, refs)
 
 
-def _check(root: Path, cfg: Config | None = None) -> tuple[list[Diagnostic], int, int]:
+def _check(root: Path, cfg: Config | None = None,
+           configs: dict[Path, Config] | None = None) -> tuple[list[Diagnostic], int, int]:
     """Every check diagnostic, with the term and reference counts."""
-    result = build(root, cfg=cfg)
+    result = build(root, cfg=cfg, configs=configs)
     composition = _composition(result)
     diags = [diag for item in composition for diag in _check_build(item)]
     cycles = _include_cycles(_composition_edges(result))
@@ -473,10 +476,9 @@ def _installed(cfg: Config) -> list[Path]:
     return _expand(cfg.edges.install, cfg.ignore, None, "install")
 
 
-def _layout(cfg: Config, load: Callable[[Config, str], Glossary] | None = None) -> Layout:
-    """This repository's installed files, plus each edges.external repository's
-    installed files and records. Only that repository's glossary is read: one
-    frontmatter per record, none of its other documents."""
+def _layout(cfg: Config, load: Callable[[Config, str], Glossary] | None = None,
+            configs: dict[Path, Config] | None = None) -> Layout:
+    """Assemble installed files and records, using the composition loader for named dependencies."""
     external, unread = [], []
     names = Counter(dep.path.resolve().name for dep in cfg.edges.external)
     for dependency in cfg.edges.external:
@@ -491,7 +493,7 @@ def _layout(cfg: Config, load: Callable[[Config, str], Glossary] | None = None) 
             unread.append((repo, "was not found"))
             continue
         try:
-            other = load_config(repo.resolve())
+            other = (configs or {}).get(repo.resolve()) or load_config(repo.resolve())
             glossary = load(other, name) if load and dependency.name else _glossary(other)[0]
             if dependency.name is not None and glossary.invalid:
                 raise InvalidConfig(f"dependency {dependency.name!r}: {glossary.invalid}")
@@ -568,22 +570,35 @@ def cmd_graph(args) -> int:
     return 0
 
 
-def _side(name: str, root: Path, cfg: Config | None = None) -> review.Side:
+def _side(name: str, root: Path, cfg: Config | None = None,
+          configs: dict[Path, Config] | None = None) -> review.Side:
     """One side of a change review: its records, dependency edges, and gaps."""
-    built = build(root, cfg=cfg)
+    built = build(root, cfg=cfg, configs=configs)
     layout = built.layout
     owner = owners(built.glossary, root, layout.local)
     edges = _composition_edges(built)
-    side = review.Side(name, root.resolve(), {t.qualified: t for t in built.glossary.terms},
-                       owner, edges, {}, layout.unread)
-    for diag in _assembly_errors(built.glossary, built.diagnostics):
-        side.invalid.setdefault(side.rel(diag.file), diag.message)
+    composition = _composition(built)
+    side = review.Side(name, root.resolve(), {t.qualified: t for item in composition for t in item.glossary.terms},
+                       owner, edges, {}, [gap for item in composition for gap in item.layout.unread])
+    for item in composition:
+        namespace = next((t.repository for t in item.glossary.terms), None)
+        if namespace:
+            side.locations[item.config.root] = namespace
+        for dependency in item.config.edges.external:
+            if dependency.name:
+                key = f"{namespace}/{dependency.name}" if namespace else dependency.name
+                side.dependencies[key] = dependency.revision
+    for item in composition:
+        for diag in _assembly_errors(item.glossary, item.diagnostics):
+            side.invalid.setdefault(side.rel(diag.file), diag.message)
     return side
 
 
 def _baseline_config(base_root: Path, head_root: Path) -> Config:
-    """The baseline's configuration, reading edges.external from the real checkout:
-    other repositories are read in their current state on both sides."""
+    """Locate baseline dependency declarations relative to the original checkout.
+
+    Historical review replaces named dependencies with snapshots after this step.
+    """
     try:
         cfg = load_config(base_root)
     except (InvalidConfig, ConflictingGlossary) as exc:
@@ -603,10 +618,14 @@ def cmd_impact(args) -> int:
     try:
         baseline = review.resolve_baseline(root, args.since)
         files = review.changed_files(baseline)
-        with review.checkout(baseline) as base_root:
+        with ExitStack() as stack:
+            base_root = stack.enter_context(review.checkout(baseline))
+            snapshots = Snapshots(stack)
             try:
-                base = _side("baseline", base_root, _baseline_config(base_root, root))
-            except (GlobError, ConflictingGlossary) as exc:
+                cfg = snapshots.prepare(_baseline_config(base_root, root), root)
+                base = _side("baseline", base_root, cfg, snapshots.configs)
+                base.unread.extend(snapshots.unread)
+            except (InvalidConfig, GlobError, ConflictingGlossary) as exc:
                 raise review.BaselineError(f"baseline cannot be built: {exc}") from exc
             try:
                 head = _side("head", root)
@@ -664,12 +683,22 @@ def cmd_compare(args) -> int:
     try:
         baseline = review.resolve_baseline(root, args.since)
         renamed = {c.source: c.file for c in review.changed_files(baseline) if c.source}
-        with review.checkout(baseline) as base_root:
+        with ExitStack() as stack:
+            base_root = stack.enter_context(review.checkout(baseline))
+            snapshots = Snapshots(stack)
             try:
-                base_diags, _, _ = _check(base_root, _baseline_config(base_root, root))
-            except (GlobError, ConflictingGlossary) as exc:
+                cfg = snapshots.prepare(_baseline_config(base_root, root), root)
+                if snapshots.unread:
+                    raise review.BaselineError("; ".join(reason for _, reason in snapshots.unread))
+                base_diags, _, _ = _check(base_root, cfg, snapshots.configs)
+            except (InvalidConfig, GlobError, ConflictingGlossary) as exc:
                 raise review.BaselineError(f"baseline cannot be checked: {exc}") from exc
-            base = _as_head(_findings(base_diags, base_root), base_root, baseline, root, renamed)
+            findings = _findings(base_diags, base_root)
+            for finding in findings:
+                for temporary, original in snapshots.originals.items():
+                    finding["file"] = finding["file"].replace(str(temporary), str(original))
+                    finding["message"] = finding["message"].replace(str(temporary), str(original))
+            base = _as_head(findings, base_root, baseline, root, renamed)
         try:
             head = _findings(_check(root)[0], root)
         except (InvalidConfig, ConflictingGlossary, GlobError) as exc:
@@ -703,7 +732,7 @@ def _coverage_baseline(root: Path, rev: str) -> tuple[dict, dict | None]:
         if cfg.coverage is None:
             return {**summary, "status": "unconfigured"}, None
         try:
-            built = build(base_root, cfg=cfg)
+            built = build(base_root, cfg=replace(cfg, edges=replace(cfg.edges, external=())))
             report = coverage.measure(built.config, built.glossary, git=False, suggest=False)
         except (GlobError, ConflictingGlossary, coverage.MeasurementError) as exc:
             raise review.BaselineError(f"baseline cannot be measured: {exc}") from exc
@@ -724,7 +753,7 @@ def cmd_coverage(args) -> int:
         if cfg.coverage is None:
             report = coverage.unavailable("coverage is not configured", coverage.GUIDANCE)
         else:
-            built = build(root, cfg=cfg)
+            built = build(root, cfg=replace(cfg, edges=replace(cfg.edges, external=())))
             report = coverage.measure(built.config, built.glossary)
             if args.since:
                 summary, base = _coverage_baseline(root, args.since)

@@ -176,6 +176,7 @@ class Dependency:
     path: Path
     revision: str | None = None
     required: bool = False
+    snapshot: bool = False  # internal: files were extracted from revision by review
 
 
 @dataclass(frozen=True)
