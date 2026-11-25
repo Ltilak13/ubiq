@@ -1,0 +1,116 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "7a769ceb-7e5d-47c8-83ea-515386174b34",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "items": {
+      "name": "items",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "available": {
+          "name": "available",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "item_id": {
+          "name": "item_id",
+          "value": "length(trim(\"items\".\"id\")) > 0"
+        },
+        "available_integer": {
+          "name": "available_integer",
+          "value": "typeof(\"items\".\"available\") = 'integer' AND \"items\".\"available\" BETWEEN 0 AND 9007199254740991"
+        }
+      }
+    },
+    "reservations": {
+      "name": "reservations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "reservations_item_id_items_id_fk": {
+          "name": "reservations_item_id_items_id_fk",
+          "tableFrom": "reservations",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "reservation_id": {
+          "name": "reservation_id",
+          "value": "length(trim(\"reservations\".\"id\")) > 0"
+        },
+        "quantity_integer": {
+          "name": "quantity_integer",
+          "value": "typeof(\"reservations\".\"quantity\") = 'integer' AND \"reservations\".\"quantity\" BETWEEN 1 AND 9007199254740991"
+        },
+        "reservation_status": {
+          "name": "reservation_status",
+          "value": "\"reservations\".\"status\" IN ('active', 'released')"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}
