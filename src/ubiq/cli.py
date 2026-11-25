@@ -549,7 +549,12 @@ def cmd_impact(args) -> int:
 
 
 def _findings(diags: list[Diagnostic], root: Path) -> list[dict]:
-    return [{"code": d.code, "severity": d.severity, "file": _display_path(d.file, root),
+    """Findings keyed for comparison: a path outside the root is resolved, so
+    `root/../other` names the same file from either side."""
+    def where(path: Path) -> str:
+        resolved = path.resolve() if path.is_absolute() else (root / path).resolve()
+        return _display_path(resolved, root) if resolved.is_relative_to(root) else str(resolved)
+    return [{"code": d.code, "severity": d.severity, "file": where(d.file),
              "line": d.line, "message": d.message} for d in diags]
 
 

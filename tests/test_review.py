@@ -313,3 +313,19 @@ def test_impact_head_with_invalid_config_exits_2(tmp_path, capsys):
     (root / "ubiq.yaml").write_text(SKILLS_CONFIG + "bogus: 1\n")
     code, out = run_json(capsys, "impact", "--since", "main", "--root", str(root))
     assert code == 2 and "head" in out["error"]
+
+
+def test_compare_external_findings_match_across_sides(tmp_path, capsys):
+    """A finding outside the root is the same file on both sides, not new plus resolved."""
+    root = ghosts_repo(tmp_path / "repo", "Body.\n",
+                       GHOSTS_CONFIG + 'edges:\n  external: ["../absent"]\n')
+    code, out = compare(root, capsys)
+    assert code == 0 and out["counts"] == {"new": 0, "resolved": 0, "unchanged": 2}
+    assert str((tmp_path / "absent").resolve()) in {f["file"] for f in out["unchanged"]}
+
+
+def test_compare_includes_untracked_files(tmp_path, capsys):
+    root = ghosts_repo(tmp_path, "Uses [[tdd]].\n")
+    (root / "notes.md").write_text("[[ghost]]\n")
+    code, out = compare(root, capsys)
+    assert code == 1 and [(f["file"], f["code"]) for f in out["new"]] == [("notes.md", "E002")]

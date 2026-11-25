@@ -432,7 +432,8 @@ unless the review is invalid.
 **Finding comparison.** `compare` runs the checker on both sides. A finding's
 identity is its `code`, its `file`, and its `message`, not its line, so moved
 text stays the same finding. A baseline file that git reports as renamed takes
-its head path, and absolute baseline paths in messages are rewritten to the head
+its head path, a file outside the root is named by its resolved absolute path,
+and absolute baseline paths in messages are rewritten to the head
 root. Identical findings are counted: two at the baseline and three at the head
 are two unchanged and one new. Occurrences pair in line order, so the extra ones are the latest lines. Each finding is `new` (head only), `resolved`
 (baseline only), or `unchanged`. If either side fails before checking (an
