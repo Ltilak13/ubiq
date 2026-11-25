@@ -16,7 +16,7 @@ files. A human may use GitHub Preview, Code, or Raw. Record the actual reading
 form for each visit. A source read does not establish that a preview renders
 correctly or that switching GitHub views works.
 
-One agent trial is complete. The human response remains pending. The human participant took
+One agent trial and one human response are recorded. The human participant took
 part in designing this example. That familiarity limits conclusions about a new
 reader. One participant per audience cannot establish population-level usability
 or parity. The broader human and agent usability goal remains unassessed here.
@@ -67,7 +67,7 @@ this trial does not satisfy all acceptance criteria of the usability goal.
 | --- | --- | --- |
 | Local source navigation | Checked at the baseline | Ten selected direct links resolve to existing files; this is not a browser or comprehension test |
 | Isolated agent trial | Complete; narrow trial did not pass | Two correct answers, one incomplete answer, zero incorrect answers; all three submitted answers have supporting locations |
-| Human response | Pending | No answers, score, elapsed time, or reading-effort result recorded yet |
+| Human response | Recorded; narrow rubric did not pass | Zero correct answers, two incomplete answers, one incorrect answer; actual revision and reading form unverified |
 | Rendered preview interaction | Not tested | No claim about GitHub rendering or view controls |
 
 The source navigation check covered six links from query documentation: policy,
@@ -122,6 +122,55 @@ No substantive ambiguity was reported. Reading the goal did not ensure that the
 answer inventoried its evidence snapshot. A later trial could test an explicit
 evidence-inventory prompt, but this result does not justify changing this trial's
 question or rerunning it until it passes.
+
+## Human response
+
+Lucas submitted one response on November 25, 2026. He previously participated
+in designing this example. The requested starting document was `docs/query.md`.
+The intended source baseline was `1290f08c4aca051f717683157239eafaa7dab4a2`, but
+his actual revision and reading form were not supplied. This is a recorded
+human observation with protocol limitations, not a matched trial of the agent's
+source conditions.
+
+The substantive answers below are verbatim:
+
+> 1) Went to domain schema goal and ctrl+f for "policy" couldn't find it, then went to policies folder and found the domain-schema goal as the first link
+>
+> 2) registered model takes the goal schema and runs goal tests against it
+>
+> 3) no it just corroborates tangible evidence to support it, semantics still vary
+
+| Question | Assessment | Reason under the frozen rubric |
+| --- | --- | --- |
+| 1 | Incomplete | The response describes finding a link to the goal, but does not identify the governing policy by name or state its governing relationship. |
+| 2 | Incorrect | The model declares records, relationships, and evidence snapshots. It does not execute the goal tests. The answer also omits the snapshots and anchors required by the rubric. |
+| 3 | Incomplete | The answer correctly rejects completion and recognizes the semantic limit. It does not explain the source-byte and anchor match or the authority of the goal's acceptance assessments. |
+
+Result: **0/3 correct, 2/3 incomplete, 1/3 incorrect**. There are **0/3 answers
+with verifiable submitted source citations**. Question 1 supplies a navigation
+route, but no exact file, revision, or quoted declaration. This citation count
+describes the submitted evidence, not whether the participant consulted sources.
+The narrow rubric did not pass. No retry or rescoring followed the result.
+
+Lucas reported starting at the goal rather than the requested query document.
+He reported one Ctrl+F search for `policy` that found no match, followed by
+navigation to the policies folder and a link back to the goal. The exact files,
+view types, total file visits, repeated visits, elapsed time, and total search
+count beyond that one reported search are unobserved. Do not convert the route
+into an invented file-visit count.
+
+This response identifies a goal-first discovery gap and a misunderstanding of
+what the registered model does. The failed search is self-reported navigation
+friction, not an independently observed broken link or preview failure. The
+wording may not have made the distinction between declarations and execution
+clear for this encounter. The evidence does not isolate wording, entry path,
+prior knowledge, or reading form as the cause.
+
+The coordinating agent explained the model/execution distinction only after
+this response was submitted. That explanation is not part of the scored answer.
+The human participant's prior design involvement, unverified revision and view,
+and different entry path prevent a controlled human/agent comparison. These
+results do not establish audience parity or completion of the usability goal.
 
 ## Agent trial boundary
 
