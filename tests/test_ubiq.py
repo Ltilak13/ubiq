@@ -465,7 +465,9 @@ def test_markdown_globs_match_zero_or_multiple_directories(tmp_path, capsys):
                             "[c](other/glossary/missing.md)\n"}, config=cfg)
     assert main(["check", "--root", str(tmp_path), "--json"]) == 1
     out = json.loads(capsys.readouterr().out)
-    assert [d["line"] for d in out["diagnostics"]] == [1, 2]
+    # Line 3 matches no glossary glob, so it is a broken link (W007), not E002.
+    assert [(d["code"], d["line"]) for d in out["diagnostics"]] == [
+        ("E002", 1), ("E002", 2), ("W007", 3)]
 
 
 def test_markdown_paths_titles_and_code_exclusions(tmp_path):
@@ -482,7 +484,8 @@ def test_markdown_paths_titles_and_code_exclusions(tmp_path):
     built = build(tmp_path)
     assert built.diagnostics == []
     assert [r.line for r in built.refs if r.kind == "markdown"] == [1, 2, 3, 4]
-    assert run_checks(built.glossary, built.refs) == []
+    # A missing file that no glossary rule selects is a broken link, not a record.
+    assert [(d.code, d.line) for d in run_checks(built.glossary, built.refs)] == [("W007", 11)]
 
 
 def test_markdown_reference_requires_a_record_at_destination(tmp_path, capsys):

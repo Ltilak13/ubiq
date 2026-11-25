@@ -188,8 +188,12 @@ Use discovery during maintenance to find new files that have no record yet.
 
 - Inline Markdown links to registered records or paths matching configured
   glossary globs must resolve. The destination selects the record, so the label
-  can be natural prose. Fragments and link titles are allowed. Other local links
-  keep their existing traversal behavior. Full `[label][id]`, collapsed `[id][]`,
+  can be natural prose. Fragments and link titles are allowed. Other relative
+  links must land on an existing file or directory; a missing one is `W007`, a
+  warning that `references.link.severity` can raise or silence. URLs,
+  anchor-only links (`#x`), root-relative paths (`/x`), and code are not
+  checked, and links that leave an `edges.install` directory are left to
+  `W004`. Path-shaped wiki-links (`[[MISSION.md]]`) are not checked. Full `[label][id]`, collapsed `[id][]`,
   and shortcut `[id]` links work with a single-line `[id]: path/to/record.md`
   definition. Labels ignore case and repeated whitespace; the first definition wins.
 - Wiki-links such as `[[session]]` and `[[game:session]]` resolve by name, alias,

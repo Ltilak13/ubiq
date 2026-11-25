@@ -120,6 +120,9 @@ POLICIES: Policies = {policy.name: policy for policy in (
     Policy("catalog", "catalog", first(by_id, by_name), "E006"),
     # Severity here is the unlinked-mention warning (W002), off by default.
     Policy("mention", "mention", by_name, "W002", _ANYWHERE, severity=Severity.OFF),
+    # Only links to missing files that no record owns become refs, so none resolves.
+    Policy("link", "link", lambda glossary, ref: [], "W007", Context.COMMENT,
+           severity=Severity.WARN),
 )}
 
 KINDS = tuple(sorted({policy.kind for policy in POLICIES.values()} | set(POLICIES)))

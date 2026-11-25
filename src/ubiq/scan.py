@@ -11,6 +11,7 @@ each kind's policy which document regions it may match in.
   field     — values of configured ref_fields in frontmatter (E006)
   catalog   — values from a JSON/YAML inventory (catalog.py) (E006)
   mention   — plain-prose occurrence of a known name        (never an error; W002)
+  link      — relative link to a missing file, not a record  (W007)
 
 Fenced code, frontmatter, and reference definitions are never scanned as prose.
 Refs from `historical` files are indexed, but unresolved ones do not fail.
@@ -87,21 +88,28 @@ HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 DOC_SUFFIXES = {".md", ".markdown"}
 
 
-def _doc_link_path(source: Path, spec: str, root: Path | None = None) -> Path | None:
-    """Return a local Markdown destination, including missing files."""
+def _local_path(source: Path, spec: str, root: Path | None = None) -> Path | None:
+    """Return a relative link's local destination, including missing files.
+
+    URLs, anchor-only links, and root-relative paths (`/x`) have none.
+    """
     try:
         destination = spec.strip().removeprefix("<").removesuffix(">")
         url = urlsplit(MD_ESCAPE_RE.sub(r"\1", destination))
-        if url.scheme or url.netloc or not url.path:
+        if url.scheme or url.netloc or not url.path or url.path.startswith("/"):
             return None
         candidate = Path(os.path.abspath(source.parent / unquote(url.path)))
-        if candidate.suffix.lower() not in DOC_SUFFIXES:
-            return None
         if root is not None and not candidate.is_relative_to(root.absolute()):
             return None
         return candidate
     except ValueError:
         return None
+
+
+def _doc_link_path(source: Path, spec: str, root: Path | None = None) -> Path | None:
+    """Return a local Markdown destination, including missing files."""
+    candidate = _local_path(source, spec, root)
+    return candidate if candidate and candidate.suffix.lower() in DOC_SUFFIXES else None
 
 
 def _looks_like_path(target: str) -> bool:
@@ -477,19 +485,24 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
         covered = _covers(blocked)
         return _mask(source, claimed), lambda pos: not covered(pos)
 
-    markdown = policies["markdown"]
+    markdown, link = policies["markdown"], policies["link"]
     _, admits = view(markdown, [])
+    _, link_admits = view(link, [])
     link_spans: list[tuple[int, int]] = []
     for start, end, spec in document.links:
         destination = _doc_link_path(path, spec, cfg.root)
-        if destination is None or not admits(start):
+        if destination is not None and (
+                destination.resolve() in glossary.by_file
+                or any(rule.glob.matches(destination) for rule in cfg.glossary)):
+            if admits(start):
+                refs.append(Ref(markdown, text[start:end], "", None, path, line_of(start),
+                                target=spec, destination=destination.resolve()))
+                link_spans.append((start, end))
             continue
-        registered = destination.resolve() in glossary.by_file
-        if not (registered or any(rule.glob.matches(destination) for rule in cfg.glossary)):
-            continue
-        refs.append(Ref(markdown, text[start:end], "", None, path, line_of(start),
-                        target=spec, destination=destination.resolve()))
-        link_spans.append((start, end))
+        local = _local_path(path, spec, cfg.root)
+        if local is not None and link_admits(start) and not local.exists():
+            refs.append(Ref(link, text[start:end], "", None, path, line_of(start),
+                            target=spec, destination=local))
 
     wiki = policies["wiki"]
     source, admits = view(wiki, link_spans)
