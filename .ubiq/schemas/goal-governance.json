@@ -41,11 +41,19 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
-          "source": "docs/goals/composable-skills-goal.md",
+          "source": "docs/goals/checkable-contracts-evidence-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/goals/composable-knowledge-goal.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
           "source": "docs/goals/human-agent-readability-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/goals/safe-adoption-evolution-goal.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {

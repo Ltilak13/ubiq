@@ -18,7 +18,7 @@ policies:
     sha256: d13c960f0295467102da0a081592598de01f42c7be74b8cd71d6817a9f72d3a9
     anchor: '"const": "partial"'
   - path: tests/test_goals.py
-    sha256: 5976eff2f3714a8f396b7ed4c89ce737a45a4ace0cf6f1368994f4b1885c04f6
+    sha256: 52c9e3790bd9d645d78715783417e3f77b22fbdbfb5d7e46d37b4f3c0d8aa088
     anchor: def test_partial_assessment_requires_provisional_evidence(
 goals:
 - id: ubiq:domain-schema-goal
@@ -27,8 +27,8 @@ goals:
   source: docs/goals/domain-schema-goal.md
   evidence:
   - path: docs/goals/domain-schema-goal.md
-    sha256: 0d38a33d4aa7e09614eb7c08e105d2dfb2e24587f0c9ed2a750af118a182c3ef
-    anchor: '# Goal: domain-aware frontmatter and a knowledge tree'
+    sha256: a40e2bc3cd396182679e5bbfe3fdf1117e300b8bc01c5b03681afec0a0e1aa8b
+    anchor: '# Goal: explicit domain models'
 relationships:
 - id: goal-evidence-policy--governs--domain-schema-goal
   from: ubiq:goal-evidence-policy
