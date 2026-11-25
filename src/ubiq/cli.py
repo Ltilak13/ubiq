@@ -32,6 +32,7 @@ from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
 from .config import Config, InvalidConfig, load_config
+from .dependencies import validate_checkout
 from .discovery import discover, init_assets
 from .globs import Glob, GlobError, first_match
 from .graph import KINDS as GRAPH_KINDS
@@ -404,26 +405,43 @@ def _layout(cfg: Config) -> Layout:
     installed files and records. Only that repository's glossary is read: one
     frontmatter per record, none of its other documents."""
     external, unread = [], []
-    names = Counter(repo.resolve().name for repo in cfg.edges.external)
-    for repo in cfg.edges.external:
+    names = Counter(dep.path.resolve().name for dep in cfg.edges.external)
+    for dependency in cfg.edges.external:
+        repo = dependency.path
         if not repo.is_dir():
+            if dependency.name is not None:
+                if dependency.required or repo.exists():
+                    raise InvalidConfig(f"dependency {dependency.name!r} at {repo}: checkout directory not found")
+                continue
             unread.append((repo, "was not found"))
             continue
         try:
-            other = load_config(repo)
+            other = load_config(repo.resolve())
             glossary, _ = _glossary(other)
+            if dependency.name is not None and glossary.invalid:
+                raise InvalidConfig(f"dependency {dependency.name!r}: {glossary.invalid}")
             files = _installed(other)
+            if dependency.revision:
+                docs = _close_docs(other.root, _expand(other.docs, other.ignore, None, "docs"),
+                                   other.ignore, None)
+                validate_checkout(dependency, other,
+                                  [*docs, *files, *(t.file for t in glossary.terms),
+                                   *glossary.overlay_sources, *glossary.overlay_sources.values()])
         except GlobError as exc:
+            if dependency.name is not None:
+                raise InvalidConfig(f"dependency {dependency.name!r} at {repo}: {exc}") from exc
             unread.append((repo, f"cannot be scanned ({exc})"))
             continue
         except (InvalidConfig, ConflictingGlossary) as exc:
+            if dependency.name is not None:
+                raise InvalidConfig(f"dependency {dependency.name!r} at {repo}: {exc}") from exc
             unread.append((repo, f"has invalid configuration ({exc})"))
             continue
-        if not files:
+        if not files and dependency.name is None:
             unread.append((repo, "installs nothing (no edges.install match)"))
         # Records take the directory name, or the full path when two repositories share it.
-        name = repo.resolve().name
-        external.append(Repository(name if names[name] == 1 else str(repo.resolve()),
+        name = dependency.name or repo.resolve().name
+        external.append(Repository(name if dependency.name or names[name] == 1 else str(repo.resolve()),
                                    repo, files, glossary))
     return Layout.build(_installed(cfg), external, unread)
 
@@ -500,8 +518,8 @@ def _baseline_config(base_root: Path, head_root: Path) -> Config:
         cfg = load_config(base_root)
     except (InvalidConfig, ConflictingGlossary) as exc:
         raise review.BaselineError(f"baseline configuration cannot load: {exc}") from exc
-    external = tuple(head_root / p.relative_to(base_root) if p.is_relative_to(base_root) else p
-                     for p in cfg.edges.external)
+    external = tuple(replace(dep, path=head_root / dep.path.relative_to(base_root))
+                     if dep.path.is_relative_to(base_root) else dep for dep in cfg.edges.external)
     return replace(cfg, edges=replace(cfg.edges, external=external))
 
 
