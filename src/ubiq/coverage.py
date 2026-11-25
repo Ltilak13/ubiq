@@ -331,6 +331,66 @@ def delta(base: dict, head: dict) -> dict:
     }
 
 
+def _ratio(side: dict) -> Fraction | None:
+    r = side["ratio"]
+    return Fraction(r["typed"], r["eligible"]) if r["eligible"] else None
+
+
+def evaluate(report: dict, spec: CoverageSpec, since: str | None) -> int:
+    """Apply the head's policies to the report and return the exit code.
+
+    Ratios compare unrounded. Incomplete data never passes a policy, and a zero
+    denominator cannot pass one. The baseline supplies scope, not policy."""
+    complete, base = report["complete"], report.get("baseline")
+    policies = []
+    if spec.min_typed_percent is not None:
+        floor_ = Fraction(str(spec.min_typed_percent)) / 100
+        ratio = _ratio(report)
+        policy = {"policy": "min_typed_percent", "threshold": spec.min_typed_percent}
+        if not complete:
+            policy.update(result="unavailable", reason="the measurement is incomplete")
+        elif ratio is None:
+            policy.update(result="fail", reason="no eligible files; a percentage floor cannot pass")
+        elif ratio >= floor_:
+            policy.update(result="pass", reason=f"{_exact(report)} typed")
+        else:
+            policy.update(result="fail", reason=f"{_exact(report)} typed, below {spec.min_typed_percent}%")
+        policies.append(policy)
+    if spec.no_regression:
+        policy = {"policy": "no_regression"}
+        if since is None:
+            policy.update(result="unavailable", reason="coverage.no_regression needs a baseline: "
+                          "run ubiq coverage --since REV (for example --since origin/main)")
+        elif base is not None and base["status"] == "unconfigured":
+            policy.update(result="skipped", reason="the baseline has no coverage configuration, "
+                          "so this change sets the first baseline")
+        elif not complete:
+            policy.update(result="unavailable", reason="the measurement is incomplete")
+        else:
+            assert base is not None, "--since always attaches a baseline"
+            before, after = _ratio(base), _ratio(report)
+            if before is None or after is None:
+                side = "baseline" if before is None else "head"
+                policy.update(result="fail", reason=f"no eligible files at the {side}; "
+                              "ratios cannot be compared")
+            elif after >= before:
+                policy.update(result="pass", reason=f"{_exact(base)} -> {_exact(report)} typed")
+            else:
+                policy.update(result="fail", reason=f"typed ratio fell from {_exact(base)} "
+                              f"to {_exact(report)}")
+        policies.append(policy)
+    report["policies"] = policies
+    results = {p["result"] for p in policies}
+    if report["status"] != "ok" or "unavailable" in results:
+        return 2
+    return 1 if "fail" in results else 0
+
+
+def _exact(side: dict) -> str:
+    r = side["ratio"]
+    return f"{r['typed']}/{r['eligible']}"
+
+
 def _shown(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.2f}%"
 
@@ -404,6 +464,9 @@ def render(report: dict, markdown: bool = False) -> str:
             lines += ["", f"Findings: {fc['new']} new, {fc['resolved']} resolved, {fc['unchanged']} unchanged"]
             for title, found in (("new", d["findings"]["new"]), ("resolved", d["findings"]["resolved"])):
                 lines += [f"- {title} `{f['code']}` {f['file']} {f['message']}" for f in found]
+        if report.get("policies"):
+            lines += ["", "Policies:", *(f"- {p['result'].upper()} `{p['policy']}`: {p['reason']}"
+                                         for p in report["policies"])]
         if problems:
             lines += ["", "Gaps:", *(f"- {kind} `{name}`" + (f": {why}" if why else "")
                                      for kind, name, why in problems)]
@@ -429,5 +492,7 @@ def render(report: dict, markdown: bool = False) -> str:
         lines += [f"newly untyped {n}" for n in d["newly_untyped"]]
         fc = d["findings"]["counts"]
         lines.append(f"findings: {fc['new']} new, {fc['resolved']} resolved, {fc['unchanged']} unchanged")
+    lines += [f"policy {p['policy']}: {p['result'].upper()} ({p['reason']})"
+              for p in report.get("policies", [])]
     lines.append(f"{'INCOMPLETE' if not report['complete'] else 'coverage'}: {headline}")
     return "\n".join(lines)

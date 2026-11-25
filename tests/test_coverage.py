@@ -32,7 +32,8 @@ def ordinary(tmp_path: Path) -> Path:
 def configure(root: Path, coverage: str) -> None:
     """Replace the fixture's coverage section."""
     text = (root / "ubiq.yaml").read_text()
-    (root / "ubiq.yaml").write_text(text[:text.index("coverage:")] + coverage)
+    cut = text.index("coverage:") if "coverage:" in text else len(text)
+    (root / "ubiq.yaml").write_text(text[:cut] + coverage)
 
 
 def by_file(report: dict) -> dict[str, dict]:
@@ -392,3 +393,135 @@ def test_markdown_summary(tmp_path, capsys):
     assert main(["coverage", "--root", str(root), "--since", "main", "--markdown"]) == 0
     out = capsys.readouterr().out.replace(git(root, "rev-parse", "main").strip()[:12], "<commit>")
     assert out == (FIXTURES / "deletion.md").read_text()
+
+
+# Policies: floors and no regression. Exit 0 pass, 1 policy failure, 2 unavailable.
+
+SCOPE = "coverage:\n  files: ['src/**/*.py', 'services/*.yaml', 'glossary/*.md']\n" \
+        "  exclude: [{glob: 'src/vendor/**', reason: upstream}]\n"
+
+
+def policy(report: dict, name: str) -> dict:
+    return next(p for p in report["policies"] if p["policy"] == name)
+
+
+@pytest.mark.parametrize("floor, code", [
+    (50, 0), (50.0, 0), (49.99, 0), (50.01, 1), (0, 0), (100, 1),
+])
+def test_floor_boundaries(tmp_path, capsys, floor, code):
+    root = ordinary(tmp_path)  # 2 of 4 typed
+    configure(root, SCOPE + f"  min_typed_percent: {floor}\n")
+    got, report = run(capsys, root)
+    assert got == code
+    assert policy(report, "min_typed_percent")["result"] == ("pass" if code == 0 else "fail")
+
+
+def test_floor_compares_unrounded_ratios(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    configure(root, "coverage:\n  files: ['src/*.py', 'services/*.yaml']\n"
+                    "  min_typed_percent: 66.67\n")  # 2 of 3 is 66.666...
+    code, report = run(capsys, root)
+    assert report["typed_percent"] == 66.66 and code == 1
+    configure(root, "coverage:\n  files: ['src/*.py', 'services/*.yaml']\n"
+                    "  min_typed_percent: 66.66\n")
+    assert run(capsys, root)[0] == 0
+    # 66.666 is below 2/3 but above the displayed 66.66: only the exact ratio passes it.
+    configure(root, "coverage:\n  files: ['src/*.py', 'services/*.yaml']\n"
+                    "  min_typed_percent: 66.666\n")
+    assert run(capsys, root)[0] == 0
+
+
+def test_zero_denominator_cannot_pass_a_floor(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    configure(root, "coverage:\n  files: ['src/vendor/**']\n"
+                    "  exclude: [{glob: 'src/vendor/**', reason: upstream}]\n  min_typed_percent: 0\n")
+    code, report = run(capsys, root)
+    assert code == 1 and policy(report, "min_typed_percent")["result"] == "fail"
+
+
+def test_incomplete_measurement_never_passes(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    configure(root, SCOPE + "  min_typed_percent: 0\n")
+    (root / "schemas" / "model.json").write_text("{not json")
+    code, report = run(capsys, root)
+    assert code == 2 and policy(report, "min_typed_percent")["result"] == "unavailable"
+
+
+def test_no_regression_requires_a_baseline(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    configure(root, SCOPE + "  no_regression: true\n")
+    code, report = run(capsys, root)
+    assert code == 2
+    assert "--since" in policy(report, "no_regression")["reason"]
+    main(["coverage", "--root", str(root)])
+    assert "ubiq coverage --since REV" in capsys.readouterr().out
+
+
+def regression_repo(tmp_path: Path) -> Path:
+    root = committed(tmp_path)
+    configure(root, SCOPE + "  no_regression: true\n")
+    git(root, "commit", "-qam", "policy")
+    git(root, "branch", "-f", "main")
+    return root
+
+
+def test_no_regression_passes_when_ratio_holds(tmp_path, capsys):
+    root = regression_repo(tmp_path)
+    code, report = since(capsys, root)
+    assert code == 0 and policy(report, "no_regression")["reason"] == "2/4 -> 2/4 typed"
+
+
+def test_no_regression_fails_when_ratio_falls(tmp_path, capsys):
+    root = regression_repo(tmp_path)
+    (root / "src" / "new.py").write_text("z = 3\n")
+    code, report = since(capsys, root)
+    assert code == 1
+    assert policy(report, "no_regression") == {
+        "policy": "no_regression", "result": "fail", "reason": "typed ratio fell from 2/4 to 2/5"}
+
+
+def test_no_regression_uses_head_policy_not_baseline_policy(tmp_path, capsys):
+    root = committed(tmp_path)  # the baseline has no policy
+    configure(root, SCOPE + "  no_regression: true\n")
+    (root / "src" / "new.py").write_text("z = 3\n")
+    assert since(capsys, root)[0] == 1
+
+
+def test_no_regression_against_empty_baseline_fails(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    configure(root, "coverage:\n  files: ['nothing/**']\n")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    configure(root, SCOPE + "  no_regression: true\n")
+    code, report = since(capsys, root)
+    assert code == 1 and "baseline" in policy(report, "no_regression")["reason"]
+
+
+def test_no_regression_on_first_adoption_is_skipped_visibly(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    configure(root, "")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    configure(root, SCOPE + "  no_regression: true\n")
+    code, report = since(capsys, root)
+    assert code == 0 and policy(report, "no_regression")["result"] == "skipped"
+
+
+def test_no_regression_with_incomplete_baseline_is_unavailable(tmp_path, capsys):
+    root = ordinary(tmp_path)
+    good = (root / "schemas" / "model.json").read_text()
+    configure(root, SCOPE + "  no_regression: true\n")
+    (root / "schemas" / "model.json").write_text("{not json")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    (root / "schemas" / "model.json").write_text(good)
+    code, report = since(capsys, root)
+    assert code == 2 and policy(report, "no_regression")["result"] == "unavailable"
+
+
+def test_missing_baseline_rev_exits_2(tmp_path, capsys):
+    root = regression_repo(tmp_path)
+    assert run(capsys, root, "--since", "missing")[0] == 2

@@ -627,6 +627,7 @@ def _coverage_baseline(root: Path, rev: str) -> tuple[dict, dict | None]:
 
 def cmd_coverage(args) -> int:
     root = Path(args.root).resolve()
+    code = 2
     try:
         cfg = load_config(root)
         if cfg.coverage is None:
@@ -637,13 +638,14 @@ def cmd_coverage(args) -> int:
             if args.since:
                 summary, base = _coverage_baseline(root, args.since)
                 coverage.attach_baseline(report, summary, base)
+            code = coverage.evaluate(report, cfg.coverage, args.since)
     except (InvalidConfig, ConflictingGlossary, GlobError, coverage.MeasurementError) as exc:
         report = coverage.unavailable(f"{exc}")
     except review.BaselineError as exc:
         report = coverage.unavailable(f"baseline unavailable: {exc}")
     print(json.dumps(report, indent=2) if args.json
           else coverage.render(report, markdown=args.markdown))
-    return 0 if report["status"] == "ok" else 2
+    return code
 
 
 def cmd_overlap(args) -> int:

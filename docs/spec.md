@@ -553,3 +553,25 @@ diagnostics, compared with the finding identity of `compare`. The readable and
 Markdown outputs state the denominator change before percentages. When the
 denominator shrinks they say so: removed or excluded files are not newly
 documented knowledge. `--markdown` prints a PR-ready summary.
+
+**Policies.** The head's configuration sets the policies, also when comparing:
+the baseline supplies its historical scope, never its historical enforcement.
+Ratios compare unrounded (`typed / eligible`), never the displayed percentage.
+
+- `min_typed_percent`: passes when the current ratio reaches the floor.
+- `no_regression`: passes when the current ratio is at least the baseline
+  ratio. It needs `--since`; without it the policy is `unavailable` and the
+  message says to run `ubiq coverage --since REV`. When the baseline has no
+  `coverage` section, the policy is `skipped` with that reason: the change sets
+  the first baseline.
+
+A zero denominator on the side a policy reads fails it, since no percentage
+can pass on it. An incomplete measurement makes every policy `unavailable`.
+`policies` lists each enabled policy with `policy`, `result` (`pass`, `fail`,
+`skipped`, or `unavailable`), and `reason`; the floor adds `threshold`.
+
+Exit codes: 0 when the report is available and every enabled policy passes or
+is skipped; 1 when an enabled policy fails; 2 when the configuration, the
+baseline, or a required measurement is unavailable, or a policy is
+`unavailable`. Diagnostics never change the exit code: `ubiq check` remains the
+validation gate.
