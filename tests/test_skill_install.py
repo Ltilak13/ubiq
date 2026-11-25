@@ -9,7 +9,7 @@ from ubiq.scan import _doc_link_path, _interpret_markdown
 def test_installed_skill_documentation_links(tmp_path):
     source = Path(__file__).resolve().parents[1] / "skills"
     installed = tmp_path / "installed"
-    for name in ("apply-ubiq", "maintain-ubiq", "upgrade-ubiq"):
+    for name in ("apply-ubiq", "maintain-ubiq", "upgrade-ubiq", "references"):
         shutil.copytree(source / name, installed / name)
 
     for document in installed.rglob("*.md"):

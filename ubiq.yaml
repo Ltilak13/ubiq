@@ -3,6 +3,8 @@ glossary:
   - glob: "docs/goals/*-goal.md"
     term_field: name
     ns: goal
+  - glob: "skills/references/*.md"
+    ns: part
   - "docs/policies/*.md"
   - "glossary/**/*.md"
   - glob: "skills/**/SKILL.md"
@@ -34,7 +36,7 @@ id_patterns:
 
 # Skill directories install together as siblings under one root.
 edges:
-  install: ["skills/*/SKILL.md"]
+  install: ["skills/*/SKILL.md", "skills/references/*.md"]
 
 # Typed contracts for each owned asset family.
 schemas:
@@ -44,7 +46,7 @@ schemas:
     files: ["docs/goals/*-goal.md"]
     format: frontmatter
   - schema: ".ubiq/schemas/glossary-record.json"
-    files: ["glossary/*.md", ".ubiq/glossary/*.md", "docs/policies/*.md"]
+    files: ["skills/references/*.md", "glossary/*.md", ".ubiq/glossary/*.md", "docs/policies/*.md"]
     format: frontmatter
   - schema: ".ubiq/schemas/skill.json"
     files: ["skills/*/SKILL.md"]
@@ -74,6 +76,7 @@ coverage:
     - "docs/policies/*.md"
     - ".ubiq/knowledge/*.yaml"
     - "**/SKILL.md"
+    - "skills/references/*.md"
     - "skills/*/agents/*.yaml"
     - "glossary/*.md"
     - ".ubiq/glossary/*.md"

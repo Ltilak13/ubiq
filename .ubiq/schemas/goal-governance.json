@@ -33,6 +33,10 @@
       "glossary": true,
       "exclude": [
         {
+          "source": "skills/references/schema-workflow.md",
+          "reason": "Shared skill procedure outside the policy/domain-schema-goal example."
+        },
+        {
           "source": ".ubiq/glossary/domain-modeling.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
