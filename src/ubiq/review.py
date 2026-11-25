@@ -140,7 +140,9 @@ def changed_files(baseline: Baseline) -> list[ChangedFile]:
     with tempfile.TemporaryDirectory(prefix="ubiq-index-") as tmp:
         scratch = Path(tmp) / "index"
         if index.is_file():
-            shutil.copyfile(index, scratch)
+            # copy2 keeps the index mtime, which git compares against each entry
+            # to find racily clean files (same-size edits within the stat tick).
+            shutil.copy2(index, scratch)
         env = {**os.environ, "GIT_INDEX_FILE": str(scratch)}
         _git(top, "add", "-A", "--", ".", env=env)
         out = _git(top, "diff", "--cached", "-M", "--name-status", "-z",

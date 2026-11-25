@@ -4,6 +4,7 @@ Expected outputs live in tests/fixtures/review/. See "Change review" in docs/spe
 """
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -254,6 +255,23 @@ def test_impact_baseline_symlinks_leaving_the_repository_resolve(tmp_path, capsy
     assert code == 0 and out["complete"] is True
     assert out["changed"] == [{"record": "skill:a", "change": "edited",
                                "files": ["skills/a/SKILL.md"]}]
+
+
+def test_impact_sees_a_racily_clean_edit(tmp_path, capsys):
+    """A same-size edit in the same second as the indexed stat looks clean to git
+    unless the index mtime marks it racy; the scratch index must keep that mtime."""
+    root = skills_repo(tmp_path)
+    git(root, "config", "core.trustctime", "false")
+    path, index = root / "skills/a/SKILL.md", root / ".git/index"
+    then = path.stat().st_mtime_ns - 10**10  # index the file 10 s in the past
+    os.utime(path, ns=(then, then))
+    git(root, "update-index", "--refresh")
+    path.write_text(skill("a", "e"))  # same size as the committed `uses: [b]`
+    os.utime(path, ns=(then, then + 2))
+    os.utime(index, ns=(then, then + 1))
+    code, out = impact(root, capsys)
+    assert code == 0
+    assert out["changed_files"] == [{"status": "modified", "file": "skills/a/SKILL.md"}]
 
 
 def test_impact_ignores_export_attributes(tmp_path, capsys):
