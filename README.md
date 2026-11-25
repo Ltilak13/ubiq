@@ -159,6 +159,10 @@ For automated checks, use the [GitHub Action](action.yml) or the
 [pre-commit hook](.pre-commit-hooks.yaml). The
 [setup skill](skills/apply-ubiq/SKILL.md) helps wire them into your project.
 
+## Runnable example
+
+The [inventory example](examples/inventory/README.md) connects ubiq requirements to Drizzle contracts, Zod validation, and Gherkin acceptance tests.
+
 ## Go further
 
 Keep the first setup small. Add these when your project needs them:

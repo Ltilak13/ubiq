@@ -1,0 +1,10 @@
+glossary:
+  - requirements/*.md
+  - .ubiq/glossary/*.md
+docs:
+  - requirements/*.md
+  - .ubiq/glossary/*.md
+schemas:
+  - schema: .ubiq/trace.schema.json
+    files: [.ubiq/trace.json]
+ignore: [node_modules/**, reports/**]
