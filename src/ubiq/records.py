@@ -198,6 +198,12 @@ class Glossary:
     overlay_sources: dict[Path, Path] = field(default_factory=dict)
     invalid: list[tuple[Path, str]] = field(default_factory=list)  # unparseable records
     namespaces: set[str] = field(default_factory=set)
+    external: dict[str, Glossary] = field(default_factory=dict)
+
+    def add_external(self, name: str, glossary: Glossary) -> None:
+        self.external[name] = glossary
+        for path, terms in glossary.by_file.items():
+            self.by_file.setdefault(path, terms)
 
     def add(self, t: Term) -> None:
         self.terms.append(t)
@@ -214,12 +220,18 @@ class Glossary:
         ns, _, name = target.partition(":")
         if name and normalize(ns) in self.namespaces:
             return normalize(ns), name
+        if name and "/" in ns and normalize(target) not in self.by_name:
+            return ns, name
         return None, target
 
     def resolve(self, name: str, ns: str | None = None) -> list[Term]:
         """All terms matching `name` (optionally restricted to namespace `ns`)."""
         if ns is None:
             ns, name = self.split(name)
+        if ns is not None and "/" in ns and normalize(ns) not in self.namespaces:
+            dependency, _, namespace = ns.rpartition("/")
+            other = self.external.get(dependency)
+            return other.resolve(name, namespace) if other is not None else []
         candidates = self.by_name.get(normalize(name), [])
         if ns is not None:
             ns = normalize(ns)

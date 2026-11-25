@@ -155,6 +155,7 @@ class Build:
     diagnostics: list[Diagnostic]  # assembly errors: catalogs, unreadable files
     docs: list[Path]               # every scanned document, resolved
     historical: set[Path]          # the historical subset of `docs`
+    layout: Layout
 
 
 def _glossary(cfg: Config, trace: ScanTrace | None = None) -> tuple[Glossary, list[Path]]:
@@ -173,6 +174,9 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None)
     root = root.resolve()
     cfg = cfg or load_config(root)
     glossary, overlay_files = _glossary(cfg, trace)
+    layout = _layout(cfg)
+    for repository in layout.repositories:
+        glossary.add_external(repository.name, repository.glossary)
 
     if trace is not None:
         for term in glossary.terms:
@@ -212,7 +216,7 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None)
         except CatalogError as e:
             extra.append(Diagnostic("E005", str(e), spec.file))
 
-    return Build(glossary, refs, cfg, extra, doc_files, hist_set)
+    return Build(glossary, refs, cfg, extra, doc_files, hist_set, layout)
 
 
 INIT_CONFIG = """\
@@ -376,7 +380,7 @@ def _check(root: Path, cfg: Config | None = None) -> tuple[list[Diagnostic], int
     """Every check diagnostic, with the term and reference counts."""
     result = build(root, cfg=cfg)
     glossary, cfg = result.glossary, result.config
-    layout = _layout(cfg)
+    layout = result.layout
     refs = [r for r in across_repositories(result.refs, layout,
                                            tuple(r.glob for r in cfg.part_rules))
             if not (r.kind == "link" and layout.covers_missing_link(r.file, r.target))]
@@ -442,7 +446,7 @@ def _layout(cfg: Config) -> Layout:
         # Records take the directory name, or the full path when two repositories share it.
         name = dependency.name or repo.resolve().name
         external.append(Repository(name if dependency.name or names[name] == 1 else str(repo.resolve()),
-                                   repo, files, glossary))
+                                   repo, files, glossary, dependency.name is not None))
     return Layout.build(_installed(cfg), external, unread)
 
 
@@ -455,7 +459,7 @@ def _resolve_one(glossary, query: str, others: Sequence[Repository] = ()):
     prefixed = [(r.glossary, query[len(r.name) + 1:]) for r in others
                 if query.startswith(f"{r.name}/")]
     matches = find(*prefixed[0]) if prefixed else (
-        find(glossary, query) or [t for r in others for t in find(r.glossary, query)])
+        find(glossary, query) or [t for r in others if not r.named for t in find(r.glossary, query)])
     matches = list({id(t): t for t in matches}.values())
     if len(matches) != 1:
         found = ", ".join(t.qualified for t in matches) or "no record"
@@ -469,7 +473,7 @@ def cmd_graph(args) -> int:
     errors = _assembly_errors(built.glossary, built.diagnostics)
     if errors:
         return _report(errors, root, args.json)
-    layout = _layout(built.config)
+    layout = built.layout
     live = [path for path in built.docs if path not in built.historical]
     edges = (build_edges(built.glossary, built.refs, built.config.edges, root, layout.local)
              + cross_edges(live, layout, owners(built.glossary, root, layout.local)))
@@ -499,7 +503,7 @@ def cmd_graph(args) -> int:
 def _side(name: str, root: Path, cfg: Config | None = None) -> review.Side:
     """One side of a change review: its records, dependency edges, and gaps."""
     built = build(root, cfg=cfg)
-    layout = _layout(built.config)
+    layout = built.layout
     live = [path for path in built.docs if path not in built.historical]
     owner = owners(built.glossary, root, layout.local)
     edges = (build_edges(built.glossary, built.refs, built.config.edges, root, layout.local)

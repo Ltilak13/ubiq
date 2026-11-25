@@ -514,7 +514,7 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
         ns, name = glossary.split(target)
         # Path-shaped wiki-links are file refs, not terms — unless the name is
         # actually a defined term (`[[SKILL.md]]` in a repo that named that file).
-        if _looks_like_path(target) and not glossary.resolve(name, ns):
+        if _looks_like_path(target) and not (ns and "/" in ns) and not glossary.resolve(name, ns):
             continue
         refs.append(Ref(wiki, m.group(0), normalize(name), ns, path,
                         line_of(m.start()), target=name.strip()))

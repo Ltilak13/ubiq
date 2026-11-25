@@ -289,6 +289,7 @@ class Repository:
     root: Path
     installed: list[Path]
     glossary: Glossary
+    named: bool = False
 
     def __post_init__(self):
         for t in self.glossary.terms:

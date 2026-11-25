@@ -62,6 +62,8 @@ def by_id(glossary: Glossary, ref: Ref) -> list[Term]:
 
 
 def by_name(glossary: Glossary, ref: Ref) -> list[Term]:
+    if ref.ns is None and "/" in ref.target and ":" in ref.target:
+        return glossary.resolve(ref.target)
     return glossary.resolve(ref.name, ref.ns)
 
 
