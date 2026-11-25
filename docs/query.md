@@ -15,6 +15,46 @@ These examples use declarations inspected in the skill repository. See the
 [baseline and question matrix](query-baseline.md) for expected results and gaps.
 The command does not require those particular kinds, domains, or IDs.
 
+## Ubiq's policy and goal example
+
+The registered [goal evidence policy](policies/goal-evidence.md) governs the
+[domain-schema goal](goals/domain-schema-goal.md). The accepted
+[model](../.ubiq/knowledge/goal-governance.yaml) contains two records in the
+`goal-assessment` domain and one `governs` relationship. It uses the existing
+[schema and integrity checks](schema-validation.md).
+
+Run these commands from the repository root with this checkout's CLI:
+
+```sh
+ubiq check
+ubiq query --kind policy --domain goal-assessment --json
+ubiq query --kind goal --domain goal-assessment --json
+ubiq query --id ubiq:domain-schema-goal --incoming --relation governs --json
+ubiq query --id ubiq:goal-evidence-policy --outgoing --relation governs --json
+```
+
+Kind selection returns one record each. Incoming traversal returns
+`ubiq:goal-evidence-policy`. Outgoing traversal returns `ubiq:domain-schema-goal`.
+Both traversals return the declared edge with its metadata pointer and evidence.
+Expected initial results have valid conformance, fresh evidence, and a resolved edge.
+
+The [model schema](../.ubiq/schemas/goal-governance.json) permits `governs` only
+from a policy to a goal. Its reference rule requires exactly one matching edge
+for the policy's `governs` field. Other registered sources have explicit coverage
+exclusions because this example makes no domain classification claims about them.
+
+Evidence snapshots cover the policy, goal, enforcement schema, and existing tests.
+The [example tests](../tests/test_goal_governance.py) check both query directions
+and reject missing endpoints, incompatible types, missing edges, and stale evidence.
+The goal's frontmatter remains authoritative for its acceptance assessments.
+Neither a valid relationship nor fresh evidence establishes goal completion.
+
+After a cited source changes, review its meaning and the affected declarations
+before updating its SHA-256 and anchor. Compute the digest from the complete file
+bytes, then run `ubiq check` and the example tests. Do not refresh hashes solely
+to suppress drift. Remove the model binding and its coverage selection to undo
+this example without changing the runtime or the existing goal assessments.
+
 ## Selection and identity
 
 Filters combine with AND and match exact declared values. An unknown kind or
@@ -202,5 +242,5 @@ v0.11.0 local record interface.
 
 The command reads accepted metadata without changing it. Adoption requires no
 index, service, migration, or new dependency. Removing query usage leaves the
-metadata corpus intact. Ubiq's released repository has no `x-ubiq` collections;
-its real-software usefulness demonstration requires accepted declarations in S5.
+metadata corpus intact. This checkout registers the policy/goal example above. It demonstrates one local
+non-skill relationship, not the complete cross-repository acceptance milestone.
