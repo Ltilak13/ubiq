@@ -17,6 +17,7 @@ from referencing.jsonschema import DRAFT202012
 
 from .check import Diagnostic
 from .config import SchemaSpec
+from .integrity import Finding, assess_integrity, validate_spec
 from .records import FRONTMATTER_RE
 
 if TYPE_CHECKING:
@@ -163,7 +164,8 @@ class Target:
     errors: list[str] = field(default_factory=list)  # E009 messages; empty when conforming
     data: object = None
     loaded: bool = False
-    integrity: list[Diagnostic] = field(default_factory=list)  # E010, run only when conforming
+    # E010 findings; None when not assessed (no x-ubiq extension, or not conforming).
+    integrity: list[Finding] | None = None
 
 
 @dataclass
@@ -186,7 +188,6 @@ def assess_schemas(cfg, glossary) -> list[Binding]:
         try:
             schema, validator = _validator(cfg.root, spec.schema)
             if isinstance(schema, dict) and "x-ubiq" in schema:
-                from .integrity import validate_spec
                 validate_spec(schema["x-ubiq"])
                 binding.extension = schema["x-ubiq"]
         except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, SchemaError,
@@ -209,9 +210,8 @@ def assess_schemas(cfg, glossary) -> list[Binding]:
                 target.errors = [f"{_pointer(e.absolute_path)}: {e.message}"
                                  for e in validator.iter_errors(target.data)]
                 if not target.errors and binding.extension is not None:
-                    from .integrity import check_integrity
-                    target.integrity = check_integrity(target.data, binding.extension,
-                                                       cfg.root, glossary, path)
+                    target.integrity = assess_integrity(target.data, binding.extension,
+                                                        cfg.root, glossary)
             except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, Unresolvable, RecursionError) as exc:
                 target.errors = [f"schema validation failed: {exc}"]
     return bindings
@@ -229,5 +229,6 @@ def check_schemas(cfg, glossary, bindings: list[Binding] | None = None):
                                       cfg.root / "ubiq.yaml") for pattern in binding.unmatched)
         for target in binding.targets:
             diagnostics.extend(Diagnostic("E009", message, target.path) for message in target.errors)
-            diagnostics.extend(target.integrity)
+            diagnostics.extend(Diagnostic("E010", f.message, target.path)
+                               for f in target.integrity or [])
     return diagnostics
