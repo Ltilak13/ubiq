@@ -39,15 +39,20 @@ class Side:
     """One built side of a review: records, edges, and what could not be read."""
     name: str  # "head" or "baseline"
     root: Path
-    terms: dict[str, Term]  # qualified name -> record (this repository only)
+    terms: dict[str, Term]  # qualified name -> record, including named dependencies
     owner: Callable[[Path], Term | None]
     edges: list[Edge]
     invalid: dict[str, str]  # root-relative file -> E005 reason
     unread: list[tuple[Path, str]] = field(default_factory=list)
+    dependencies: dict[str, str | None] = field(default_factory=dict)
+    locations: dict[Path, str] = field(default_factory=dict)
 
     def rel(self, path: Path) -> str:
         p = path if path.is_absolute() else self.root / path
         p = p.resolve()
+        for root, namespace in self.locations.items():
+            if p.is_relative_to(root):
+                return f"{namespace}/{p.relative_to(root).as_posix()}"
         return str(p.relative_to(self.root)) if p.is_relative_to(self.root) else str(p)
 
 
@@ -177,7 +182,7 @@ def changed_files(baseline: Baseline) -> list[ChangedFile]:
 @dataclass
 class Change:
     record: str
-    change: str  # added, deleted, edited, renamed, unknown
+    change: str  # added, deleted, edited, renamed, unknown, dependency
     files: list[str]
     source: str | None = None  # baseline qualified name of a rename
 
@@ -187,7 +192,7 @@ class Change:
             return None if self.change == "deleted" else self.record
         if self.change == "renamed":
             return self.source
-        return self.record if self.change in ("deleted", "unknown") else None
+        return self.record if self.change in ("deleted", "unknown", "dependency") else None
 
     def as_json(self) -> dict:
         out: dict = {"record": self.record, "change": self.change}
@@ -239,6 +244,13 @@ def classify(files: list[ChangedFile], base: Side, head: Side) -> list[Change]:
             del changes[q]
             added.change, added.source = "renamed", q
             added.files = sorted(set(added.files) | set(ch.files))
+    for name in sorted(base.dependencies.keys() | head.dependencies.keys()):
+        if (name in base.dependencies and name in head.dependencies
+                and base.dependencies[name] == head.dependencies[name]):
+            continue
+        for q in base.terms.keys() | head.terms.keys():
+            if q.startswith(name + "/"):
+                changes.setdefault(q, Change(q, "dependency", ["ubiq.yaml"]))
     return sorted(changes.values(), key=lambda c: c.record)
 
 
@@ -262,7 +274,7 @@ def affected(changes: list[Change], base: Side, head: Side,
         starts = {q for c in changes if (q := c.starts(side.name))}
         incoming: dict[str, list[Edge]] = {}
         for e in side.edges:
-            if e.kind in DEPENDS and e.source.repository is None:
+            if e.kind in DEPENDS:
                 incoming.setdefault(e.target.qualified, []).append(e)
         found: dict[str, list[Edge]] = {q: [] for q in starts}
         frontier, level = sorted(starts), 0
@@ -278,7 +290,7 @@ def affected(changes: list[Change], base: Side, head: Side,
             found.update(nxt)
             frontier, level = sorted(nxt), level + 1
         for q, path in found.items():
-            if q in changed or not path:
+            if q in changed or not path or (q in side.terms and side.terms[q].repository is not None):
                 continue
             if q not in paths or len(path) < len(paths[q]):
                 paths[q] = [(e, side) for e in path]

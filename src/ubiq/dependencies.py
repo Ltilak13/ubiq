@@ -1,10 +1,12 @@
 """Read-only validation of explicitly identified dependency checkouts."""
 
 from collections.abc import Sequence
+from contextlib import ExitStack
+from dataclasses import replace
 from pathlib import Path
 
-from .config import Config, Dependency, InvalidConfig
-from .review import BaselineError, _git
+from .config import Config, Dependency, InvalidConfig, load_config
+from .review import Baseline, BaselineError, _git, checkout
 
 
 def validate_checkout(dependency: Dependency, cfg: Config,
@@ -13,12 +15,13 @@ def validate_checkout(dependency: Dependency, cfg: Config,
         return
     root = dependency.path.resolve()
     try:
-        actual = _git(root, "rev-parse", "HEAD").strip()
+        actual = dependency.revision if dependency.snapshot else _git(root, "rev-parse", "HEAD").strip()
         if actual != dependency.revision:
             raise InvalidConfig(f"dependency {dependency.name!r} at {root}: revision mismatch; "
                                 f"expected {dependency.revision}, found {actual}")
-        changed = _git(root, "diff", "--relative", "--name-only", "-z", "HEAD", "--").split("\0")
-        changed += _git(root, "ls-files", "--others", "-z").split("\0")
+        changed = [] if dependency.snapshot else (
+            _git(root, "diff", "--no-renames", "--relative", "--name-only", "-z", "HEAD", "--").split("\0")
+            + _git(root, "ls-files", "--others", "-z").split("\0"))
         patterns = (*cfg.docs, *cfg.historical, *cfg.overlays, *cfg.edges.install,
                     *(rule.glob for rule in cfg.glossary),
                     *(pattern for spec in cfg.schemas for pattern in spec.files))
@@ -37,3 +40,47 @@ def validate_checkout(dependency: Dependency, cfg: Config,
                                 + ", ".join(dirty))
     except (BaselineError, OSError) as exc:
         raise InvalidConfig(f"dependency {dependency.name!r} at {root}: cannot verify revision ({exc})") from exc
+
+
+class Snapshots:
+    """Keep exact, locally available dependency revisions alive for one review."""
+
+    def __init__(self, stack: ExitStack):
+        self.stack = stack
+        self.configs: dict[Path, Config] = {}
+        self.roots: dict[tuple[Path, str], Path] = {}
+        self.originals: dict[Path, Path] = {}
+        self.unread: list[tuple[Path, str]] = []
+
+    def prepare(self, cfg: Config, original: Path) -> Config:
+        if cfg.root in self.configs:
+            return self.configs[cfg.root]
+        self.configs[cfg.root] = cfg
+        declarations = []
+        for dep in cfg.edges.external:
+            real = ((original / dep.path.relative_to(cfg.root))
+                    if dep.path.is_relative_to(cfg.root) else dep.path)
+            if dep.name is None:
+                declarations.append(replace(dep, path=real))
+                continue
+            real = real.resolve()
+            if dep.revision is None:
+                self.unread.append((real, f"dependency {dep.name!r} has no historical revision pin"))
+                continue
+            try:
+                key = (real, dep.revision)
+                if key not in self.roots:
+                    top = Path(_git(real, "rev-parse", "--show-toplevel").strip()).resolve()
+                    commit = _git(real, "rev-parse", "--verify", f"{dep.revision}^{{commit}}").strip()
+                    prefix = real.relative_to(top).as_posix()
+                    snapshot = self.stack.enter_context(checkout(Baseline(
+                        dep.revision, commit, top, "" if prefix == "." else prefix)))
+                    self.roots[key] = snapshot
+                    self.originals[snapshot] = real
+                    self.prepare(load_config(snapshot), real)
+                declarations.append(replace(dep, path=self.roots[key], snapshot=True))
+            except (BaselineError, InvalidConfig, OSError, ValueError) as exc:
+                self.unread.append((real, f"dependency {dep.name!r} revision {dep.revision} unavailable: {exc}"))
+        prepared = replace(cfg, edges=replace(cfg.edges, external=tuple(declarations)))
+        self.configs[cfg.root] = prepared
+        return prepared
