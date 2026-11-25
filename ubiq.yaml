@@ -54,6 +54,11 @@ schemas:
     files: [".ubiq/schemas/*.json"]
 
 # Every owned asset family must stay typed (`ubiq coverage --since <base>` in CI).
+# Families are files that carry metadata: records, skills, overlays, catalogs,
+# agent and rule files, and the schemas. Prose a skill owns (references/,
+# examples/) and tool configuration (.github/, .codex/, .impeccable/,
+# action.yml, .pre-commit-hooks.yaml) are outside the selection for now;
+# selecting one later means adding its schema, not an exclusion.
 coverage:
   files:
     - "**/SKILL.md"

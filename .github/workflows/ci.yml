@@ -71,7 +71,10 @@ jobs:
         shell: bash
         env:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
-        run: ubiq coverage --since "$BASE" --markdown | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          # A force-push can leave the previous main commit unreachable.
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || BASE=HEAD~1
+          ubiq coverage --since "$BASE" --markdown | tee -a "$GITHUB_STEP_SUMMARY"
 
   package:
     runs-on: ubuntu-latest

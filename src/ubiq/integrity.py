@@ -174,7 +174,7 @@ def assess_integrity(data, spec, root: Path, glossary: Glossary) -> list[Finding
             value = record.get(ref['field'])
             target = nodes.get(value) if isinstance(value, str) else None
             if target is None or target['kind'] != ref['target_kind']:
-                error('relationship', 'unresolved',
+                error('relationship', 'unresolved' if target is None else 'incompatible',
                       f"{record['id']}: {ref['field']} must resolve to {ref['target_kind']}", record['id'])
             matching = [edge for edge in relationships if
                         (edge['from'], edge['kind'], edge['to']) ==

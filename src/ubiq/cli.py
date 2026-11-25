@@ -621,6 +621,7 @@ def _coverage_baseline(root: Path, rev: str) -> tuple[dict, dict | None]:
         for f in report["files"]:
             f["file"] = renamed.get(f["file"], f["file"])
         for gap in report["incomplete"]:
+            gap["file"] = renamed.get(gap["file"], gap["file"])
             gap["reason"] = gap["reason"].replace(str(base_root), str(root))
     return {**summary, "status": report["status"]}, report
 

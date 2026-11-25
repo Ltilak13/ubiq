@@ -110,3 +110,12 @@ def test_findings_are_categorized_without_reading_messages(tmp_path):
         mutate(bad)
         found = {(f.category, f.kind, f.records) for f in assess_integrity(bad, spec, tmp_path, glossary)}
         assert expected in found, (expected, found)
+
+
+def test_reference_to_wrong_kind_is_incompatible_not_unresolved(tmp_path):
+    from ubiq.integrity import assess_integrity
+    data, spec, glossary = example(tmp_path)
+    data['hooks'][0]['handler'] = 'h'  # exists, but is a hook, not a script
+    found = {(f.category, f.kind) for f in assess_integrity(data, spec, tmp_path, glossary)}
+    assert ('relationship', 'incompatible') in found
+    assert ('relationship', 'unresolved') not in found
