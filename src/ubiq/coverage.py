@@ -110,7 +110,8 @@ class _Scope:
 
 
 _EVIDENCE = ("invalid", "missing", "stale")  # worst first
-_RELATIONSHIPS = {"unresolved": "unresolved", "incompatible": "invalid", "undeclared": "invalid"}
+_RELATIONSHIPS = {"unresolved": "unresolved", "incompatible": "invalid", "undeclared": "invalid",
+                  "source-reference": "invalid"}
 
 
 def _assessed(t: Target, b: Binding) -> list[Finding] | None:

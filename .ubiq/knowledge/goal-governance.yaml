@@ -2,20 +2,19 @@ domains:
 - id: goal-assessment
   evidence:
   - path: docs/policies/goal-evidence.md
-    sha256: a675d79efad2452f586ca228edebd68487d14a5154bade6e9352dfbec3f75686
+    sha256: a48329c5c033afd93d2a0bc5d85b4f926ea0981bdbfca812f204b2cccf717c01
     anchor: This policy governs the [domain-schema goal]
 policies:
 - id: ubiq:goal-evidence-policy
   kind: policy
   domain: goal-assessment
   source: docs/policies/goal-evidence.md
-  governs: ubiq:domain-schema-goal
   evidence:
   - path: docs/policies/goal-evidence.md
-    sha256: a675d79efad2452f586ca228edebd68487d14a5154bade6e9352dfbec3f75686
+    sha256: a48329c5c033afd93d2a0bc5d85b4f926ea0981bdbfca812f204b2cccf717c01
     anchor: This policy governs the [domain-schema goal]
   - path: .ubiq/schemas/goal.json
-    sha256: d13c960f0295467102da0a081592598de01f42c7be74b8cd71d6817a9f72d3a9
+    sha256: 869fba0b4905ac94c19962a968026e68ed9af8e4ffd731408d9da2e5714524a0
     anchor: '"const": "partial"'
   - path: tests/test_goals.py
     sha256: 52c9e3790bd9d645d78715783417e3f77b22fbdbfb5d7e46d37b4f3c0d8aa088
@@ -27,15 +26,7 @@ goals:
   source: docs/goals/domain-schema-goal.md
   evidence:
   - path: docs/goals/domain-schema-goal.md
-    sha256: 99b706e35a4cf66d336a11fb24e66c7983f8d6e937707eb2ec3abf52d00a0be5
+    sha256: 6bb52a90db70c943aa0df3a01cf1b45c04576fa40a31f13cea0743959080f97b
     anchor: '# Goal: explicit domain models'
-relationships:
-- id: goal-evidence-policy--governs--domain-schema-goal
-  from: ubiq:goal-evidence-policy
-  to: ubiq:domain-schema-goal
-  kind: governs
-  evidence:
-    path: docs/policies/goal-evidence.md
-    sha256: a675d79efad2452f586ca228edebd68487d14a5154bade6e9352dfbec3f75686
-    anchor: This policy governs the [domain-schema goal]
+relationships: []
 interactions: []

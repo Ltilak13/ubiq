@@ -87,6 +87,10 @@
         }
       },
       "additionalProperties": false
+    },
+    "governed_by": {
+      "type": "string",
+      "pattern": "\\S"
     }
   },
   "additionalProperties": false,

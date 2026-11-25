@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import Config
 from .coverage import _assessed, _integrity
+from .integrity import relationship_owner
 from .records import Glossary
 from .review import BaselineError, _git
 from .schemas import Binding, Target, _pointer, assess_schemas
@@ -133,9 +134,10 @@ def _follow(seed: dict, direction: str, relation: str | None, kind: str | None,
             candidates = indexed.get(ident, []) if isinstance(ident, str) else []
             endpoints[end] = _endpoint(ident, candidates, edge_bindings[key], record_bindings)
         edge['endpoints'] = endpoints
-        owner = declaration.get('from')
+        derived = declaration.get('derived_from')
+        owner = relationship_owner(declaration) if 'from' in declaration else ''
         _annotate(edge, assessments[file], owner if isinstance(owner, str) else '', file)
-        edge['evidence_scope'] = 'source_record'
+        edge['evidence_scope'] = 'declaring_record' if derived else 'source_record'
         statuses = {endpoint['status'] for endpoint in endpoints.values()}
         edge['resolution'] = next((state for state in ('invalid', 'ambiguous', 'missing')
                                    if state in statuses), 'resolved')
@@ -229,13 +231,17 @@ def select(cfg: Config, glossary: Glossary, *, kind: str | None = None,
                     record_bindings.setdefault((file, pointer), set()).add(binding.index)
             if direction is not None:
                 collection = binding.extension['relationships']
-                items = target.data.get(collection)
+                items = (target.graph_data if target.graph_data is not None else target.data).get(collection)
                 if isinstance(items, list):
                     for index, edge in enumerate(items):
                         if not isinstance(edge, dict):
                             continue
                         pointer = _pointer((collection, index))
+                        if 'derived_from' in edge:
+                            pointer = _pointer(('$derived', binding.index, collection, index))
                         edges.setdefault((file, pointer), _wrap(edge, file, pointer, repository))
+                        if 'derived_from' in edge:
+                            edges[(file, pointer)]['metadata']['derived_from'] = edge['derived_from']
                         edge_bindings.setdefault((file, pointer), set()).add(binding.index)
 
     # Non-collection documents are not query inputs. A non-collection schema that

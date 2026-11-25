@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
 from .check import Diagnostic
-from .records import Glossary
+from .records import Glossary, parse_frontmatter
+from .scan import _covers, _interpret_markdown, _mask, resolve_doc_link
 
 _TEXT = {'type': 'string', 'minLength': 1, 'pattern': r'\S'}
 _TEXTS = {'type': 'array', 'items': _TEXT, 'minItems': 1, 'uniqueItems': True}
@@ -34,6 +36,10 @@ _SPEC = _object({
         'items': _object({'source': _TEXT, 'reason': _TEXT})}}),
     'evidence': {'const': True},
 })
+_SPEC['properties']['source_references'] = {
+    'type': 'array', 'uniqueItems': True, 'items': _object({
+        'kind': _TEXT, 'field': _TEXT, 'target_kind': _TEXT, 'relationship': _TEXT,
+        'direction': {'enum': ['incoming', 'outgoing']}, 'body_section': _TEXT})}
 _EVIDENCE = _object({'path': _TEXT, 'sha256': {'type': 'string', 'pattern': '^[a-f0-9]{64}$'},
                      'anchor': _TEXT})
 
@@ -54,6 +60,11 @@ def validate_spec(spec) -> None:
         role = spec['roles'].get(ref['relationship'])
         if role is None or ref['kind'] not in role['from'] or ref['target_kind'] not in role['to']:
             raise ValueError('x-ubiq.references: reference types must match the declared relationship role')
+    for ref in spec.get('source_references', []):
+        role = spec['roles'].get(ref['relationship'])
+        source, target = ('to', 'from') if ref['direction'] == 'incoming' else ('from', 'to')
+        if role is None or ref['kind'] not in role[source] or ref['target_kind'] not in role[target]:
+            raise ValueError('x-ubiq.source_references: reference types must match the declared relationship role')
     exclusions = [item['source'] for item in spec['coverage']['exclude']]
     if len(set(exclusions)) != len(exclusions):
         raise ValueError('x-ubiq.coverage: duplicate exclusion source')
@@ -99,6 +110,89 @@ def check_integrity(data, spec, root: Path, glossary: Glossary, file: Path) -> l
 
 
 def assess_integrity(data, spec, root: Path, glossary: Glossary) -> list[Finding]:
+    """Assess stored and source-derived declarations without changing the input."""
+    return assess_model(data, spec, root, glossary)[1]
+
+
+def relationship_owner(edge):
+    """Evidence belongs to the declaring record, including inverse declarations."""
+    origin = edge.get('derived_from')
+    if isinstance(origin, dict) and isinstance(origin.get('record'), str):
+        return origin['record']
+    return edge['from']
+
+
+def assess_model(data, spec, root: Path, glossary: Glossary):
+    """Return the effective graph and findings; derived edges retain source provenance."""
+    if not Draft202012Validator(_shape(spec)).is_valid(data):
+        return data, _assess_integrity(data, spec, root, glossary)
+    reserved = [Finding('shape', 'reserved', 'derived_from is reserved for generated provenance')
+                for edge in data[spec['relationships']] if 'derived_from' in edge]
+    if reserved:
+        return data, reserved + _assess_integrity(data, spec, root, glossary)
+    if not spec.get('source_references'):
+        return data, _assess_integrity(data, spec, root, glossary)
+    root = root.resolve()
+    records = [record for name in spec['collections'] for record in data[name]]
+    edges = list(data[spec['relationships']])
+    found = []
+    for ref in spec['source_references']:
+        for record in records:
+            if record['kind'] != ref['kind']:
+                continue
+            try:
+                if ref['field'] in record:
+                    raise ValueError(f"{ref['field']} belongs only in source frontmatter")
+                source = Path(record['source'])
+                path = (root / source).resolve()
+                if source.is_absolute() or '..' in source.parts or not path.is_relative_to(root):
+                    raise ValueError('source must stay inside the repository')
+                meta, body = parse_frontmatter(path)
+                value = meta.get(ref['field'])
+                targets = [item for item in records if item['id'] == value]
+                if len(targets) != 1 or targets[0]['kind'] != ref['target_kind']:
+                    raise ValueError(f"{ref['field']} must resolve to one {ref['target_kind']}")
+                target = targets[0]
+                # Use the scanner's masked prose and resolved Markdown links, so code
+                # examples and comments cannot satisfy the visible-link contract.
+                document = _interpret_markdown(body)
+                headings = list(re.finditer(r'^#{1,2} +(.+?) *#* *$',
+                                            _mask(document.prose, document.comments), re.MULTILINE))
+                sections = [(heading.end(), headings[i + 1].start() if i + 1 < len(headings) else len(body))
+                            for i, heading in enumerate(headings)
+                            if heading.group(0).startswith('## ') and heading[1] == ref['body_section']]
+                if len(sections) != 1:
+                    raise ValueError(f"expected one ## {ref['body_section']} section")
+                start, end = sections[0]
+                hidden = _covers(document.comments)
+                links = [resolve_doc_link(path, dest, root) for offset, _, dest in document.links
+                         if start <= offset < end and not hidden(offset)]
+                if not links or set(links) != {(root / target['source']).resolve()}:
+                    raise ValueError(f"{ref['body_section']} links must match {ref['field']}")
+                snapshots = [item for item in record['evidence'] if item['path'] == record['source']]
+                if len(snapshots) != 1:
+                    raise ValueError('expected one primary evidence snapshot')
+                origin, destination = (target, record) if ref['direction'] == 'incoming' else (record, target)
+                if any(edge['kind'] == ref['relationship'] and
+                       edge['to' if ref['direction'] == 'incoming' else 'from'] == record['id']
+                       for edge in edges):
+                    found.append(Finding('shape', 'duplicate-source-reference',
+                                         f"{record['id']}: source-derived relationship also declared elsewhere",
+                                         (record['id'],)))
+                    continue
+                edges.append(dict(id=f"{record['id']}--{ref['field']}",
+                                  **{'from': origin['id'], 'to': destination['id']},
+                                  kind=ref['relationship'], evidence=dict(snapshots[0]),
+                                  derived_from={'file': record['source'], 'field': ref['field'],
+                                                    'record': record['id']}))
+            except (OSError, ValueError, RuntimeError) as exc:
+                found.append(Finding('relationship', 'source-reference',
+                                     f"{record['id']}: {exc}", (record['id'],)))
+    effective = {**data, spec['relationships']: edges}
+    return effective, found + _assess_integrity(effective, spec, root, glossary)
+
+
+def _assess_integrity(data, spec, root: Path, glossary: Glossary) -> list[Finding]:
     """Every integrity failure of a structurally valid instance, categorized."""
     found: list[Finding] = []
 
@@ -225,7 +319,8 @@ def assess_integrity(data, spec, root: Path, glossary: Glossary) -> list[Finding
     # Each snapshot belongs to the record that carries it; domain snapshots to none.
     evidence = [(item, record['id']) for record in records for item in record['evidence']]
     evidence += [(item, None) for domain in domains for item in domain['evidence']]
-    evidence += [(edge['evidence'], edge['from']) for edge in relationships]
+    evidence += [(edge['evidence'], relationship_owner(edge))
+                 for edge in relationships]
     snapshots = {}
     for item, owner in evidence:
         path = source_path(item['path'], 'evidence', 'evidence', owner)

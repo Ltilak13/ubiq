@@ -67,8 +67,8 @@ criteria:
     support:
     - feature: Registered policy governing a goal
       implementation:
-        path: .ubiq/knowledge/goal-governance.yaml
-        anchor: 'id: goal-evidence-policy--governs--domain-schema-goal'
+        path: docs/goals/domain-schema-goal.md
+        anchor: 'governed_by: ubiq:goal-evidence-policy'
       check:
         path: tests/test_goal_governance.py
         anchor: def test_registered_goal_governance_queries(
@@ -86,8 +86,8 @@ criteria:
     support:
     - feature: Registered policy governing a goal
       implementation:
-        path: .ubiq/knowledge/goal-governance.yaml
-        anchor: 'id: goal-evidence-policy--governs--domain-schema-goal'
+        path: docs/goals/domain-schema-goal.md
+        anchor: 'governed_by: ubiq:goal-evidence-policy'
       check:
         path: tests/test_goal_governance.py
         anchor: def test_registered_goal_governance_queries(

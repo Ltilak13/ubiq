@@ -8,7 +8,7 @@ import pytest
 from test_query import run
 
 from ubiq.cli import build, main
-from ubiq.integrity import assess_integrity
+from ubiq.integrity import assess_integrity, assess_model
 from ubiq.schemas import load_data
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +20,8 @@ GOAL = 'ubiq:domain-schema-goal'
 
 def test_registered_goal_governance_queries(capsys):
     data = load_data(ROOT / MODEL)
+    effective, findings = assess_model(data, load_data(ROOT / SCHEMA)['x-ubiq'], ROOT, build(ROOT).glossary)
+    assert not findings and data['relationships'] == []
     for kind, ident, collection in [('policy', POLICY, 'policies'), ('goal', GOAL, 'goals')]:
         code, result = run(ROOT, capsys, '--kind', kind, '--domain', 'goal-assessment')
         assert code == 0 and result['complete']
@@ -34,18 +36,19 @@ def test_registered_goal_governance_queries(capsys):
         item, = result['results']
         assert item['identity']['id'] == neighbor
         edge, = result['relationships']
-        assert edge['record'] == data['relationships'][0]
-        assert edge['metadata'] == {'file': MODEL, 'pointer': '/relationships/0'}
+        assert edge['record'] == effective['relationships'][0]
+        assert edge['metadata'] == {'file': MODEL, 'pointer': '/$derived/0/relationships/0',
+                                    'derived_from': {'file': 'docs/goals/domain-schema-goal.md',
+                                                     'field': 'governed_by', 'record': GOAL}}
         assert edge['resolution'] == 'resolved' and edge['evidence_status'] == 'fresh'
-        assert edge['evidence_scope'] == 'source_record'
+        assert edge['evidence_scope'] == 'declaring_record'
     assert main(['check', '--root', str(ROOT), '--json']) == 0
     assert json.loads(capsys.readouterr().out)['diagnostics'] == []
 
 
 @pytest.mark.parametrize('case, expected', [
-    ('missing-target', ('relationship', 'unresolved')),
-    ('wrong-type', ('relationship', 'incompatible')),
-    ('missing-edge', ('relationship', 'undeclared')),
+    ('missing-policy', ('relationship', 'source-reference')),
+    ('duplicate-edge', ('shape', 'duplicate-source-reference')),
     ('stale-evidence', ('evidence', 'stale')),
     ('missing-anchor', ('evidence', 'stale')),
 ])
@@ -55,15 +58,16 @@ def test_goal_governance_rejects_invalid_declarations(case, expected):
     spec = load_data(ROOT / SCHEMA)['x-ubiq']
     assert assess_integrity(data, spec, ROOT, built.glossary) == []
     bad = copy.deepcopy(data)
-    if case == 'missing-target':
-        bad['relationships'][0]['to'] = 'ubiq:missing-goal'
-    elif case == 'wrong-type':
-        bad['relationships'][0]['to'] = POLICY
-    elif case == 'missing-edge':
-        bad['relationships'] = []
+    if case == 'missing-policy':
+        bad['policies'] = []
+    elif case == 'duplicate-edge':
+        effective, _ = assess_model(data, spec, ROOT, built.glossary)
+        edge = effective['relationships'][0]
+        edge.pop('derived_from')
+        bad['relationships'] = [edge]
     elif case == 'stale-evidence':
-        bad['relationships'][0]['evidence']['sha256'] = '0' * 64
+        bad['goals'][0]['evidence'][0]['sha256'] = '0' * 64
     else:
-        bad['relationships'][0]['evidence']['anchor'] = 'absent policy claim'
+        bad['goals'][0]['evidence'][0]['anchor'] = 'absent governance claim'
     findings = assess_integrity(bad, spec, ROOT, built.glossary)
     assert expected in {(finding.category, finding.kind) for finding in findings}

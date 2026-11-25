@@ -21,14 +21,7 @@
         ]
       }
     },
-    "references": [
-      {
-        "kind": "policy",
-        "field": "governs",
-        "target_kind": "goal",
-        "relationship": "governs"
-      }
-    ],
+    "references": [],
     "coverage": {
       "glossary": true,
       "exclude": [
@@ -126,6 +119,16 @@
         }
       ]
     },
-    "evidence": true
+    "evidence": true,
+    "source_references": [
+      {
+        "kind": "goal",
+        "field": "governed_by",
+        "target_kind": "policy",
+        "relationship": "governs",
+        "direction": "incoming",
+        "body_section": "Governing policy"
+      }
+    ]
   }
 }

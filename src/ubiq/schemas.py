@@ -18,7 +18,7 @@ from referencing.jsonschema import DRAFT202012
 from .check import Diagnostic
 from .config import SchemaSpec
 from .globs import GlobError
-from .integrity import Finding, assess_integrity, validate_spec
+from .integrity import Finding, assess_model, validate_spec
 from .records import FRONTMATTER_RE
 
 if TYPE_CHECKING:
@@ -167,6 +167,7 @@ class Target:
     loaded: bool = False
     # E010 findings; None when not assessed (no x-ubiq extension, or not conforming).
     integrity: list[Finding] | None = None
+    graph_data: dict | None = None  # Effective graph, including source-derived edges.
 
 
 @dataclass
@@ -220,8 +221,8 @@ def assess_schemas(cfg, glossary, *, retain_scan_errors: bool = False) -> list[B
                 target.errors = [f"{_pointer(e.absolute_path)}: {e.message}"
                                  for e in validator.iter_errors(target.data)]
                 if not target.errors and binding.extension is not None:
-                    target.integrity = assess_integrity(target.data, binding.extension,
-                                                        cfg.root, glossary)
+                    target.graph_data, target.integrity = assess_model(
+                        target.data, binding.extension, cfg.root, glossary)
             except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, Unresolvable, RecursionError) as exc:
                 target.errors = [f"schema validation failed: {exc}"]
     return bindings

@@ -20,7 +20,8 @@ The command does not require those particular kinds, domains, or IDs.
 The registered [goal evidence policy](policies/goal-evidence.md) governs the
 [domain-schema goal](goals/domain-schema-goal.md). The accepted
 [model](../.ubiq/knowledge/goal-governance.yaml) contains two records in the
-`goal-assessment` domain and one `governs` relationship. It uses the existing
+`goal-assessment` domain. The goal’s `governed_by: ubiq:goal-evidence-policy`
+frontmatter produces one `governs` relationship. It uses the existing
 [schema and integrity checks](schema-validation.md).
 
 Run these commands from the repository root with this checkout's CLI:
@@ -35,17 +36,21 @@ ubiq query --id ubiq:goal-evidence-policy --outgoing --relation governs --json
 
 Kind selection returns one record each. Incoming traversal returns
 `ubiq:goal-evidence-policy`. Outgoing traversal returns `ubiq:domain-schema-goal`.
-Both traversals return the declared edge with its metadata pointer and evidence.
+Both traversals return the derived edge with its provenance and evidence.
 Expected initial results have valid conformance, fresh evidence, and a resolved edge.
 
 The [model schema](../.ubiq/schemas/goal-governance.json) permits `governs` only
-from a policy to a goal. Its reference rule requires exactly one matching edge
-for the policy's `governs` field. Other registered sources have explicit coverage
+from a policy to a goal. Its `source_references` rule reads `governed_by` from
+the goal source, resolves that ID to one policy record, and derives the edge.
+The model stores no copy of the declaration. The goal’s visible “Governing policy”
+section must link to that policy’s source. Other registered sources have explicit coverage
 exclusions because this example makes no domain classification claims about them.
 
 Evidence snapshots cover the policy, goal, enforcement schema, and existing tests.
 The [example tests](../tests/test_goal_governance.py) check both query directions
-and reject missing endpoints, incompatible types, missing edges, and stale evidence.
+and reject missing policies, duplicate declarations, and stale evidence.
+[Source-reference tests](../tests/test_source_relationships.py) also reject invalid
+frontmatter and links that disagree with the declaration.
 The goal's frontmatter remains authoritative for its acceptance assessments.
 Neither a valid relationship nor fresh evidence establishes goal completion.
 
@@ -74,6 +79,43 @@ and any domain-specific fields. Consumers can read declared inputs, outputs,
 and contracts without extracting them from prose. Identical locations selected
 by overlapping schema bindings appear once, with all binding assessments retained.
 
+### Frontmatter-derived relationships
+
+An optional `x-ubiq.source_references` rule declares which source field produces
+an edge. For example:
+
+```yaml
+source_references:
+  - kind: goal
+    field: governed_by
+    target_kind: policy
+    relationship: governs
+    direction: incoming
+    body_section: Governing policy
+```
+
+For each record of `kind`, the CLI reads its `source` Markdown frontmatter. The
+field must contain one record ID in the same model. `incoming` means the target
+record points to the declaring record; `outgoing` means the reverse. The endpoint
+kinds must match the configured relationship role. Existing `references` rules
+continue to validate stored fields and edges.
+
+The named level-two section must occur once. It must contain a visible Markdown
+link to the target record’s source; all Markdown links in that section must resolve
+to that source. Code examples, images, and comments do not satisfy this check.
+Other sections can contain unrelated links. This checks destinations, not prose meaning.
+
+The source must have exactly one primary evidence snapshot. Derived edges reuse
+that snapshot, so editing frontmatter still requires evidence review. They expose
+`derived_from` with the source file, frontmatter field, and declaring record ID.
+Their metadata pointer has the form `/$derived/<binding>/<collection>/<index>`.
+It identifies an edge in that binding’s effective graph, not a stored YAML entry.
+Their `evidence_scope` is `declaring_record`, including for incoming edges. `derived_from` is reserved for generated provenance.
+
+Do not repeat the field on the model record or store an edge for the same role
+and declaring endpoint. Either duplicate fails validation. The current rule
+supports a single target per field; it does not infer governance from prose.
+
 ## Declared relationships
 
 Use `--id` with `--incoming` or `--outgoing` to follow one hop. `--relation`
@@ -91,9 +133,9 @@ The first command returns `ai:memory-rule`. The second returns
 `cursor/rules/project-memory.mdc`. The role is `governs`, as declared in the
 metadata; the command does not translate it to another relationship name.
 
-Relationship queries read only the collection named by `x-ubiq.relationships`.
-They do not convert reference fields, prose mentions, or composition links into
-edges. Endpoints resolve within the declaring metadata document and its binding.
+Relationship queries read the collection named by `x-ubiq.relationships`,
+including edges derived by an explicit `x-ubiq.source_references` rule.
+Other reference fields, prose mentions, and composition links do not produce edges. Endpoints resolve within the declaring metadata document and its binding.
 An ID in another document cannot repair a missing endpoint. Cycles and self-links
 remain one-hop results.
 

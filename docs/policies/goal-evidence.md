@@ -16,8 +16,10 @@ The assessment stays provisional. A partial assessment does not establish goal c
 ## Declarations and checks
 
 The [registered model](../../.ubiq/knowledge/goal-governance.yaml) is data. It
-declares the policy and goal records, their governing relationship, and evidence
-snapshots for the policy, goal, schema, and tests. It does not execute checks.
+declares the policy and goal records and evidence snapshots for the policy, goal,
+schema, and tests. The goal’s `governed_by` frontmatter declares the governing
+policy. The CLI derives the relationship from that field and checks the visible
+“Governing policy” link against it. The model does not execute checks.
 The [goal schema](../../.ubiq/schemas/goal.json) defines required fields and
 permitted assessment values.
 
