@@ -17,6 +17,7 @@ from referencing.jsonschema import DRAFT202012
 
 from .check import Diagnostic
 from .config import SchemaSpec
+from .globs import GlobError
 from .integrity import Finding, assess_integrity, validate_spec
 from .records import FRONTMATTER_RE
 
@@ -177,10 +178,11 @@ class Binding:
     extension: dict | None = None
     unmatched: list[str] = field(default_factory=list)  # file patterns that matched nothing
     targets: list[Target] = field(default_factory=list)
+    scan_errors: list[tuple[str, GlobError]] = field(default_factory=list)
 
 
-def assess_schemas(cfg, glossary) -> list[Binding]:
-    """Structured results for every schema binding. `check_schemas` renders them."""
+def assess_schemas(cfg, glossary, *, retain_scan_errors: bool = False) -> list[Binding]:
+    """Assess bindings. Opt-in scan recovery retains targets discovered before failure."""
     bindings = []
     for index, spec in enumerate(cfg.schemas):
         binding = Binding(index, spec)
@@ -196,10 +198,18 @@ def assess_schemas(cfg, glossary) -> list[Binding]:
             continue
         paths = set()
         for pattern in spec.files:
-            matches = {p for p in pattern.walk(cfg.ignore)
-                       if not any(g.matches(p) for g in cfg.ignore)}
-            if not matches:
-                binding.unmatched.append(pattern.pattern)
+            matches = set()
+            try:
+                for path in pattern.walk(cfg.ignore):
+                    if not any(g.matches(path) for g in cfg.ignore):
+                        matches.add(path)
+            except GlobError as exc:
+                if not retain_scan_errors:
+                    raise
+                binding.scan_errors.append((pattern.pattern, exc))
+            else:
+                if not matches:
+                    binding.unmatched.append(pattern.pattern)
             paths.update(matches)
         for path in sorted(paths):
             target = Target(path)
@@ -225,6 +235,9 @@ def check_schemas(cfg, glossary, bindings: list[Binding] | None = None):
             diagnostics.append(Diagnostic("E008", f"schema {binding.spec.schema}: {binding.error}",
                                           cfg.root / "ubiq.yaml"))
             continue
+        diagnostics.extend(Diagnostic("E005", f"cannot scan schema pattern {pattern}: {error}",
+                                      Path(error.filename) if error.filename else cfg.root)
+                           for pattern, error in binding.scan_errors)
         diagnostics.extend(Diagnostic("E009", f"schema target pattern matched no files: {pattern}",
                                       cfg.root / "ubiq.yaml") for pattern in binding.unmatched)
         for target in binding.targets:

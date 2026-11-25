@@ -11,6 +11,8 @@
                                      changed records and the callers they affect
   ubiq compare --since REV [--root DIR] [--json | --markdown]
                                      new, resolved, and unchanged findings
+  ubiq query [--kind KIND] [--domain DOMAIN] [--id ID] [--root DIR] [--json]
+                                     select complete declared records with source evidence
   ubiq coverage [--since REV] [--root DIR] [--json | --markdown]
                                      how much selected content has typed metadata
 """
@@ -28,7 +30,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, coverage, review
+from . import __version__, coverage, query, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, at, run_checks
@@ -768,6 +770,20 @@ def cmd_coverage(args) -> int:
     return code
 
 
+def cmd_query(args) -> int:
+    root = Path(args.root).resolve()
+    try:
+        cfg = load_config(root)
+        glossary, _ = _glossary(cfg)
+        report = query.select(cfg, glossary, kind=args.kind, domain=args.domain,
+                              ident=args.id, document=args.document)
+    except (InvalidConfig, ConflictingGlossary, GlobError, OSError, UnicodeError) as exc:
+        report = query.unavailable(root, str(exc))
+    print(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False)
+          if args.json else query.render(report))
+    return query.exit_code(report)
+
+
 def cmd_overlap(args) -> int:
     root = Path(args.root).resolve()
     built = build(root)
@@ -1022,6 +1038,15 @@ def main(argv: list[str] | None = None) -> int:
     cv_out.add_argument("--json", action="store_true")
     cv_out.add_argument("--markdown", action="store_true", help="a PR-ready summary")
     cv.set_defaults(fn=cmd_coverage)
+
+    q = sub.add_parser("query", help="select complete records from declared metadata collections")
+    q.add_argument("--root", default=".")
+    q.add_argument("--kind", help="match the exact declared record kind")
+    q.add_argument("--domain", help="match the exact declared domain")
+    q.add_argument("--id", help="resolve an exact record identity before applying other filters")
+    q.add_argument("--document", help="match the exact repository-relative metadata document")
+    q.add_argument("--json", action="store_true")
+    q.set_defaults(fn=cmd_query)
 
     o = sub.add_parser("overlap", help="list near-duplicate prose shared across records")
     o.add_argument("--root", default=".")

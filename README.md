@@ -153,6 +153,7 @@ That's the same check you can run on every pull request.
 | See what a change affects | `ubiq impact --since main` |
 | Summarize new and resolved findings | `ubiq compare --since main --markdown` |
 | Measure typed metadata coverage | `ubiq coverage` |
+| Select declared records with source evidence | `ubiq query --kind KIND --json` |
 
 For automated checks, use the [GitHub Action](action.yml) or the
 [pre-commit hook](.pre-commit-hooks.yaml). The
@@ -165,6 +166,7 @@ Keep the first setup small. Add these when your project needs them:
 - [Repository discovery](docs/guide.md#repository-groups-and-schemas): find existing files and definitions.
 - [Schema validation](docs/schema-validation.md): check required fields and relationships between records.
 - [Composable skills](docs/guide.md#composable-skills): share instructions, inspect dependencies, and find repeated text.
+- [Typed queries](docs/query.md): local record selection, provenance, and evidence status (unreleased).
 - [Full guide](docs/guide.md): setup choices, reference rules, configuration, and all commands.
 - [Contributing checks](docs/guide.md#pr-validation): test a change to ubiq itself.
 - [Specification](docs/spec.md): exact rules and error codes.
