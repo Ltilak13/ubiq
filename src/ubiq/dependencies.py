@@ -9,6 +9,29 @@ from .config import Config, Dependency, InvalidConfig, load_config
 from .review import Baseline, BaselineError, _git, checkout
 
 
+def _input_paths(paths: set[Path]) -> set[Path]:
+    """Retain each input, its target, and every symlink needed to reach it."""
+    pending = list(paths)
+    visited: set[Path] = set()
+    inputs: set[Path] = set()
+    while pending:
+        path = pending.pop()
+        if path in visited:
+            continue
+        visited.add(path)
+        try:
+            target = path.resolve(strict=True)  # Detect cycles on every supported Python version.
+        except FileNotFoundError:
+            target = path.resolve()  # Deleted inputs must still participate in dirty checks.
+        inputs.update((path, target))
+        for component in reversed((path, *path.parents)):
+            if component.is_symlink():
+                inputs.add(component.parent.resolve() / component.name)
+                pending.append(component.parent / component.readlink() / path.relative_to(component))
+                break
+    return inputs
+
+
 def validate_checkout(dependency: Dependency, cfg: Config,
                       inputs: Sequence[Path] = ()) -> None:
     if dependency.revision is None:
@@ -25,11 +48,13 @@ def validate_checkout(dependency: Dependency, cfg: Config,
         patterns = (*cfg.docs, *cfg.historical, *cfg.overlays, *cfg.edges.install,
                     *(rule.glob for rule in cfg.glossary),
                     *(pattern for spec in cfg.schemas for pattern in spec.files))
-        explicit = {root / "ubiq.yaml", *inputs, *(s.file.resolve() for s in cfg.catalogs),
-                    *((root / s.schema.split("#", 1)[0]).resolve() for s in cfg.schemas)}
+        # Retain lexical names so retargeted schema/catalog symlinks remain dirty inputs.
+        explicit = {root / "ubiq.yaml", *inputs, *(s.file for s in cfg.catalogs),
+                    *(root / s.schema.split("#", 1)[0] for s in cfg.schemas)}
         explicit.update(path for pattern in patterns for path in pattern.walk(cfg.ignore))
-        explicit |= {path.resolve() for path in explicit}
-        outside = [str(path) for path in explicit if not path.resolve().is_relative_to(root)]
+        explicit = _input_paths(explicit)
+        outside = [str(path) for path in explicit
+                   if not path.is_relative_to(root) or not path.resolve().is_relative_to(root)]
         if outside:
             raise InvalidConfig(f"dependency {dependency.name!r}: pinned inputs leave checkout: "
                                 + ", ".join(sorted(outside)))
@@ -38,7 +63,7 @@ def validate_checkout(dependency: Dependency, cfg: Config,
         if dirty:
             raise InvalidConfig(f"dependency {dependency.name!r} at {root}: pinned inputs are dirty: "
                                 + ", ".join(dirty))
-    except (BaselineError, OSError) as exc:
+    except (BaselineError, OSError, RuntimeError) as exc:
         raise InvalidConfig(f"dependency {dependency.name!r} at {root}: cannot verify revision ({exc})") from exc
 
 
