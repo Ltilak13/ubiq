@@ -3,6 +3,7 @@ glossary:
   - glob: "docs/goals/*-goal.md"
     term_field: name
     ns: goal
+  - "docs/policies/*.md"
   - "glossary/**/*.md"
   - glob: "skills/**/SKILL.md"
     term_field: name
@@ -37,11 +38,13 @@ edges:
 
 # Typed contracts for each owned asset family.
 schemas:
+  - schema: ".ubiq/schemas/goal-governance.json"
+    files: [".ubiq/knowledge/goal-governance.yaml"]
   - schema: ".ubiq/schemas/goal.json"
     files: ["docs/goals/*-goal.md"]
     format: frontmatter
   - schema: ".ubiq/schemas/glossary-record.json"
-    files: ["glossary/*.md", ".ubiq/glossary/*.md"]
+    files: ["glossary/*.md", ".ubiq/glossary/*.md", "docs/policies/*.md"]
     format: frontmatter
   - schema: ".ubiq/schemas/skill.json"
     files: ["skills/*/SKILL.md"]
@@ -68,6 +71,8 @@ schemas:
 coverage:
   files:
     - "docs/goals/*-goal.md"
+    - "docs/policies/*.md"
+    - ".ubiq/knowledge/*.yaml"
     - "**/SKILL.md"
     - "skills/*/agents/*.yaml"
     - "glossary/*.md"

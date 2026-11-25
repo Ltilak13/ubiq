@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ubiq:goal-governance:v1",
+  "title": "Goal governance model v1",
+  "type": "object",
+  "x-ubiq": {
+    "collections": {
+      "policies": "policy",
+      "goals": "goal"
+    },
+    "domains": "domains",
+    "relationships": "relationships",
+    "interactions": "interactions",
+    "roles": {
+      "governs": {
+        "from": [
+          "policy"
+        ],
+        "to": [
+          "goal"
+        ]
+      }
+    },
+    "references": [
+      {
+        "kind": "policy",
+        "field": "governs",
+        "target_kind": "goal",
+        "relationship": "governs"
+      }
+    ],
+    "coverage": {
+      "glossary": true,
+      "exclude": [
+        {
+          "source": ".ubiq/glossary/domain-modeling.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": ".ubiq/glossary/validate-change.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/goals/checkable-contracts-evidence-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/goals/composable-knowledge-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/goals/human-agent-readability-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/goals/safe-adoption-evolution-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/catalog.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/composition-edge.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/delimiter.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/diagnostic.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/domain-schema.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/glossary-record.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/namespace.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/overlay.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/reference.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/schema-promotion.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/schema-staging.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/shared-part.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/term.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "skills/apply-ubiq/SKILL.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "skills/maintain-ubiq/SKILL.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "skills/upgrade-ubiq/SKILL.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        }
+      ]
+    },
+    "evidence": true
+  }
+}
