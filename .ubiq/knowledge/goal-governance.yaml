@@ -1,0 +1,41 @@
+domains:
+- id: goal-assessment
+  evidence:
+  - path: docs/policies/goal-evidence.md
+    sha256: 829e0e63206a2b9ee7d4e7d935b51beccde2e0e8f925b6223b73284e9d0188a8
+    anchor: This policy governs the [domain-schema goal]
+policies:
+- id: ubiq:goal-evidence-policy
+  kind: policy
+  domain: goal-assessment
+  source: docs/policies/goal-evidence.md
+  governs: ubiq:domain-schema-goal
+  evidence:
+  - path: docs/policies/goal-evidence.md
+    sha256: 829e0e63206a2b9ee7d4e7d935b51beccde2e0e8f925b6223b73284e9d0188a8
+    anchor: This policy governs the [domain-schema goal]
+  - path: .ubiq/schemas/goal.json
+    sha256: d13c960f0295467102da0a081592598de01f42c7be74b8cd71d6817a9f72d3a9
+    anchor: '"const": "partial"'
+  - path: tests/test_goals.py
+    sha256: 5976eff2f3714a8f396b7ed4c89ce737a45a4ace0cf6f1368994f4b1885c04f6
+    anchor: def test_partial_assessment_requires_provisional_evidence(
+goals:
+- id: ubiq:domain-schema-goal
+  kind: goal
+  domain: goal-assessment
+  source: docs/goals/domain-schema-goal.md
+  evidence:
+  - path: docs/goals/domain-schema-goal.md
+    sha256: 0d38a33d4aa7e09614eb7c08e105d2dfb2e24587f0c9ed2a750af118a182c3ef
+    anchor: '# Goal: domain-aware frontmatter and a knowledge tree'
+relationships:
+- id: goal-evidence-policy--governs--domain-schema-goal
+  from: ubiq:goal-evidence-policy
+  to: ubiq:domain-schema-goal
+  kind: governs
+  evidence:
+    path: docs/policies/goal-evidence.md
+    sha256: 829e0e63206a2b9ee7d4e7d935b51beccde2e0e8f925b6223b73284e9d0188a8
+    anchor: This policy governs the [domain-schema goal]
+interactions: []
