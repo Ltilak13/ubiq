@@ -192,8 +192,9 @@ Use discovery during maintenance to find new files that have no record yet.
   links must land on an existing file or directory; a missing one is `W007`, a
   warning that `references.link.severity` can raise or silence. URLs,
   anchor-only links (`#x`), root-relative paths (`/x`), and code are not
-  checked, and links that leave an `edges.install` directory are left to
-  `W004`. Path-shaped wiki-links (`[[MISSION.md]]`) are not checked. Full `[label][id]`, collapsed `[id][]`,
+  checked. `W004` handles Markdown links that leave an `edges.install`
+  directory and resolve only after installation, or target an external installed
+  directory. Other missing destinations still report `W007`. Path-shaped wiki-links (`[[MISSION.md]]`) are not checked. Full `[label][id]`, collapsed `[id][]`,
   and shortcut `[id]` links work with a single-line `[id]: path/to/record.md`
   definition. Labels ignore case and repeated whitespace; the first definition wins.
 - Wiki-links such as `[[session]]` and `[[game:session]]` resolve by name, alias,

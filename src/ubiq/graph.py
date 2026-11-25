@@ -32,7 +32,6 @@ from .scan import (
     _doc_link_path,
     _interpret_markdown,
     _line_index,
-    _local_path,
 )
 
 KINDS = ("invoke", "include", "route", "reference")
@@ -345,11 +344,14 @@ class Layout:
     def home(self, doc: Path) -> Path | None:
         return next((d for d in doc.parents if d in self.homes), None)
 
-    def leaves(self, doc: Path, spec: str) -> bool:
-        """Whether a link leaves an installed directory, so W004 checks it."""
+    def covers_missing_link(self, doc: Path, spec: str) -> bool:
+        """Whether W004 handles a destination missing from the source tree."""
         doc = doc.resolve()
-        home, source = self.home(doc), _local_path(doc, spec)
-        return home is not None and source is not None and not source.is_relative_to(home)
+        home, source = self.home(doc), _doc_link_path(doc, spec)
+        if home is None or source is None or source.is_relative_to(home):
+            return False
+        landed, target = self.land(doc, home, source)
+        return target in self.external or (landed is not None and landed.is_file())
 
     def land(self, doc: Path, home: Path, source: Path) -> tuple[Path | None, Path | None]:
         """The file a link from `doc` reaches once installed, and its installed directory.

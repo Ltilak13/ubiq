@@ -76,8 +76,9 @@ A `link` ref is a relative Markdown link to a file or directory that does not
 exist, when no record or glossary rule claims the destination; such a link
 would otherwise be a `markdown` ref. It never resolves, so it always reports
 W007, a warning by default. URLs, anchor-only links, root-relative paths, and
-links outside the repository are not `link` refs. A link that leaves an
-`edges.install` directory is checked by W004 instead. A path-shaped wiki-link to
+links outside the repository are not `link` refs. W004 handles Markdown links that leave an `edges.install` directory and
+resolve only after installation, or target an external installed directory.
+Other missing destinations still report W007. A path-shaped wiki-link to
 a missing file (`[[MISSION.md]]`) is not a reference of any kind.
 
 No configuration can contradict a guarantee: a setting that would is E008, and a

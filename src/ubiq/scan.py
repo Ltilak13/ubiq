@@ -500,7 +500,8 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
                 link_spans.append((start, end))
             continue
         local = _local_path(path, spec, cfg.root)
-        if local is not None and link_admits(start) and not local.exists():
+        if (local is not None and link_admits(start) and not local.exists()
+                and local.resolve().is_relative_to(cfg.root.resolve())):
             refs.append(Ref(link, text[start:end], "", None, path, line_of(start),
                             target=spec, destination=local))
 
