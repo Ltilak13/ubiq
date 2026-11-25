@@ -3,7 +3,7 @@
 Use this workflow to develop a [[domain-schema]] through [[schema-staging]] and
 [[schema-promotion]]. The CLI provides discovery, linker checks, and
 [native schema validation](schema-validation.md) through `ubiq check`.
-Register active schema bindings in `ubiq.yaml`. Keep candidate bindings separate until promotion.
+Use the native schema contract for file selection, type validation, and graph integrity. Keep candidate bindings separate until promotion.
 
 ## Select the workflow
 
@@ -23,7 +23,7 @@ analysis or validation. Do not assume those skills ship with Ubiq.
 
 ## Stage a useful change
 
-1. Inspect changed files and existing staged candidates before creating another proposal.
+1. Inspect changed files and existing candidates in `.ubiq/staging/` before creating another proposal.
 2. Record the active schema version, repository revision, affected record types, and source evidence.
 3. Identify the new information the change captures or the ambiguity it resolves.
 4. Infer fields from representative files and exceptional cases. Preserve explicit domain meaning.
@@ -61,13 +61,14 @@ as a promotion blocker, even when the sample checks pass.
 2. Resolve competing meanings that affect the schema or leave the candidate staged.
 3. Require passing checks for the affected corpus and a tested migration.
 4. Require the normal validation command to consume the promoted schema.
-5. Apply the schema selection and record migration together. Preserve the prior version for recovery.
-6. Re-run the normal checks against the active state.
-7. Mark promotion complete only after the active state passes.
+5. Verify that local hooks and CI use a validator revision that supports the proposed bindings.
+6. Register the `schemas:` bindings in `ubiq.yaml` together with the record migration. Preserve the prior version for recovery.
+7. Re-run the normal checks against the active state.
+8. Mark promotion complete only after the active state passes.
 
 A manifest or a successful staging run is not evidence of promotion. If the
-normal checker cannot enforce the new schema, keep the candidate staged and
-report the missing integration. Do not silently replace active records.
+migration is unavailable or the normal checker cannot enforce the schema, keep the candidate staged.
+Report the promotion blocker. Do not silently replace active records.
 
 Publication is a separate action. A request to inspect or stage schema changes
 does not authorize a remote push.
