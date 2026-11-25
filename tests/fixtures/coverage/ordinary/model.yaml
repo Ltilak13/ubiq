@@ -1,0 +1,17 @@
+domains:
+  - id: payments
+    evidence:
+      - path: src/app.py
+        sha256: fad4cfdba7af9ca2ed653a05e4c4f8e0515721885ca7606a55862d0da518c3bd
+        anchor: Payment service
+modules:
+  - id: app
+    kind: module
+    domain: payments
+    source: src/app.py
+    evidence:
+      - path: src/app.py
+        sha256: fad4cfdba7af9ca2ed653a05e4c4f8e0515721885ca7606a55862d0da518c3bd
+        anchor: def main
+relationships: []
+interactions: []

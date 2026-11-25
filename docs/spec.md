@@ -118,6 +118,8 @@ include link that resolves nowhere always fails it (see Composition edges).
   URLs, emails, HTML tags, and HTML comments are not mentions; a mention in another
   link's label counts as linked. Off unless `unlinked_mentions: warn`;
   `unlinked_except` lists terms by name or qualified name.
+- `W006` coverage scope — a `coverage.files` pattern matches no file, or a
+  `coverage.exclude` glob matches no selected file. Only `ubiq coverage` reports it.
 - `E011` include cycle — a [[shared part]] includes itself through Markdown links
   to other parts. The agent would read the same files forever.
 - `E012` part input — an include names no value, or an undeclared value, for an
@@ -457,3 +459,59 @@ Invalid schemas and bindings report E008. Instance failures report E009.
 The optional `x-ubiq` extension checks graph integrity and registered source coverage with E010.
 These explicit contracts add validation without changing lexical vocabulary parsing or reference policies.
 See [native schema validation](schema-validation.md) for the contract and limits.
+
+## Coverage
+
+`ubiq coverage` reports how much explicitly selected repository content has
+typed metadata. It measures declared coverage and integrity, not semantic
+correctness. `ubiq check` remains the validation gate.
+
+```yaml
+coverage:
+  files: ["src/**/*.py", "services/*.yaml"]   # required, nonempty
+  exclude:
+    - glob: "src/vendor/**"
+      reason: "Vendored upstream copy"         # required
+  min_typed_percent: 100                       # optional, 0 through 100
+  no_regression: true                          # optional, default false
+```
+
+Patterns are repository-relative. A missing `reason`, a repeated exclusion
+glob, or any other malformed field is E008. Without a `coverage` section the
+command reports `unavailable` with setup guidance and exits 2; every other
+command behaves as before.
+
+**Scope.** Selected files are the unique existing files that `files` matches,
+minus `ignore` and files git ignores. Excluded files are selected files that
+an `exclude` glob matches; each keeps every matching glob and reason. Eligible
+files are selected files that are not excluded. They are the denominator. A
+file is identified by its resolved repository-relative path, so overlapping
+globs and in-repository links count it once. A link that resolves outside the
+repository is listed under `scope.outside` and never counted. A pattern or
+exclusion that matches nothing is W006. `suggestions` lists discovered assets
+(`ubiq discover`) outside the selection; they never join the denominator.
+
+**Typed files.** An eligible file is typed when a `schemas` binding selects it
+directly, or when a record in an `x-ubiq` collection names it as `source`. Each
+typed file lists its supporting locations in `via`: the binding, or the data
+file, JSON pointer, and record id. A glossary record is not typed by being
+registered. `conformance` is `invalid` when any supporting file fails its
+schema, so a typed but invalid file never reads as healthy. E008, E009, and
+E010 diagnostics for the bindings appear under `diagnostics`.
+
+**Completeness.** A measurement is incomplete when typing cannot be known: a
+bound schema cannot load, an `x-ubiq` data file cannot load, or a collection or
+record source cannot be read. `incomplete` lists each `file` and `reason`, the
+status is `incomplete`, and the command exits 2. Missing data never counts as
+untyped or as passing.
+
+`coverage --json` returns `version` (1), `status` (`ok`, `incomplete`, or
+`unavailable` with a `reason`), `complete`, `incomplete`, `scope` (`files`,
+`exclude` with per-glob file counts, `outside`), `counts` (`selected`,
+`excluded`, `eligible`, `typed`, `untyped`, `nonconforming`), `ratio` (`typed`
+and `eligible`), `typed_percent`, `files`, `suggestions`, and `diagnostics`.
+`typed_percent` is null when no file is eligible, and is truncated, not
+rounded, to two decimals. Each file has `file` and `classification` (`typed`,
+`untyped`, or `excluded`); excluded files carry `exclusions`, and the others
+`via` and `conformance`. Files, locations, and diagnostics sort
+deterministically.

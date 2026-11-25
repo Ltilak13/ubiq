@@ -1,0 +1,18 @@
+# An ordinary service repository: Python sources, service manifests, and a
+# domain model whose records name the sources they describe.
+glossary:
+  - "glossary/*.md"
+docs: []
+schemas:
+  - schema: "schemas/service.json"
+    files: ["services/*.yaml"]
+  - schema: "schemas/model.json"
+    files: ["model.yaml"]
+coverage:
+  files:
+    - "src/**/*.py"
+    - "services/*.yaml"
+    - "glossary/*.md"
+  exclude:
+    - glob: "src/vendor/**"
+      reason: "Vendored upstream copy; its metadata belongs upstream."

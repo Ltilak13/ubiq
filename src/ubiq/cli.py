@@ -11,6 +11,8 @@
                                      changed records and the callers they affect
   ubiq compare --since REV [--root DIR] [--json | --markdown]
                                      new, resolved, and unchanged findings
+  ubiq coverage [--root DIR] [--json]
+                                     how much selected content has typed metadata
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, review
+from . import __version__, coverage, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, run_checks
@@ -549,13 +551,7 @@ def cmd_impact(args) -> int:
 
 
 def _findings(diags: list[Diagnostic], root: Path) -> list[dict]:
-    """Findings keyed for comparison: a path outside the root is resolved, so
-    `root/../other` names the same file from either side."""
-    def where(path: Path) -> str:
-        resolved = path.resolve() if path.is_absolute() else (root / path).resolve()
-        return _display_path(resolved, root) if resolved.is_relative_to(root) else str(resolved)
-    return [{"code": d.code, "severity": d.severity, "file": where(d.file),
-             "line": d.line, "message": d.message} for d in diags]
+    return [coverage.finding(d, root) for d in diags]
 
 
 def cmd_compare(args) -> int:
@@ -598,6 +594,21 @@ def cmd_compare(args) -> int:
     else:
         print(review.summary(new, resolved, unchanged, markdown=args.markdown))
     return 1 if any(f["severity"] == "error" for f in new) else 0
+
+
+def cmd_coverage(args) -> int:
+    root = Path(args.root).resolve()
+    try:
+        cfg = load_config(root)
+        if cfg.coverage is None:
+            report = coverage.unavailable("coverage is not configured", coverage.GUIDANCE)
+        else:
+            built = build(root, cfg=cfg)
+            report = coverage.measure(built.config, built.glossary)
+    except (InvalidConfig, ConflictingGlossary, GlobError, coverage.MeasurementError) as exc:
+        report = coverage.unavailable(f"{exc}")
+    print(json.dumps(report, indent=2) if args.json else coverage.render(report))
+    return 0 if report["status"] == "ok" else 2
 
 
 def cmd_overlap(args) -> int:
@@ -845,6 +856,11 @@ def main(argv: list[str] | None = None) -> int:
     out.add_argument("--json", action="store_true")
     out.add_argument("--markdown", action="store_true", help="a PR-ready summary")
     cp.set_defaults(fn=cmd_compare)
+
+    cv = sub.add_parser("coverage", help="how much selected repository content has typed metadata")
+    cv.add_argument("--root", default=".")
+    cv.add_argument("--json", action="store_true")
+    cv.set_defaults(fn=cmd_coverage)
 
     o = sub.add_parser("overlap", help="list near-duplicate prose shared across records")
     o.add_argument("--root", default=".")

@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "status": "ok",
+  "complete": true,
+  "incomplete": [],
+  "scope": {
+    "files": [
+      "src/**/*.py",
+      "services/*.yaml",
+      "glossary/*.md"
+    ],
+    "exclude": [
+      {
+        "glob": "src/vendor/**",
+        "reason": "Vendored upstream copy; its metadata belongs upstream.",
+        "files": 1
+      }
+    ],
+    "outside": []
+  },
+  "counts": {
+    "selected": 5,
+    "excluded": 1,
+    "eligible": 4,
+    "typed": 2,
+    "untyped": 2,
+    "nonconforming": 0
+  },
+  "ratio": {
+    "typed": 2,
+    "eligible": 4
+  },
+  "typed_percent": 50.0,
+  "files": [
+    {
+      "file": "glossary/payment.md",
+      "classification": "untyped",
+      "via": [],
+      "conformance": null
+    },
+    {
+      "file": "services/api.yaml",
+      "classification": "typed",
+      "via": [
+        {
+          "kind": "schema",
+          "binding": "schemas[0]",
+          "schema": "schemas/service.json",
+          "conformance": "valid"
+        }
+      ],
+      "conformance": "valid"
+    },
+    {
+      "file": "src/app.py",
+      "classification": "typed",
+      "via": [
+        {
+          "kind": "record",
+          "file": "model.yaml",
+          "pointer": "/modules/0",
+          "id": "app",
+          "conformance": "valid"
+        }
+      ],
+      "conformance": "valid"
+    },
+    {
+      "file": "src/util.py",
+      "classification": "untyped",
+      "via": [],
+      "conformance": null
+    },
+    {
+      "file": "src/vendor/retry.py",
+      "classification": "excluded",
+      "exclusions": [
+        {
+          "glob": "src/vendor/**",
+          "reason": "Vendored upstream copy; its metadata belongs upstream."
+        }
+      ]
+    }
+  ],
+  "suggestions": [],
+  "diagnostics": []
+}

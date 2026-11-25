@@ -152,6 +152,7 @@ That's the same check you can run on every pull request.
 | See why a file is included | `ubiq explain` |
 | See what a change affects | `ubiq impact --since main` |
 | Summarize new and resolved findings | `ubiq compare --since main --markdown` |
+| Measure typed metadata coverage | `ubiq coverage` |
 
 For automated checks, use the [GitHub Action](action.yml) or the
 [pre-commit hook](.pre-commit-hooks.yaml). The

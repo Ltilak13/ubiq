@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "x-ubiq": {
+    "collections": {"modules": "module"},
+    "domains": "domains",
+    "relationships": "relationships",
+    "interactions": "interactions",
+    "roles": {},
+    "references": [],
+    "coverage": {"glossary": true, "exclude": [
+      {"source": "glossary/payment.md", "reason": "Vocabulary record, not a module."}
+    ]},
+    "evidence": true
+  }
+}
