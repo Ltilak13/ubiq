@@ -1,27 +1,81 @@
 ---
 name: checkable-contracts-evidence-goal
-status: proposed
+status: in-progress
 criteria:
   AC1:
-    assessment: unassessed
-    support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    assessment: partial
+    support:
+    - feature: Separate conformance, evidence status, and provenance
+      implementation:
+        path: src/ubiq/query.py
+        anchor: def select(
+      check:
+        path: tests/test_query.py
+        anchor: def test_select_complete_record_and_provenance(
+    - feature: Registered policy governing a goal
+      implementation:
+        path: .ubiq/knowledge/goal-governance.yaml
+        anchor: 'id: goal-evidence-policy--governs--domain-schema-goal'
+      check:
+        path: tests/test_goal_governance.py
+        anchor: def test_registered_goal_governance_queries(
+    gap: Reports distinguish conformance and evidence status, with relationship resolution and
+      declaration pointers. Evidence coverage metrics and semantic assessment remain outside this
+      example.
   AC2:
-    assessment: unassessed
-    support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    assessment: partial
+    support:
+    - feature: Field-level schema failure locations
+      implementation:
+        path: src/ubiq/schemas.py
+        anchor: def assess_schemas(
+      check:
+        path: tests/test_schemas.py
+        anchor: def test_native_schema_validates_domain_contract_and_reports_pointer(
+    - feature: Policy-to-goal endpoint and cardinality constraints
+      implementation:
+        path: .ubiq/schemas/goal-governance.json
+        anchor: '"governs": {'
+      check:
+        path: tests/test_goal_governance.py
+        anchor: def test_goal_governance_rejects_invalid_declarations(
+    gap: Schema errors identify files and field pointers, and the example rejects invalid relationships.
+      This review does not establish reporting for every unsupported check or contract.
   AC3:
     assessment: unassessed
     support: []
     gap: Criterion needs implementation evidence and a recorded review.
   AC4:
-    assessment: unassessed
-    support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    assessment: partial
+    support:
+    - feature: Missing and changed source evidence remains visible
+      implementation:
+        path: src/ubiq/integrity.py
+        anchor: def assess_integrity(
+      check:
+        path: tests/test_query.py
+        anchor: def test_evidence_failure_is_visible_without_losing_records(
+    - feature: Policy-to-goal endpoint and cardinality constraints
+      implementation:
+        path: .ubiq/schemas/goal-governance.json
+        anchor: '"governs": {'
+      check:
+        path: tests/test_goal_governance.py
+        anchor: def test_goal_governance_rejects_invalid_declarations(
+    gap: Changed or missing bytes and anchors produce freshness findings. Conflicting evidence,
+      review provenance, and a reassessment workflow remain unverified.
   AC5:
-    assessment: unassessed
-    support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    assessment: partial
+    support:
+    - feature: Registered policy governing a goal
+      implementation:
+        path: .ubiq/knowledge/goal-governance.yaml
+        anchor: 'id: goal-evidence-policy--governs--domain-schema-goal'
+      check:
+        path: tests/test_goal_governance.py
+        anchor: def test_registered_goal_governance_queries(
+    gap: A policy constrains a goal without proving behavioral or moral correctness. Required
+      qualities and motivating ideas are not represented in this example.
   AC6:
     assessment: unassessed
     support: []
@@ -30,7 +84,10 @@ criteria:
 
 # Goal: checkable contracts and evidence
 
-Status: proposed. Existing related evidence does not establish completion of this goal.
+Status: in progress. The policy/goal example provides partial evidence, not goal completion.
+
+See the [bounded evidence review](evidence-review-2026-11-25.md) for the scope
+and checks behind the current partial assessments.
 
 ## Objective
 
@@ -64,8 +121,8 @@ link or a completed child cannot establish that the parent's constraints are sat
 [Domain model AC4–AC5](domain-schema-goal.md#acceptance-evidence) retain the requirements
 for actionable errors and reproducible validation. Their assessments and implementation
 references remain authoritative there. [Goal assessment conventions](README.md#assessment-and-evidence)
-define the current provisional schema and its limits. The new criteria below remain
-unassessed until their full scope receives review.
+define the current provisional schema and its limits. The frontmatter records which criteria have partial evidence and which remain
+unassessed. Full acceptance still requires the outstanding scope.
 
 ## Acceptance evidence
 

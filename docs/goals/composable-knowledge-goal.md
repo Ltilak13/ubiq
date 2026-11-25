@@ -63,17 +63,49 @@ criteria:
         anchor: def test_include_cycle_fails(
     gap: Cycle evidence is partial. Review the remaining nested and threshold cases.
   AC7:
-    assessment: unassessed
-    support: []
-    gap: Broader composition needs implementation evidence and a recorded review.
+    assessment: partial
+    support:
+    - feature: Registered policy governing a goal
+      implementation:
+        path: .ubiq/knowledge/goal-governance.yaml
+        anchor: 'id: goal-evidence-policy--governs--domain-schema-goal'
+      check:
+        path: tests/test_goal_governance.py
+        anchor: def test_registered_goal_governance_queries(
+    - feature: Policy-to-goal endpoint and cardinality constraints
+      implementation:
+        path: .ubiq/schemas/goal-governance.json
+        anchor: '"governs": {'
+      check:
+        path: tests/test_goal_governance.py
+        anchor: def test_goal_governance_rejects_invalid_declarations(
+    gap: One real policy/goal relationship has checked targets, traversal, and declaration pointers.
+      This bounded review does not establish general composition across arbitrary record types.
   AC8:
-    assessment: unassessed
-    support: []
-    gap: Broader composition needs implementation evidence and a recorded review.
+    assessment: partial
+    support:
+    - feature: Registered policy governing a goal
+      implementation:
+        path: .ubiq/knowledge/goal-governance.yaml
+        anchor: 'id: goal-evidence-policy--governs--domain-schema-goal'
+      check:
+        path: tests/test_goal_governance.py
+        anchor: def test_registered_goal_governance_queries(
+    gap: The example distinguishes a policy constraint from evidence freshness and goal completion.
+      Subgoal decomposition, qualities, motivation, and procedural contribution still need executable
+      examples.
   AC9:
-    assessment: unassessed
-    support: []
-    gap: Broader composition needs implementation evidence and a recorded review.
+    assessment: partial
+    support:
+    - feature: Policy-to-goal endpoint and cardinality constraints
+      implementation:
+        path: .ubiq/schemas/goal-governance.json
+        anchor: '"governs": {'
+      check:
+        path: tests/test_goal_governance.py
+        anchor: def test_goal_governance_rejects_invalid_declarations(
+    gap: Endpoint types and required edge cardinality are checked. The non-skill example does
+      not define cycle rules or parent completion conditions.
 ---
 
 # Goal: composable knowledge
@@ -84,6 +116,9 @@ and route edges, and `ubiq overlap` reports repeated text. `ubiq check` reports
 include cycles (E011), part inputs that an include does not name (E012), invokes
 the model can't follow (W003), links that break once installed, across
 repositories too (W004), and drift between references and edges (W005).
+
+See the [bounded evidence review](evidence-review-2026-11-25.md) for the scope
+and checks behind the current partial assessments.
 
 ## Objective
 
@@ -98,7 +133,7 @@ and repeated text. Maintainers decide what becomes a shared part.
 
 The skill examples and AC1–AC6 retain their original scope and evidence.
 They establish a concrete foundation, not proof of support for every record type.
-AC7–AC9 define the broader outcomes and remain unassessed.
+AC7–AC9 define the broader outcomes. The policy/goal example provides partial evidence for each.
 
 A [[composition edge]] must define its meaning and which constraints apply. Other relationships can organize knowledge without implying reuse or execution.
 The following relationships are proposed domain semantics, not new built-in edge kinds:

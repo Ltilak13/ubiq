@@ -27,7 +27,7 @@ goals:
   source: docs/goals/domain-schema-goal.md
   evidence:
   - path: docs/goals/domain-schema-goal.md
-    sha256: a40e2bc3cd396182679e5bbfe3fdf1117e300b8bc01c5b03681afec0a0e1aa8b
+    sha256: 854ff788db769e4b9eae4a0f7825ff8fcd567f157cb1c8a5dc122f7b2a99072e
     anchor: '# Goal: explicit domain models'
 relationships:
 - id: goal-evidence-policy--governs--domain-schema-goal

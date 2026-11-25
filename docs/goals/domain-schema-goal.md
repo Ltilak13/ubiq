@@ -22,9 +22,17 @@ criteria:
     support: []
     gap: Criterion needs a recorded review against its acceptance text.
   AC4:
-    assessment: unassessed
-    support: []
-    gap: Criterion needs a recorded review against its acceptance text.
+    assessment: partial
+    support:
+    - feature: Field-level schema failure locations
+      implementation:
+        path: src/ubiq/schemas.py
+        anchor: def assess_schemas(
+      check:
+        path: tests/test_schemas.py
+        anchor: def test_native_schema_validates_domain_contract_and_reports_pointer(
+    gap: Field-level validation errors are tested. Author use of schema descriptions as a form
+      still needs usability evidence.
   AC5:
     assessment: partial
     support:
@@ -35,7 +43,22 @@ criteria:
       check:
         path: tests/test_integrity.py
         anchor: def test_graph_rejects_invalid_constraints(
-    gap: Structural validation does not establish semantic completeness.
+    - feature: Registered policy governing a goal
+      implementation:
+        path: .ubiq/knowledge/goal-governance.yaml
+        anchor: 'id: goal-evidence-policy--governs--domain-schema-goal'
+      check:
+        path: tests/test_goal_governance.py
+        anchor: def test_registered_goal_governance_queries(
+    - feature: Policy-to-goal endpoint and cardinality constraints
+      implementation:
+        path: .ubiq/schemas/goal-governance.json
+        anchor: '"governs": {'
+      check:
+        path: tests/test_goal_governance.py
+        anchor: def test_goal_governance_rejects_invalid_declarations(
+    gap: Individual records and the real policy/goal relationship have repeatable checks. Agreed
+      quality measurements and semantic completeness remain unverified.
   AC6:
     assessment: unassessed
     support: []
@@ -63,6 +86,9 @@ criteria:
 Discovery identifies file groups and naming-field mappings.
 [Native validation](../schema-validation.md) enforces explicit type schemas and declared graph integrity.
 Domain inference and semantic completeness still require evidence and review.
+
+See the [bounded evidence review](evidence-review-2026-11-25.md) for the scope
+and checks behind the current partial assessments.
 
 ## Objective
 
