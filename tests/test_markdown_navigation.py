@@ -57,9 +57,9 @@ def test_supported_navigation_matches_captured_github_destinations(tmp_path):
     document = _interpret_markdown(source.read_text())
     visible = [(start, end, spec) for start, end, spec in document.links
                if not any(a <= start < b for a, b in document.comments)]
-    assert len(visible) == len(hrefs) == 20
+    assert len(visible) == len(hrefs) == 27
     assert [_local_path(source, spec) for _, _, spec in visible] == expected
-    assert [unquote(urlsplit(spec.strip("<>")).fragment) for _, _, spec in visible] == [
+    assert [unquote(urlsplit(spec).fragment) for _, _, spec in visible] == [
         unquote(urlsplit(href).fragment) for href in hrefs]
 
 
@@ -68,8 +68,10 @@ def test_scan_and_traversal_preserve_visible_and_source_only_targets(tmp_path):
     built = build(tmp_path)
     assert not built.diagnostics
     markdown = [ref for ref in built.refs if ref.kind == "markdown"]
-    assert [ref.destination for ref in markdown] == [p for p in expected if p] + [hidden]
-    assert set(file_link_targets(source, tmp_path)) == {p for p in expected if p} | {hidden}
+    assert [ref.destination for ref in markdown] == [
+        p for p in expected if p and p.parent == hidden.parent] + [hidden]
+    assert set(file_link_targets(source, tmp_path)) == {
+        p for p in expected if p and p.suffix == ".md"} | {hidden}
     assert all(ref.resolve(built.glossary) for ref in built.refs)
     # Both kinds intentionally scan source-only comments by default.
     assert any(ref.raw == "[[hidden]]" for ref in built.refs)

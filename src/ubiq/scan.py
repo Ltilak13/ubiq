@@ -28,7 +28,7 @@ from html.entities import html5
 from pathlib import Path
 from string import punctuation
 from typing import TYPE_CHECKING
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import yaml
 
@@ -348,6 +348,7 @@ def _reference_label(label: str) -> str:
 class _Markdown:
     prose: str
     delimiters: str
+    # Original source offsets plus normalized URL destinations.
     links: list[tuple[int, int, str]]
     # Spans that hold addresses, not prose: link and image destinations, bare
     # URLs and emails, and HTML tags (`(/setup.md)`, `?next=/home`,
@@ -390,11 +391,16 @@ def _interpret_markdown(text: str) -> _Markdown:
             label = m['reference'] if m['reference'] else m['label']
             destination = definitions.get(_reference_label(label))
         if destination is not None:
+            if destination.startswith("<") and destination.endswith(">"):
+                destination = destination[1:-1]
             # Decode complete entities once. html.unescape alone also consumes
             # unterminated entities and valid prefixes of unknown entity names.
             destination = MD_ENTITY_RE.sub(
                 lambda m: unescape(m[0]) if m[0].startswith("&#")
                 else html5.get(m[0][1:], m[0]), destination)
+            # Preserve decoded brackets and whitespace as URL data. Consumers
+            # must not mistake them for source delimiters or discard controls.
+            destination = quote(MD_ESCAPE_RE.sub(r"\1", destination), safe="/:?#[]@!$&'()*+,;=%")
             links.append((start, m.end(), destination))
     # Found in `delimiters`, which keeps inline code, because delimiters match
     # there; comments in `prose`, so a code span such as `<!--` opens none.

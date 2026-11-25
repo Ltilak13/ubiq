@@ -329,7 +329,9 @@ Markdown subset. Historical docs are the exception: they are
 scanned, but unresolved explicit/Markdown/id/field refs do not fail.
 
 Markdown link destinations decode complete HTML character references once,
-before backslash escapes and URL parsing. Unknown names and references without
+after source delimiters are removed and before backslash escapes and URL parsing.
+Decoded brackets, whitespace, and controls remain percent-encoded URL data until
+the path or fragment is read. Unknown names and references without
 a terminating semicolon stay literal. This also applies to destinations from
 reference definitions. Path-shaped wiki-links retain their literal entity text.
 The [navigation regression tests](../tests/test_markdown_navigation.py) compare

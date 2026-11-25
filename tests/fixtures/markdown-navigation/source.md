@@ -18,6 +18,13 @@
 [entity fragment](glossary/plain.md&#35;section)
 [entity reference][entity]
 [local fragment](#same-document)
+[entity brackets](&lt;a.md&gt;)
+[entity trailing space](a.md&#32;)
+[angle entity brackets](<&lt;a.md&gt;>)
+[entity leading space](&#32;a.md)
+[entity tab](a&#9;.md)
+[entity fragment space](glossary/plain.md#section&#32;)
+[entity fragment bracket](glossary/plain.md#section&gt;)
 
 [named]: glossary/plain.md "Title"
 [collapsed]: glossary/plain.md
