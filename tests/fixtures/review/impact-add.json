@@ -1,0 +1,24 @@
+{
+  "baseline": {
+    "rev": "main",
+    "commit": "<commit>"
+  },
+  "complete": true,
+  "incomplete": [],
+  "changed_files": [
+    {
+      "status": "added",
+      "file": "skills/f/SKILL.md"
+    }
+  ],
+  "changed": [
+    {
+      "record": "skill:f",
+      "change": "added",
+      "files": [
+        "skills/f/SKILL.md"
+      ]
+    }
+  ],
+  "affected": []
+}
