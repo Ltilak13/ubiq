@@ -446,7 +446,7 @@ def _layout(cfg: Config) -> Layout:
         # Records take the directory name, or the full path when two repositories share it.
         name = dependency.name or repo.resolve().name
         external.append(Repository(name if dependency.name or names[name] == 1 else str(repo.resolve()),
-                                   repo, files, glossary, dependency.name is not None))
+                                   repo, files, glossary, dependency.name is not None, other.edges))
     return Layout.build(_installed(cfg), external, unread)
 
 
