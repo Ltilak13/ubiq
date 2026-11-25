@@ -119,3 +119,69 @@ def test_reference_to_wrong_kind_is_incompatible_not_unresolved(tmp_path):
     found = {(f.category, f.kind) for f in assess_integrity(data, spec, tmp_path, glossary)}
     assert ('relationship', 'incompatible') in found
     assert ('relationship', 'unresolved') not in found
+
+
+def test_dependency_records_do_not_require_local_coverage(tmp_path):
+    data, spec, glossary = example(tmp_path)
+    dependency = Glossary()
+    dependency.add(Term('dependency', 'core', tmp_path / 'vendor' / 'dep.md'))
+    glossary.add_external('vendor', dependency)
+    assert not check_integrity(data, spec, tmp_path, glossary, tmp_path / 'model.yaml')
+
+    data['hooks'] = []
+    data['relationships'] = []
+    errors = check_integrity(data, spec, tmp_path, glossary, tmp_path / 'model.yaml')
+    assert len(errors) == 1
+    assert 'registered source has no typed record' in errors[0].message
+    assert str(tmp_path / 'h.md') in errors[0].message
+
+
+def test_local_symlink_requires_exclusion_even_when_dependency_imports_it(tmp_path):
+    root = tmp_path / 'local'
+    root.mkdir()
+    data, spec, glossary = example(root)
+    external = tmp_path / 'external.md'
+    external.write_text('external evidence')
+    link = root / 'linked.md'
+    link.symlink_to(external)
+    glossary.add(Term('linked', 'core', link))
+    dependency = Glossary()
+    dependency.add(Term('linked', 'core', external))
+    glossary.add_external('vendor', dependency)
+    errors = check_integrity(data, spec, root, glossary, root / 'model.yaml')
+    assert len(errors) == 1 and 'no typed record' in errors[0].message
+    spec['coverage']['exclude'] = [{'source': 'linked.md', 'reason': 'Owned upstream'}]
+    assert not check_integrity(data, spec, root, glossary, root / 'model.yaml')
+    glossary.terms.pop()
+    assert any('stale exclusion' in d.message for d in check_integrity(
+        data, spec, root, glossary, root / 'model.yaml'))
+
+
+def test_build_with_named_dependency_and_native_coverage(tmp_path):
+    import json
+
+    import yaml
+
+    from ubiq.cli import _check
+
+    root = tmp_path / 'local'
+    root.mkdir()
+    data, spec, _ = example(root)
+    (root / 's.md').write_text('---\nterm: source\n---\nsource evidence')
+    data['scripts'][0]['evidence'][0]['sha256'] = hashlib.sha256(
+        (root / 's.md').read_bytes()).hexdigest()
+    data['domains'][0]['evidence'] = copy.deepcopy(data['scripts'][0]['evidence'])
+    data['relationships'][0]['evidence'] = copy.deepcopy(data['scripts'][0]['evidence'][0])
+    (root / 'model.json').write_text(json.dumps(data))
+    (root / 'schema.json').write_text(json.dumps({'x-ubiq': spec}))
+    dependency = tmp_path / 'dependency'
+    dependency.mkdir()
+    (dependency / 'dep.md').write_text('---\nterm: dependency\n---\n')
+    (dependency / 'ubiq.yaml').write_text('glossary: [dep.md]\ndocs: []\n')
+    (root / 'ubiq.yaml').write_text(yaml.safe_dump({
+        'glossary': ['s.md'], 'docs': [],
+        'edges': {'external': [{'name': 'vendor', 'path': '../dependency', 'required': True}]},
+        'schemas': [{'schema': 'schema.json', 'files': ['model.json'], 'format': 'document'}],
+    }))
+    diagnostics, _, _ = _check(root)
+    assert not [d for d in diagnostics if d.is_error]

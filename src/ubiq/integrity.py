@@ -204,7 +204,8 @@ def assess_integrity(data, spec, root: Path, glossary: Glossary) -> list[Finding
             error('graph', 'interaction', f"{edge['id']}: cross-domain relationship has no interaction",
                   edge['from'], edge['to'])
 
-    registered = set(glossary.by_file)
+    # Imported records support link resolution, not local coverage obligations.
+    registered = {term.file.resolve() for term in glossary.terms}
     excluded = set()
     for exclusion in spec['coverage']['exclude']:
         try:
