@@ -23,6 +23,8 @@ import os
 import re
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
+from html import unescape
+from html.entities import html5
 from pathlib import Path
 from string import punctuation
 from typing import TYPE_CHECKING
@@ -66,6 +68,8 @@ MD_LINK_RE = re.compile(
     + r"[ \t]*\)|\[(?P<reference>(?:\\.|[^\[\]\n])*)\])?"
 )
 MD_ESCAPE_RE = re.compile(r"\\([" + re.escape(punctuation) + r"])")
+MD_ENTITY_RE = re.compile(
+    r"&(?:#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});")
 # ATX headings start sections for unlinked-mention checks (W002).
 HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?=[ \t]|$)", re.MULTILINE)
 # Raw HTML open/close tags, per the CommonMark grammar: attributes may span
@@ -386,6 +390,11 @@ def _interpret_markdown(text: str) -> _Markdown:
             label = m['reference'] if m['reference'] else m['label']
             destination = definitions.get(_reference_label(label))
         if destination is not None:
+            # Decode complete entities once. html.unescape alone also consumes
+            # unterminated entities and valid prefixes of unknown entity names.
+            destination = MD_ENTITY_RE.sub(
+                lambda m: unescape(m[0]) if m[0].startswith("&#")
+                else html5.get(m[0][1:], m[0]), destination)
             links.append((start, m.end(), destination))
     # Found in `delimiters`, which keeps inline code, because delimiters match
     # there; comments in `prose`, so a code span such as `<!--` opens none.

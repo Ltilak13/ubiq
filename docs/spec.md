@@ -328,6 +328,15 @@ line. Nested link labels and multiline definitions are outside the supported
 Markdown subset. Historical docs are the exception: they are
 scanned, but unresolved explicit/Markdown/id/field refs do not fail.
 
+Markdown link destinations decode complete HTML character references once,
+before backslash escapes and URL parsing. Unknown names and references without
+a terminating semicolon stay literal. This also applies to destinations from
+reference definitions. Path-shaped wiki-links retain their literal entity text.
+The [navigation regression tests](../tests/test_markdown_navigation.py) compare
+a bounded synthetic sample with captured GitHub Markdown API output. That sample
+does not establish full renderer compatibility or heading-fragment validation
+outside W004's installed-layout checks.
+
 Checks, orphan detection, and `ubiq refs` use the same resolution rules. A
 qualified reference credits only the selected namespace. Markdown vocabulary
 links count once, without also indexing their label or destination as mentions.
