@@ -94,18 +94,27 @@ Orders save [10](glossary/discount.md#pct)%.   pct of another record's file
 
 In a link to an existing local Markdown file that has frontmatter, a fragment
 names either an anchor or a field. Anchors are the file's GitHub-style heading
-slugs (ATX and setext, with `-1` suffixes for duplicates) and its HTML `id` and
-`name` attributes, the same set W004 uses. Frontmatter is never a heading. A
-fragment that names an anchor is an ordinary link, so an anchor wins over a
+slugs and the HTML `id` and `name` attributes in its prose, the same set W004
+uses. Slugs come from ATX headings, also after block quote or list markers, and
+from setext headings over a whole paragraph, with `-1` suffixes for duplicates.
+Heading text drops HTML tags after decoding entities, emphasis markers, and
+link brackets and destinations. Frontmatter is never a heading, and anchors in
+code or HTML comments do not count. Known gaps: no other inline markup is
+interpreted, and container nesting beyond a marker prefix is not tracked.
+
+A fragment that names an anchor is an ordinary link, so an anchor wins over a
 same-named field: to value-link that field, rename the heading. Any other
 fragment is a `value` ref for a top-level field of the file or of an overlay on
-it, whose non-null fields win, and reports E013 when no such field exists, so a
-misspelled field fails. W004 leaves those fragments to E013. Fragments into
-files without frontmatter stay unchecked, and so do links with a query.
+it, whose non-null fields win; fragments and field names compare without case.
+A fragment that names no such field reports E013, so a misspelled field fails;
+W004 leaves those fragments to E013. Fragments into files without frontmatter
+stay unchecked, and so do links with a query. A repository whose anchors ubiq
+cannot slug sets `references.value.severity: warn` (or `off`).
 
-The label must equal the field's value as plain text: one enclosing code span
-is literal, other backslash escapes are undone, and whitespace runs, including
-a line break, compare as one space on both sides. A list of strings reads as
+The label must equal the field's value as plain text: one enclosing emphasis is
+dropped, one enclosing code span is literal, other backslash escapes are undone, and whitespace runs, including
+a line break in the value, compare as one space on both sides. A label that
+wraps across lines is a known gap: it is not read as a link, so it is not checked. A list of strings reads as
 its items joined by `, `. A null field, a mapping or other non-text value, or a
 label that differs reports E013, which names the current value. A link to
 another record still counts as its Markdown reference, and the restated-value

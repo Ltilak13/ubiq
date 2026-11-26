@@ -2,10 +2,11 @@
 
 import json
 
+import pytest
 from test_ubiq import make_repo
 
 from ubiq.cli import build, main
-from ubiq.records import field_value, frontmatter_fields
+from ubiq.records import frontmatter_fields
 from ubiq.scan import value_of
 
 DISCOUNT = ("---\nterm: discount\naliases: [off]\npct: 10\nowner: ops\nnote:\n"
@@ -33,7 +34,9 @@ def test_matching_labels_pass(tmp_path, capsys):
 
 def test_labels_compare_as_plain_text(tmp_path, capsys):
     record = DISCOUNT.replace("pct: 10\n", 'pct: 10\ncode: "a_b"\npad: " 10 "\nphrase: two  words\n')
-    doc = (f"[`10`]({LINK}#pct) [a\\_b]({LINK}#code) [10]({LINK}#pad) [two\nwords]({LINK}#phrase)\n"
+    # A label that wraps across lines is not a link to this scanner (a known gap).
+    doc = (f"[`10`]({LINK}#pct) [a\\_b]({LINK}#code) [10]({LINK}#pad) [two \t words]({LINK}#phrase)\n"
+           f"[*10*]({LINK}#pct) [__10__]({LINK}#pct) [10]({LINK}#PCT)\n"
            f"[`a\\_b`]({LINK}#code)\n")
     make_repo(tmp_path, {"discount.md": record}, {"doc.md": doc}, CONFIG)
     _, diags = check(tmp_path, capsys)
@@ -78,7 +81,7 @@ def test_setext_html_and_duplicate_anchors_are_headings(tmp_path, capsys):
 
 
 def test_misspelled_field_fragments_fail(tmp_path, capsys):
-    doc = (f"---\npct: 5\n---\n## Real heading\n\n[5](#pcct) [10]({LINK}#pcct) "
+    doc = (f"---\npct: 5\n---\n## Real heading\n\n[5](#pcct) [10]({LINK}#pcct) [5](#x) "
            f"[ok](#real-heading) [ok]({LINK}#rates-1) [ok](plain.md#nothing)\n")
     make_repo(tmp_path, {"discount.md": DISCOUNT + "\n## Rates\n"},
               {"doc.md": doc, "plain.md": "# Plain\n"}, CONFIG)
@@ -86,7 +89,8 @@ def test_misspelled_field_fragments_fail(tmp_path, capsys):
     assert status == 1
     # Files without frontmatter keep unchecked fragments.
     assert e013(diags) == ["no field or heading 'pcct' in doc.md",
-                           "no field or heading 'pcct' in glossary/discount.md"], diags
+                           "no field or heading 'pcct' in glossary/discount.md",
+                           "no field or heading 'x' in doc.md"], diags
 
 
 def test_severity_and_historical_docs(tmp_path, capsys):
@@ -145,6 +149,74 @@ def test_overlay_fields_win_unless_null(tmp_path):
     record = tmp_path / LINK
     fields = frontmatter_fields(record, built.glossary)
     assert (fields["pct"], fields["owner"], fields["aliases"]) == ("15", "ops", ["off", "cut"])
-    assert field_value(record, "pct") == "10"
+    assert frontmatter_fields(record)["pct"] == "10"
     [ref] = [r for r in built.refs if r.kind == "value" and r.file.name == "doc.md"]
     assert value_of(built.glossary, ref) == "15"
+
+
+def test_fields_are_copies(tmp_path):
+    make_repo(tmp_path, {"discount.md": DISCOUNT}, {}, CONFIG)
+    frontmatter_fields(tmp_path / LINK)["tags"].append("c")
+    assert frontmatter_fields(tmp_path / LINK)["tags"] == ["a", "b"]
+
+
+def test_invalid_urls_are_not_value_refs(tmp_path, capsys):
+    make_repo(tmp_path, {"discount.md": DISCOUNT},
+              {"doc.md": "see [x](http://[oops/a#frag) and [y](https://[::1/x)\n"}, CONFIG)
+    status, diags = check(tmp_path, capsys)
+    assert status == 0, diags
+
+
+@pytest.mark.parametrize(("heading", "fragment"), [
+    ("## _Notes_", "notes"),
+    ("## __Strong__", "strong"),
+    ("## Foo &amp; bar", "foo--bar"),
+    ("## <code>x</code> y", "x-y"),
+    ("First line\nsecond line\n---", "first-line-second-line"),
+    ("> ## Quoted Head", "quoted-head"),
+    ("- ## Listed Head", "listed-head"),
+    ("## See [docs][r]\n\n[r]: https://example.com", "see-docs"),
+    ("## See [docs]", "see-docs"),
+    ("Setext Eq\n===", "setext-eq"),
+])
+def test_heading_slugs_follow_github(tmp_path, capsys, heading, fragment):
+    record = f"---\nterm: tee\npct: 10\n---\n\n{heading}\n"
+    make_repo(tmp_path, {"t.md": record}, {"doc.md": f"[x](glossary/t.md#{fragment})\n"}, CONFIG)
+    _, diags = check(tmp_path, capsys)
+    assert not e013(diags), diags
+
+
+def test_a_quote_before_a_rule_is_not_a_heading(tmp_path, capsys):
+    record = "---\nterm: tee\npct: 10\n---\n\n> quote\n---\n\n## Quote\n"
+    make_repo(tmp_path, {"t.md": record},
+              {"doc.md": "[x](glossary/t.md#quote) [x](glossary/t.md#quote-1) "
+                         "[x](glossary/t.md#-quote)\n"}, CONFIG)
+    _, diags = check(tmp_path, capsys)
+    assert e013(diags) == ["no field or heading 'quote-1' in glossary/t.md",
+                           "no field or heading '-quote' in glossary/t.md"], diags
+
+
+def test_anchors_in_comments_and_code_do_not_hide_fields(tmp_path, capsys):
+    record = ('---\nterm: tee\npct: 10\n---\n\n`<a id="pct">`\n\n<!-- <a name="pct"> -->\n\n'
+              '<a id="real"></a>\n')
+    make_repo(tmp_path, {"t.md": record},
+              {"doc.md": "[11](glossary/t.md#pct) [x](glossary/t.md#real)\n"}, CONFIG)
+    _, diags = check(tmp_path, capsys)
+    assert e013(diags) == ["label '11' ≠ pct '10' — update the label"], diags
+
+
+def test_changed_records_and_overlays_are_read_again(tmp_path, capsys):
+    overlay = "---\nsource: glossary/discount.md\nowner: ops\n---\n"
+    make_repo(tmp_path, {"discount.md": DISCOUNT},
+              {"doc.md": f"[10]({LINK}#pct) [ops]({LINK}#owner)\n", ".ubiq/o.md": overlay},
+              CONFIG + 'overlays: [".ubiq/o.md"]\n')
+    assert not e013(check(tmp_path, capsys)[1])
+    (tmp_path / LINK).write_text(DISCOUNT.replace("pct: 10", "pct: 2000"))
+    assert e013(check(tmp_path, capsys)[1]) == [
+        "label '10' ≠ pct '2000' — update the label",
+        "label '10' ≠ pct '2000' — update the label"]  # the record's own link
+    (tmp_path / ".ubiq/o.md").write_text(overlay.replace("ops", "sales"))
+    assert e013(check(tmp_path, capsys)[1]) == [
+        "label '10' ≠ pct '2000' — update the label",
+        "label 'ops' ≠ owner 'sales' — update the label",
+        "label '10' ≠ pct '2000' — update the label"]

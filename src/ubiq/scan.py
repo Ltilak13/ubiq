@@ -42,9 +42,9 @@ from .records import (
     InvalidRecord,
     Term,
     _parse_lenient,
-    frontmatter_fields,
     load_vocabulary_yaml,
     normalize,
+    shared_fields,
     stamp,
 )
 
@@ -244,23 +244,17 @@ class Ref:
         return self.policy.resolve(glossary, self)
 
 
-def frontmatter_keys(path: Path, glossary: Glossary | None = None,
-                     lenient: bool = False) -> dict:
-    """`frontmatter_fields`, or none when the file cannot be read."""
-    try:
-        return frontmatter_fields(path, glossary, lenient)
-    except InvalidRecord:
-        return {}
-
-
 def field_fragment(file: Path, fragment: str, glossary: Glossary | None = None,
                    lenient: bool = False) -> bool:
     """Whether a link fragment into `file` names a frontmatter field: the file has
     frontmatter and the fragment names none of its headings or HTML anchors.
     A heading wins over a same-named field; a fragment naming neither is a
     misspelled field."""
-    return (bool(frontmatter_keys(file, glossary, lenient))
-            and fragment.lower() not in _slugs(file))
+    try:
+        fields = shared_fields(file, glossary, lenient)
+    except InvalidRecord:
+        return False
+    return bool(fields) and fragment.lower() not in _slugs(file)
 
 
 def value_of(glossary: Glossary, ref: Ref, lenient: bool = False) -> str:
@@ -275,12 +269,14 @@ def value_of(glossary: Glossary, ref: Ref, lenient: bool = False) -> str:
     owner = next((g for g in glossary.external.values() if path in g.by_file), glossary)
     where = Path(os.path.relpath(path, ref.file.resolve().parent)).as_posix()
     try:
-        fields = frontmatter_fields(path, owner, lenient)
+        fields = shared_fields(path, owner, lenient)
     except InvalidRecord as exc:
         raise LookupError(f"{where}: {exc}") from None
-    if ref.field not in fields:
+    # Fragments compare without case, as heading slugs do.
+    name = next((key for key in fields if str(key).lower() == ref.field.lower()), None)
+    if name is None:
         raise LookupError(f"no field or heading '{ref.field}' in {where}")
-    value = fields[ref.field]
+    value = fields[ref.field if ref.field in fields else name]
     if value is None:
         raise LookupError(f"{where} has no value for field '{ref.field}'")
     if isinstance(value, str):
@@ -292,10 +288,14 @@ def value_of(glossary: Glossary, ref: Ref, lenient: bool = False) -> str:
 
 
 def label_text(label: str) -> str:
-    """A link label as plain text: one enclosing code span is literal, other
-    backslash escapes are undone, and whitespace runs read as one space."""
-    code = re.fullmatch(r"(`+)(.*?)\1", label.strip(), re.DOTALL)
-    text = code[2] if code else MD_ESCAPE_RE.sub(r"\1", label)
+    """A link label as plain text: one enclosing code span is literal, one
+    enclosing emphasis is dropped, other backslash escapes are undone, and
+    whitespace runs read as one space."""
+    text = label.strip()
+    emphasis = re.fullmatch(r"(\*{1,3}|_{1,3})(?=\S)(.+?)(?<=\S)\1", text, re.DOTALL)
+    text = emphasis[2] if emphasis else text
+    code = re.fullmatch(r"(`+)(.*?)\1", text, re.DOTALL)
+    text = code[2] if code else MD_ESCAPE_RE.sub(r"\1", text)
     return " ".join(text.split())
 
 
@@ -475,12 +475,25 @@ def _interpret_markdown(text: str) -> _Markdown:
 # `<a id="x">` and `<a name="x">` anchors, which a fragment may name like a heading.
 HTML_ANCHOR_RE = re.compile(r"<[A-Za-z][^>]*?\s(?:id|name)\s*=\s*[\"']?([^\"'\s>]+)")
 SETEXT_RE = re.compile(r" {0,3}(?:=+|-+)[ \t]*$")
+# Block quote and list markers may open the line before an ATX heading.
+BLOCK_PREFIX = r" {0,3}(?:(?:>|[-+*]|\d{1,9}[.)])[ \t]+ {0,3})*"
+ATX_RE = re.compile(BLOCK_PREFIX + r"#{1,6}(?:[ \t]+(.*?))?[ \t]*#*[ \t]*$")
+CONTAINER_RE = re.compile(r" {0,3}(?:>|[-+*][ \t]|\d{1,9}[.)][ \t])")
+EMPHASIS_RE = re.compile(r"(?<![\w*])(\*{1,3}|_{1,3})(?=\S)(.+?)(?<=\S)\1(?![\w*])")
 
 
 def _slugs(path: Path) -> frozenset[str]:
     """GitHub-style anchors for the ATX and setext headings of a Markdown file,
-    plus its HTML `id`/`name` anchors. Cached per file version."""
+    plus the HTML `id`/`name` anchors in its prose. Cached per file version."""
     return _cached_slugs(path, stamp(path))
+
+
+def _slug(heading: str) -> str:
+    """The GitHub anchor for heading text, without the duplicate suffix."""
+    text = re.sub(r"<[^>]*>", "", unescape(heading))
+    text = re.sub(r"!?\[([^\]]*)\](?:\([^)]*\)|\[[^\]]*\])?", r"\1", text)
+    text = EMPHASIS_RE.sub(r"\2", text).strip().lower()
+    return re.sub(r"[^\w\- ]", "", text).replace(" ", "-")
 
 
 @lru_cache(maxsize=4096)
@@ -489,23 +502,26 @@ def _cached_slugs(path: Path, version) -> frozenset[str]:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
         return frozenset()
+    document = _interpret_markdown(text)
+    # Comments and code are not rendered as anchors.
+    slugs = {a.lower() for a in HTML_ANCHOR_RE.findall(_mask(document.prose, document.comments))}
     fm = FRONTMATTER_RE.match(text)
     if fm:
         text = _blank(fm.group()) + text[fm.end():]
     seen: Counter[str] = Counter()
-    slugs: set[str] = set()
-    previous = ""
+    paragraph: list[str] = []
     for line in _blank_fences(text).splitlines():
-        m = re.match(r" {0,3}#{1,6}\s+(.*?)\s*#*\s*$", line)
-        heading = m.group(1) if m else None
-        if heading is None and previous.strip() and SETEXT_RE.match(line):
-            heading = previous.strip()
-        slugs.update(a.lower() for a in HTML_ANCHOR_RE.findall(line))
-        previous = "" if heading is not None else line
+        m = ATX_RE.match(line)
+        heading = (m.group(1) or "") if m else None
+        if heading is None and paragraph and SETEXT_RE.match(line):
+            heading = " ".join(paragraph)
+        if heading is not None or not line.strip() or CONTAINER_RE.match(line):
+            paragraph = []
+        else:
+            paragraph.append(line.strip())
         if heading is None:
             continue
-        title = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", heading).strip().lower()
-        slug = re.sub(r"[^\w\- ]", "", title).replace(" ", "-")
+        slug = _slug(heading)
         slugs.add(f"{slug}-{seen[slug]}" if seen[slug] else slug)
         seen[slug] += 1
     return frozenset(slugs)
@@ -608,7 +624,10 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
     _, value_admits = view(value, [])
     link_spans: list[tuple[int, int]] = []
     for start, end, spec in document.links:
-        url = urlsplit(spec)
+        try:
+            url = urlsplit(spec)
+        except ValueError:  # `http://[oops`: not a local link, so not a value ref
+            url = urlsplit("")
         fragment = unquote(url.fragment)
         if fragment and value_admits(start) and not (url.scheme or url.netloc or url.query):
             # A heading wins over a same-named field; in a file with

@@ -210,10 +210,11 @@ Use discovery during maintenance to find new files that have no record yet.
   A heading with the same slug wins, so rename the heading to value-link that field.
 
 **Upgrade note:** links into any file with frontmatter now check their
-fragment. An anchor link such as `[x](skills/a/SKILL.md#setup)` must name a
-heading or an HTML `id`/`name` anchor of that file, or a frontmatter field, or
-`ubiq check` reports `E013`. Fix the anchor, or remove the fragment. Line
-anchors such as `#L10` and slugs that differ from the GitHub style fail too.
+fragment. An anchor link such as `[x](skills/a/SKILL.md#setup)` should name a
+heading or an HTML `id`/`name` anchor of that file, or a frontmatter field.
+A mistyped fragment and a stale label on a field link both fail (`E013`), and so
+do line anchors such as `#L10`. Fix the fragment or label. If ubiq cannot slug a
+repository's anchors, set `references.value.severity: warn` (or `off`).
 
 Each kind has a policy you can tune per repository: how severe its failures are
 and which regions it scans besides plain prose (`inline_code`, `address`,

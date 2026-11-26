@@ -14,6 +14,7 @@ A glossary record is a markdown file with YAML frontmatter defining exactly one 
 
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -214,34 +215,28 @@ def _read_fields(path: Path, version, sidecar: Path | None, sidecar_version,
     return meta, ""
 
 
-def frontmatter_fields(path: Path, glossary: Glossary | None = None,
-                       lenient: bool = False) -> dict:
-    """The frontmatter of the file at `path`, as written.
-
-    Non-null overlay sidecar fields win over the record's own; `aliases` union,
-    as in `overlay_onto`. Raises InvalidRecord when the frontmatter cannot be read.
-    Reads are cached per file version; each call returns a copy.
-    """
+def shared_fields(path: Path, glossary: Glossary | None = None,
+                  lenient: bool = False) -> dict:
+    """`frontmatter_fields` without the copy: the cached mapping, which callers
+    must not mutate."""
     sidecar = (glossary.overlay_sources.get(path.resolve())
                if glossary and glossary.overlay_sources else None)
     meta, error = _read_fields(path, stamp(path), sidecar,
                                stamp(sidecar) if sidecar else None, lenient)
     if meta is None:
         raise InvalidRecord(error)
-    return dict(meta)
+    return meta
 
 
-def field_value(path: Path, name: str, glossary: Glossary | None = None,
-                lenient: bool = False):
-    """Frontmatter field `name` of the file at `path` (see `frontmatter_fields`).
+def frontmatter_fields(path: Path, glossary: Glossary | None = None,
+                       lenient: bool = False) -> dict:
+    """The frontmatter of the file at `path`, as written.
 
-    A null field reads as absent: raises KeyError when the field is absent and
-    InvalidRecord when the frontmatter cannot be read.
+    Non-null overlay sidecar fields win over the record's own; `aliases` union,
+    as in `overlay_onto`. Raises InvalidRecord when the frontmatter cannot be read.
+    Reads are cached per file version; each call returns a deep copy.
     """
-    meta = frontmatter_fields(path, glossary, lenient)
-    if meta.get(name) is None:
-        raise KeyError(name)
-    return meta[name]
+    return copy.deepcopy(shared_fields(path, glossary, lenient))
 
 
 @dataclass
