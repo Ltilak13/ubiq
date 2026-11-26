@@ -54,9 +54,11 @@ Preserve those labels when reordering criteria.
 
 Frontmatter owns the current assessment. `unassessed` means no criterion review
 is recorded. `partial` means supporting evidence is identified but a gap remains.
-Neither value asserts that the criterion passed. The initial schema deliberately
-supports these provisional assessments only. A verified state needs a defined
-review record before it can be added.
+Neither value asserts that the criterion passed. `met` records that a reviewer
+checked the cited evidence against the acceptance text and found that it holds.
+A `met` criterion needs at least one supporting feature and a `review` record
+with a non-empty `by` (who reviewed) and `note` (what they checked). Only a `met`
+criterion can carry `review`.
 
 For each supporting feature, `implementation` identifies its source and `check`
 identifies a test. Each location uses a repository-relative `path` and an exact
