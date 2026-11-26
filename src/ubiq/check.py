@@ -13,6 +13,7 @@ Errors (fail the build):
   E008 invalid-configuration  invalid settings or conflicting glossary selection rules
   E011 include-cycle          a shared part includes itself through other parts (graph.py)
   E012 part-input             an include names no value, or an undeclared one, for a part input
+  E013 unresolved-field-value `= this.field` or `= [[record]].field` names no frontmatter field
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
@@ -39,7 +40,7 @@ from pathlib import Path
 
 from .kinds import Policy, Severity
 from .records import Glossary, normalize
-from .scan import Ref
+from .scan import Ref, value_of
 
 
 @dataclass
@@ -146,7 +147,8 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
 def run_checks(glossary: Glossary, refs: list[Ref],
                external_id_patterns=(), *,
                skip_unlinked: set[Path] | None = None,
-               unlinked_except: Sequence[str] | None = None) -> list[Diagnostic]:
+               unlinked_except: Sequence[str] | None = None,
+               lenient: bool = False) -> list[Diagnostic]:
     diags: list[Diagnostic] = []
     external = [re.compile(p) for p in external_id_patterns]
 
@@ -173,9 +175,17 @@ def run_checks(glossary: Glossary, refs: list[Ref],
             diags.append(Diagnostic(
                 "E001", f"id '{id_}' claimed by {len(terms)} records ({files})", terms[0].file))
 
-    # E002/E003/E004/E006 — reference resolution, at each kind's severity
+    # E002/E003/E004/E006/E013 — reference resolution, at each kind's severity
     for r in refs:
         if r.kind == "mention":
+            continue
+        if r.kind == "value":
+            try:
+                if not r.historical:
+                    value_of(glossary, r, lenient)
+            except LookupError as exc:
+                diags += reported(r.policy, r.policy.code,
+                                  f"unresolved field value {r.raw} — {exc}", r.file, r.line)
             continue
         matches = r.resolve(glossary)
         if matches:

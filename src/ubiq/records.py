@@ -186,6 +186,24 @@ def overlay_onto(term: Term, meta: dict) -> Term:
                 id=id_, definition=term.definition, spellings=spellings)
 
 
+def field_value(path: Path, name: str, glossary: Glossary | None = None,
+                lenient: bool = False):
+    """Frontmatter field `name` of the file at `path`, as written.
+
+    An overlay sidecar's fields win over the record's own, as in `overlay_onto`.
+    A null field reads as absent. Raises KeyError when the field is absent and
+    InvalidRecord when the frontmatter cannot be read.
+    """
+    meta, _ = parse_frontmatter(path, lenient)
+    sidecar = glossary.overlay_sources.get(path.resolve()) if glossary else None
+    if sidecar is not None:
+        extra, _ = parse_frontmatter(sidecar, lenient)
+        meta = {**meta, **{k: v for k, v in extra.items() if k not in ("source", "on")}}
+    if meta.get(name) is None:
+        raise KeyError(name)
+    return meta[name]
+
+
 @dataclass
 class Glossary:
     terms: list[Term] = field(default_factory=list)

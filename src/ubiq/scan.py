@@ -10,6 +10,7 @@ each kind's policy which document regions it may match in.
   id        — matches of configured id_patterns             (E004)
   field     — values of configured ref_fields in frontmatter (E006)
   catalog   — values from a JSON/YAML inventory (catalog.py) (E006)
+  value     — `= this.field` / `= [[term]].field` code spans   (E013)
   mention   — plain-prose occurrence of a known name        (never an error; W002)
   link      — relative link to a missing file, not a record  (W007)
 
@@ -36,8 +37,10 @@ from .kinds import Context, Policy
 from .records import (
     FRONTMATTER_RE,
     Glossary,
+    InvalidRecord,
     Term,
     _parse_lenient,
+    field_value,
     load_vocabulary_yaml,
     normalize,
 )
@@ -50,6 +53,8 @@ SKIP_FIELD_VALUES = {"", "-", "—", "na", "n/a", "none", "no", "yes"}
 
 # (?<!!) skips ![[...]] embeds/transclusions (Obsidian-style includes, not term refs)
 EXPLICIT_RE = re.compile(r"(?<!!)\[\[([^\[\]|]+?)(?:\|[^\[\]]*)?\]\]")
+# A whole code span `= this.field` or `= [[target]].field` (Dataview inline syntax).
+VALUE_RE = re.compile(r"=\s*(?:this|\[\[([^\[\]|]+?)\]\])\.([A-Za-z_][\w-]*)")
 FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 # GLOSSARY.md, SKILL.md, foo.json — wiki-link targets that are filenames, not terms
 FILE_EXT_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,7}$")
@@ -227,6 +232,7 @@ class Ref:
     section: int = 0  # ATX headings seen at or before this line (0 = before the first)
     heading: bool = False  # the reference sits on a heading line
     linked: bool = False  # mention inside a non-vocabulary link label (author linked it)
+    field: str = ""  # value refs: the frontmatter field named
 
     @property
     def kind(self) -> str:
@@ -235,6 +241,29 @@ class Ref:
     def resolve(self, glossary: Glossary) -> list[Term]:
         """Resolve consistently for checks, usage tracking, and refs queries."""
         return self.policy.resolve(glossary, self)
+
+
+def value_of(glossary: Glossary, ref: Ref, lenient: bool = False):
+    """The frontmatter value a `value` ref names, for checks and renderers.
+
+    `= this.field` reads the file the ref is in; `= [[target]].field` reads the
+    one record its target resolves to. Raises LookupError with the reason.
+    """
+    if ref.destination is not None:
+        path, label = ref.destination, "this document"
+    else:
+        records = list(dict.fromkeys(t.file.resolve() for t in ref.resolve(glossary)))
+        if not records:
+            raise LookupError(f"no record named '{ref.target}'")
+        if len(records) > 1:
+            raise LookupError(f"'{ref.target}' names {len(records)} records; qualify it")
+        path, label = records[0], f"record {records[0].name}"
+    try:
+        return field_value(path, ref.field, glossary, lenient)
+    except KeyError:
+        raise LookupError(f"{label} has no frontmatter field '{ref.field}'") from None
+    except InvalidRecord as exc:
+        raise LookupError(f"{label}: {exc}") from None
 
 
 def _blank(text: str) -> str:
@@ -533,6 +562,19 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
             continue
         refs.append(Ref(wiki, m.group(0), normalize(name), ns, path,
                         line_of(m.start()), target=name.strip()))
+
+    value = policies["value"]
+    _, admits = view(value, [])
+    for start, end in _inline_spans(document.delimiters):
+        span = document.delimiters[start:end]
+        ticks = len(span) - len(span.lstrip("`"))
+        found = VALUE_RE.fullmatch(span[ticks:len(span) - ticks].strip())
+        if not found or not admits(start):
+            continue
+        ns, name = glossary.split(found[1].strip()) if found[1] else (None, "")
+        refs.append(Ref(value, span, normalize(name), ns, path, line_of(start),
+                        target=name.strip(), field=found[2],
+                        destination=None if found[1] else path.resolve()))
 
     delimiter = policies["delimiter"]
     source, admits = view(delimiter, link_spans)

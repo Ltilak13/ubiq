@@ -120,6 +120,8 @@ POLICIES: Policies = {policy.name: policy for policy in (
     Policy("id", "id", by_id, "E004", _ANYWHERE, Context.COMMENT, links=True),
     Policy("field", "field", first(by_id, by_name), "E006"),
     Policy("catalog", "catalog", first(by_id, by_name), "E006"),
+    # `= this.f` resolves by its own file, `= [[t]].f` like a wiki-link.
+    Policy("value", "value", first(by_file, _EXPLICIT), "E013"),
     # Severity here is the unlinked-mention warning (W002), off by default.
     Policy("mention", "mention", by_name, "W002", _ANYWHERE, severity=Severity.OFF),
     # Only links to missing files that no record owns become refs, so none resolves.
