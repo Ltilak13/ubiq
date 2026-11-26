@@ -105,7 +105,7 @@ interpreted, and container nesting beyond a marker prefix is not tracked.
 A fragment that names an anchor is an ordinary link, so an anchor wins over a
 same-named field: to value-link that field, rename the heading. Any other
 fragment is a `value` ref for a top-level field of the file or of an overlay on
-it, whose non-null fields win; fragments and field names compare without case.
+it, whose non-null fields win. Field names are case-sensitive; headings are not.
 A fragment that names no such field reports E013, so a misspelled field fails;
 W004 leaves those fragments to E013. Fragments into files without frontmatter
 stay unchecked, and so do links with a query. A repository whose anchors ubiq

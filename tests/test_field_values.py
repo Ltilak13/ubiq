@@ -36,7 +36,7 @@ def test_labels_compare_as_plain_text(tmp_path, capsys):
     record = DISCOUNT.replace("pct: 10\n", 'pct: 10\ncode: "a_b"\npad: " 10 "\nphrase: two  words\n')
     # A label that wraps across lines is not a link to this scanner (a known gap).
     doc = (f"[`10`]({LINK}#pct) [a\\_b]({LINK}#code) [10]({LINK}#pad) [two \t words]({LINK}#phrase)\n"
-           f"[*10*]({LINK}#pct) [__10__]({LINK}#pct) [10]({LINK}#PCT)\n"
+           f"[*10*]({LINK}#pct) [__10__]({LINK}#pct)\n"
            f"[`a\\_b`]({LINK}#code)\n")
     make_repo(tmp_path, {"discount.md": record}, {"doc.md": doc}, CONFIG)
     _, diags = check(tmp_path, capsys)
@@ -81,8 +81,8 @@ def test_setext_html_and_duplicate_anchors_are_headings(tmp_path, capsys):
 
 
 def test_misspelled_field_fragments_fail(tmp_path, capsys):
-    doc = (f"---\npct: 5\n---\n## Real heading\n\n[5](#pcct) [10]({LINK}#pcct) [5](#x) "
-           f"[ok](#real-heading) [ok]({LINK}#rates-1) [ok](plain.md#nothing)\n")
+    doc = (f"---\npct: 5\n---\n## Real heading\n\n[5](#pcct) [10]({LINK}#pcct) [5](#x) [10]({LINK}#PCT) "
+           f"[ok](#Real-Heading) [ok]({LINK}#rates-1) [ok](plain.md#nothing)\n")
     make_repo(tmp_path, {"discount.md": DISCOUNT + "\n## Rates\n"},
               {"doc.md": doc, "plain.md": "# Plain\n"}, CONFIG)
     status, diags = check(tmp_path, capsys)
@@ -90,7 +90,9 @@ def test_misspelled_field_fragments_fail(tmp_path, capsys):
     # Files without frontmatter keep unchecked fragments.
     assert e013(diags) == ["no field or heading 'pcct' in doc.md",
                            "no field or heading 'pcct' in glossary/discount.md",
-                           "no field or heading 'x' in doc.md"], diags
+                           "no field or heading 'x' in doc.md",
+                           # Field names are case-sensitive; headings are not.
+                           "no field or heading 'PCT' in glossary/discount.md"], diags
 
 
 def test_severity_and_historical_docs(tmp_path, capsys):

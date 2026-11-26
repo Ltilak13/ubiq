@@ -272,11 +272,9 @@ def value_of(glossary: Glossary, ref: Ref, lenient: bool = False) -> str:
         fields = shared_fields(path, owner, lenient)
     except InvalidRecord as exc:
         raise LookupError(f"{where}: {exc}") from None
-    # Fragments compare without case, as heading slugs do.
-    name = next((key for key in fields if str(key).lower() == ref.field.lower()), None)
-    if name is None:
+    if ref.field not in fields:
         raise LookupError(f"no field or heading '{ref.field}' in {where}")
-    value = fields[ref.field if ref.field in fields else name]
+    value = fields[ref.field]
     if value is None:
         raise LookupError(f"{where} has no value for field '{ref.field}'")
     if isinstance(value, str):
