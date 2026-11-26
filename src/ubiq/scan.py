@@ -25,6 +25,7 @@ import re
 from bisect import bisect_left, bisect_right
 from collections import Counter
 from dataclasses import dataclass
+from functools import lru_cache
 from html import unescape
 from html.entities import html5
 from pathlib import Path
@@ -41,10 +42,10 @@ from .records import (
     InvalidRecord,
     Term,
     _parse_lenient,
-    field_value,
     frontmatter_fields,
     load_vocabulary_yaml,
     normalize,
+    stamp,
 )
 
 if TYPE_CHECKING:
@@ -252,6 +253,16 @@ def frontmatter_keys(path: Path, glossary: Glossary | None = None,
         return {}
 
 
+def field_fragment(file: Path, fragment: str, glossary: Glossary | None = None,
+                   lenient: bool = False) -> bool:
+    """Whether a link fragment into `file` names a frontmatter field: the file has
+    frontmatter and the fragment names none of its headings or HTML anchors.
+    A heading wins over a same-named field; a fragment naming neither is a
+    misspelled field."""
+    return (bool(frontmatter_keys(file, glossary, lenient))
+            and fragment.lower() not in _slugs(file))
+
+
 def value_of(glossary: Glossary, ref: Ref, lenient: bool = False) -> str:
     """The text of the frontmatter field a `value` ref names, for checks and renderers.
 
@@ -264,19 +275,28 @@ def value_of(glossary: Glossary, ref: Ref, lenient: bool = False) -> str:
     owner = next((g for g in glossary.external.values() if path in g.by_file), glossary)
     where = Path(os.path.relpath(path, ref.file.resolve().parent)).as_posix()
     try:
-        if ref.field not in frontmatter_fields(path, owner, lenient):
-            raise LookupError(f"no field or heading '{ref.field}' in {where}")
-        value = field_value(path, ref.field, owner, lenient)
-    except KeyError:
-        raise LookupError(f"{where} has no value for field '{ref.field}'") from None
+        fields = frontmatter_fields(path, owner, lenient)
     except InvalidRecord as exc:
         raise LookupError(f"{where}: {exc}") from None
+    if ref.field not in fields:
+        raise LookupError(f"no field or heading '{ref.field}' in {where}")
+    value = fields[ref.field]
+    if value is None:
+        raise LookupError(f"{where} has no value for field '{ref.field}'")
     if isinstance(value, str):
         return value
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return ", ".join(value)
     raise LookupError(f"field '{ref.field}' in {where} is not text or a list of "
                       "text; link a scalar field")
+
+
+def label_text(label: str) -> str:
+    """A link label as plain text: one enclosing code span is literal, other
+    backslash escapes are undone, and whitespace runs read as one space."""
+    code = re.fullmatch(r"(`+)(.*?)\1", label.strip(), re.DOTALL)
+    text = code[2] if code else MD_ESCAPE_RE.sub(r"\1", label)
+    return " ".join(text.split())
 
 
 def _blank(text: str) -> str:
@@ -452,19 +472,43 @@ def _interpret_markdown(text: str) -> _Markdown:
     return _Markdown(prose, delimiters, links, addresses, comments)
 
 
-def _slugs(path: Path) -> set[str]:
-    """GitHub-style anchors for the ATX headings of a Markdown file."""
+# `<a id="x">` and `<a name="x">` anchors, which a fragment may name like a heading.
+HTML_ANCHOR_RE = re.compile(r"<[A-Za-z][^>]*?\s(?:id|name)\s*=\s*[\"']?([^\"'\s>]+)")
+SETEXT_RE = re.compile(r" {0,3}(?:=+|-+)[ \t]*$")
+
+
+def _slugs(path: Path) -> frozenset[str]:
+    """GitHub-style anchors for the ATX and setext headings of a Markdown file,
+    plus its HTML `id`/`name` anchors. Cached per file version."""
+    return _cached_slugs(path, stamp(path))
+
+
+@lru_cache(maxsize=4096)
+def _cached_slugs(path: Path, version) -> frozenset[str]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return frozenset()
+    fm = FRONTMATTER_RE.match(text)
+    if fm:
+        text = _blank(fm.group()) + text[fm.end():]
     seen: Counter[str] = Counter()
-    slugs = set()
-    for line in _blank_fences(path.read_text(encoding="utf-8")).splitlines():
+    slugs: set[str] = set()
+    previous = ""
+    for line in _blank_fences(text).splitlines():
         m = re.match(r" {0,3}#{1,6}\s+(.*?)\s*#*\s*$", line)
-        if not m:
+        heading = m.group(1) if m else None
+        if heading is None and previous.strip() and SETEXT_RE.match(line):
+            heading = previous.strip()
+        slugs.update(a.lower() for a in HTML_ANCHOR_RE.findall(line))
+        previous = "" if heading is not None else line
+        if heading is None:
             continue
-        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", m.group(1)).strip().lower()
-        slug = re.sub(r"[^\w\- ]", "", text).replace(" ", "-")
+        title = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", heading).strip().lower()
+        slug = re.sub(r"[^\w\- ]", "", title).replace(" ", "-")
         slugs.add(f"{slug}-{seen[slug]}" if seen[slug] else slug)
         seen[slug] += 1
-    return slugs
+    return frozenset(slugs)
 
 
 def _line_index(text: str):
@@ -567,15 +611,13 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
         url = urlsplit(spec)
         fragment = unquote(url.fragment)
         if fragment and value_admits(start) and not (url.scheme or url.netloc or url.query):
-            # A fragment that names a frontmatter field wins over a heading slug.
-            # In a file with frontmatter, one naming neither is a misspelled field.
+            # A heading wins over a same-named field; in a file with
+            # frontmatter, a fragment naming neither is a misspelled field.
             file = path if not url.path else _doc_link_path(path, spec, cfg.root)
-            fields = frontmatter_keys(file, glossary, cfg.lenient) if (
-                file is not None and file.is_file()) else {}
-            if file is not None and fields and (
-                    fragment in fields or fragment.lower() not in _slugs(file)):
+            if (file is not None and file.is_file()
+                    and field_fragment(file, fragment, glossary, cfg.lenient)):
                 found = MD_LINK_RE.match(document.delimiters, start)
-                label = found["label"].strip() if found else ""
+                label = label_text(found["label"]) if found else ""
                 refs.append(Ref(value, text[start:end], "", None, path, line_of(start),
                                 target=label, field=fragment, destination=file.resolve()))
         destination = _doc_link_path(path, spec, cfg.root)

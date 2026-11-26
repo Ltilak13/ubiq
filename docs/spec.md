@@ -92,20 +92,27 @@ Takes [10](#pct) percent off.                  pct of the file it is written in
 Orders save [10](glossary/discount.md#pct)%.   pct of another record's file
 ```
 
-A link is a `value` ref only when its fragment names a top-level frontmatter
-field of an existing local Markdown target, or of an overlay on it, whose
-non-null fields win. When the target has frontmatter, a fragment that names
-neither a field nor a heading of that file is a misspelled field: it is a `value`
-ref too and reports E013. Heading slugs are the GitHub-style anchors W004 uses.
-A fragment that names a heading is an ordinary heading link, and fragments into
-files without frontmatter stay unchecked. When a heading slug and a field share
-a name, the field wins, also for W004. The label, trimmed, must equal the field's value; a list of
-strings reads as its items joined by `, `. A null field, a mapping or other
-non-text value, or a label that differs reports E013, which names the current
-value. A link to another record still counts as its Markdown reference, and the
-restated-value warning (W008) masks link labels, so the label is not a restated
-value. `scan.value_of` returns the text a ref names, so a renderer and the check
-read fields the same way.
+In a link to an existing local Markdown file that has frontmatter, a fragment
+names either an anchor or a field. Anchors are the file's GitHub-style heading
+slugs (ATX and setext, with `-1` suffixes for duplicates) and its HTML `id` and
+`name` attributes, the same set W004 uses. Frontmatter is never a heading. A
+fragment that names an anchor is an ordinary link, so an anchor wins over a
+same-named field: to value-link that field, rename the heading. Any other
+fragment is a `value` ref for a top-level field of the file or of an overlay on
+it, whose non-null fields win, and reports E013 when no such field exists, so a
+misspelled field fails. W004 leaves those fragments to E013. Fragments into
+files without frontmatter stay unchecked, and so do links with a query.
+
+The label must equal the field's value as plain text: one enclosing code span
+is literal, other backslash escapes are undone, and whitespace runs, including
+a line break, compare as one space on both sides. A list of strings reads as
+its items joined by `, `. A null field, a mapping or other non-text value, or a
+label that differs reports E013, which names the current value. A link to
+another record still counts as its Markdown reference, and the restated-value
+warning (W008) masks link labels, so the label is not a restated value.
+`scan.value_of` returns the text a ref names, so a renderer and the check read
+fields the same way; another repository's record reads that repository's
+overlays.
 
 No configuration can contradict a guarantee: a setting that would is E008, and a
 test fails if this spec stops stating one. The guarantees are that fenced code
@@ -141,9 +148,9 @@ include link that resolves nowhere always fails it (see Composition edges).
   that contradicts a guarantee. The message names the field or rules.
 - `E009` schema conformance failure — selected frontmatter or structured data violates its declared JSON Schema, or a target is missing.
 - `E010` graph integrity failure — declared record coverage, relationships, or source evidence is invalid.
-- `E013` field value — a `value` link whose field is absent (the fragment names
-  neither a field nor a heading of a file with frontmatter), null, or not text, or
-  whose label differs from the field's value. The message names the value to use.
+- `E013` field value — a link into a file with frontmatter whose fragment names no
+  anchor of that file, and whose field is absent, null, or not text, or differs
+  from the label. The message names the value to use.
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 - `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,
@@ -365,8 +372,8 @@ a terminating semicolon stay literal. This also applies to destinations from
 reference definitions. Path-shaped wiki-links retain their literal entity text.
 The [navigation regression tests](../tests/test_markdown_navigation.py) compare
 a bounded synthetic sample with captured GitHub Markdown API output. That sample
-does not establish full renderer compatibility or heading-fragment validation
-outside W004's installed-layout checks.
+does not establish full renderer compatibility. Fragments are validated by
+W004 in installed layouts and by E013 in links to files with frontmatter.
 
 Checks, orphan detection, and `ubiq refs` use the same resolution rules. A
 qualified reference credits only the selected namespace. Markdown vocabulary

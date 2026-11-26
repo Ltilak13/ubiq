@@ -188,7 +188,7 @@ Use discovery during maintenance to find new files that have no record yet.
 
 - Inline Markdown links to registered records or paths matching configured
   glossary globs must resolve. The destination selects the record, so the label
-  can be natural prose. Link titles are allowed, and so are fragments; in a file with frontmatter a fragment must name a heading or a field (`E013`). Other relative
+  can be natural prose. Link titles are allowed, and so are fragments; in a file with frontmatter a fragment must name a heading, an HTML anchor, or a field (`E013`). Other relative
   links must land on an existing file or directory; a missing one is `W007`, a
   warning that `references.link.severity` can raise or silence. URLs,
   anchor-only links (`#x`) in files without frontmatter, root-relative paths (`/x`), and code are not
@@ -207,6 +207,13 @@ Use discovery during maintenance to find new files that have no record yet.
   value reference: the label must equal that field's value, or the check reports
   `E013`. Write the value once in frontmatter and link it from prose as
   `[10](#pct)` (this file) or `[10](glossary/discount.md#pct)` (another record).
+  A heading with the same slug wins, so rename the heading to value-link that field.
+
+**Upgrade note:** links into any file with frontmatter now check their
+fragment. An anchor link such as `[x](skills/a/SKILL.md#setup)` must name a
+heading or an HTML `id`/`name` anchor of that file, or a frontmatter field, or
+`ubiq check` reports `E013`. Fix the anchor, or remove the fragment. Line
+anchors such as `#L10` and slugs that differ from the GitHub style fail too.
 
 Each kind has a policy you can tune per repository: how severe its failures are
 and which regions it scans besides plain prose (`inline_code`, `address`,

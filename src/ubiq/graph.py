@@ -32,7 +32,7 @@ from .scan import (
     _interpret_markdown,
     _line_index,
     _slugs,
-    frontmatter_keys,
+    field_fragment,
 )
 
 KINDS = ("invoke", "include", "route", "reference")
@@ -442,7 +442,7 @@ def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
         fragment = unquote(urlsplit(link.spec.strip().strip("<>")).fragment)
         if (fragment and in_install and landed is not None and target is not None
                 and fragment.lower() not in _slugs(landed)
-                and fragment not in frontmatter_keys(landed)):
+                and not field_fragment(link.source, fragment)):
             diags.append(Diagnostic("W004", f"link {link.spec} names no heading in "
                                     f"{target.name}/{landed.relative_to(target).as_posix()}",
                                     link.doc, link.line))
