@@ -132,6 +132,13 @@ include link that resolves nowhere always fails it (see Composition edges).
   `coverage.exclude` glob matches no selected file. Only `ubiq coverage` reports it.
 - `W007` broken link — a relative Markdown link to a missing file or directory that
   is not a [[record]] (see the `link` kind). `references.link.severity` tunes it.
+- `W008` restated value — a [[record]]'s prose repeats the value of one of its own
+  frontmatter fields listed in `restated_values` (`pct: 10` and "10% off"). Each
+  value lives in frontmatter only. Fenced and inline code, links, wiki-links, URLs,
+  HTML, and comments are not prose. Lists, booleans, one-character values, and
+  values that spell the record's own term are not checked. A number inside a longer
+  number (`10` in `100` or `10.5`) is not a match; text matches ignore case. Reported
+  once per field, at the first restatement. Off unless `restated_values` lists fields.
 - `E011` include cycle — a [[shared part]] includes itself through Markdown links
   to other parts. The agent would read the same files forever.
 - `E012` part input — an include names no value, or an undeclared value, for an

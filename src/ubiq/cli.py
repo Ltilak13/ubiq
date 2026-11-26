@@ -33,7 +33,7 @@ import yaml
 from . import __version__, coverage, query, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
-from .check import Diagnostic, at, run_checks
+from .check import Diagnostic, at, restated_values, run_checks
 from .config import Config, InvalidConfig, load_config
 from .dependencies import Snapshots, validate_checkout
 from .discovery import discover, init_assets
@@ -317,6 +317,7 @@ overlays:
 #     except: [plugin]
 # unlinked_mentions: warn     # W002: a section mentions a term but never links it
 # unlinked_except: [pr]       # terms that are ordinary words in this repo
+# restated_values: [pct]      # W008: record prose repeats one of these frontmatter values
 # references:                 # per-kind overrides: severity error|warn|off, scans
 #   id: {severity: warn}      # report unknown ids without failing the check
 #   wiki: {scans: [comment]}  # regions: inline_code, address, comment
@@ -467,6 +468,7 @@ def _check_build(result: Build) -> list[Diagnostic]:
     diags = result.diagnostics + run_checks(
         glossary, refs, cfg.external_id_patterns,
         skip_unlinked=skip_mentions, unlinked_except=cfg.unlinked_except)
+    diags.extend(restated_values(glossary, cfg.restated_values, cfg.lenient))
     if cfg.schemas:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))

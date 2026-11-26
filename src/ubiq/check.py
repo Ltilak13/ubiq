@@ -23,6 +23,7 @@ Warnings (reported, exit 0):
   W005 drift                  a reference without an edge, or an edge the text never names
   W006 coverage-scope         a coverage pattern or exclusion matches nothing (coverage.py)
   W007 broken-link            a relative link to a missing file that is not a record
+  W008 restated-value         a record's prose repeats a `restated_values` field's value
 
 A reference kind's policy (kinds.py) sets the severity of what its refs report:
 `references.id.severity: warn` keeps E004 visible without failing the build.
@@ -38,8 +39,8 @@ from difflib import get_close_matches
 from pathlib import Path
 
 from .kinds import Policy, Severity
-from .records import Glossary, normalize
-from .scan import Ref
+from .records import Glossary, InvalidRecord, normalize, parse_frontmatter
+from .scan import EXPLICIT_RE, Ref, _interpret_markdown, _line_index, _mask
 
 
 @dataclass
@@ -140,6 +141,48 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
         diags += reported(r.policy, r.policy.code,
                           f"unlinked mention '{r.raw}' — this section never links {names}",
                           r.file, r.line)
+    return diags
+
+
+# YAML 1.1 booleans: the vocabulary loader keeps them as text.
+BOOLEANS = {"true", "false", "yes", "no", "on", "off", "y", "n"}
+
+
+def restated_values(glossary: Glossary, fields: Sequence[str],
+                    lenient: bool = False) -> list[Diagnostic]:
+    """W008: a record's prose repeats the value of one of its own `fields`.
+
+    The value belongs in frontmatter only; prose that copies it drifts when the
+    value changes. Fenced and inline code, links, wiki-links, URLs, HTML, and
+    comments are not prose. Lists, booleans, one-character values, and values
+    that spell the record's own term are not checked. Reported once per field,
+    at the first restatement.
+    """
+    diags: list[Diagnostic] = []
+    for t in glossary.terms:
+        try:
+            meta, _ = parse_frontmatter(t.file, lenient)
+            text = t.file.read_text(encoding="utf-8")
+        except (InvalidRecord, OSError, UnicodeError):
+            continue  # already E005
+        own = {normalize(s) for s in t.spellings}
+        values = {f: str(meta[f]).strip() for f in fields
+                  if isinstance(meta.get(f), (str, int, float))}
+        values = {f: v for f, v in values.items() if len(v) > 1
+                  and v.lower() not in BOOLEANS and normalize(v) not in own}
+        if not values:
+            continue
+        md = _interpret_markdown(text)
+        prose = _mask(md.prose, [(s, e) for s, e, _ in md.links] + md.addresses + md.comments
+                      + [m.span() for m in EXPLICIT_RE.finditer(md.prose)])
+        line_of = _line_index(prose)
+        for f, v in values.items():
+            # A number inside a longer one (10 in 100 or 10.5) is not a restatement.
+            m = re.search(rf"(?<![\w.]){re.escape(v)}(?!\w|\.\d)", prose, re.IGNORECASE)
+            if m:
+                diags.append(Diagnostic(
+                    "W008", f"restated value '{v}' — prose repeats frontmatter "
+                    f"'{f}'; keep the value in frontmatter only", t.file, line_of(m.start())))
     return diags
 
 

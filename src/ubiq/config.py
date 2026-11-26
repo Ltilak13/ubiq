@@ -74,6 +74,9 @@ DEFAULT_CONFIG: dict = {
     # Terms whose plain mentions are ordinary words here (`pr` vs "PR"), by name
     # or qualified name. Explicit references to them are still checked.
     "unlinked_except": [],
+    # W008: frontmatter fields whose values a record's own prose must not repeat
+    # (`pct: 10` with "10%" in the body). Off (empty) by default.
+    "restated_values": [],
     # Markup that `ubiq candidates` reads as possible vocabulary: `code` spans
     # that are hyphenated identifiers, and `bold` names for repos that bold
     # their terms. Bold is off by default because most bold is emphasis.
@@ -160,6 +163,7 @@ class Config:
     schemas: tuple[SchemaSpec, ...]
     policies: Policies
     unlinked_except: tuple[str, ...]
+    restated_values: tuple[str, ...]
     candidate_shapes: Shape
     edges: EdgeConfig
     coverage: CoverageSpec | None = None
@@ -409,7 +413,7 @@ def load_config(root: Path) -> Config:
         cfg.update({k: v for k, v in user.items() if v is not None})
 
     for key in ("docs", "ignore", "id_patterns", "ref_fields", "external_id_patterns",
-                "unlinked_except"):
+                "unlinked_except", "restated_values"):
         cfg[key] = _strings(cfg[key], key)
     for key in ("term_field", "overlays", "historical", "candidate_shapes"):
         cfg[key] = _strings(cfg[key], key, scalar=True)
@@ -515,6 +519,7 @@ def load_config(root: Path) -> Config:
         schemas=tuple(schemas),
         policies=_policies(cfg["references"], cfg["unlinked_mentions"]),
         unlinked_except=tuple(cfg["unlinked_except"]),
+        restated_values=tuple(cfg["restated_values"]),
         candidate_shapes=shapes,
         edges=_edges(cfg["edges"], tuple(cfg["ref_fields"]), root),
         coverage=_coverage(cfg["coverage"], root),
