@@ -356,6 +356,15 @@ def test_installed_fragments_preserve_entity_generated_suffixes(tmp_path, capsys
     ]
 
 
+def test_installed_fragments_may_name_frontmatter_fields(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/a/SKILL.md": skill("a", "Run [b](../b/SKILL.md#name).\n"),
+        "skills/b/SKILL.md": skill("b", "# Section\n"),
+    })
+    _, found = check(tmp_path, capsys)
+    assert found == []
+
+
 def test_an_unreadable_external_repository_leaves_its_links_unchecked(tmp_path, capsys):
     two_repos(tmp_path, "../missing")
     status, out = run(tmp_path / "local", capsys, "check")

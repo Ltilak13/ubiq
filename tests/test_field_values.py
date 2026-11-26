@@ -1,15 +1,17 @@
-"""Frontmatter field references: `= this.field` and `= [[record]].field` in code spans."""
+"""Frontmatter field references: a Markdown link whose fragment names a field."""
 
 import json
 
 from test_ubiq import make_repo
 
 from ubiq.cli import build, main
-from ubiq.records import field_value
+from ubiq.records import field_value, frontmatter_fields
 from ubiq.scan import value_of
 
-DISCOUNT = "---\nterm: discount\npct: 10\nnote:\n---\n\nTakes `= this.pct` percent off.\n"
+DISCOUNT = ("---\nterm: discount\naliases: [off]\npct: 10\nowner: ops\nnote:\n"
+            "tags: [a, b]\nlimits: {max: 5}\n---\n\n## Pct\n\nTakes [10](#pct) percent off.\n")
 CONFIG = 'glossary: ["glossary/*.md"]\ndocs: ["**/*.md"]\n'
+LINK = "glossary/discount.md"
 
 
 def check(root, capsys):
@@ -17,58 +19,70 @@ def check(root, capsys):
     return status, json.loads(capsys.readouterr().out)["diagnostics"]
 
 
-def test_existing_fields_resolve_and_count_as_use(tmp_path, capsys):
-    make_repo(tmp_path, {"discount.md": DISCOUNT},
-              {"doc.md": "---\nowner: ops\n---\nSave `= [[discount]].pct`% (`= this.owner`).\n"},
-              CONFIG)
+def e013(diags):
+    return [d["message"].split(" — ", 1)[1] for d in diags if d["code"] == "E013"]
+
+
+def test_matching_labels_pass(tmp_path, capsys):
+    doc = (f"---\nowner: ops\n---\nSave [ 10 ]({LINK}#pct)% on [a, b]({LINK}#tags) "
+           f"(owner [ops](#owner)).\n")
+    make_repo(tmp_path, {"discount.md": DISCOUNT}, {"doc.md": doc}, CONFIG)
     status, diags = check(tmp_path, capsys)
     assert status == 0, diags
-    assert not [d for d in diags if d["code"] == "W001"]  # the cross-record ref uses the term
 
 
-def test_missing_field_record_or_ambiguity_fails(tmp_path, capsys):
-    dup = "---\nterm: dup\nns: {}\npct: 1\n---\n"
-    doc = ("`= this.pct` `= [[discount]].rate` `= [[discont]].pct` `= [[discount]].note`\n"
-           "`= [[dup]].pct` `= [[a:dup]].pct`\n"
-           "```\n`= this.fenced`\n```\n<!-- `= this.hidden` --> `this.pct` `= this.pct + 1`\n")
-    make_repo(tmp_path, {"discount.md": DISCOUNT, "a.md": dup.format("a"),
-                         "b.md": dup.format("b")}, {"doc.md": doc}, CONFIG)
+def test_stale_null_and_non_text_fields_fail(tmp_path, capsys):
+    doc = (f"---\npct: 5\n---\n# pct\n\n[4](#pct) [9]({LINK}#pct) [x]({LINK}#note) "
+           f"[x]({LINK}#limits) [heading]({LINK}#Pct) [x](#missing)\n"
+           f"```\n[1]({LINK}#pct)\n```\n<!-- [2]({LINK}#pct) --> `[3]({LINK}#pct)`\n")
+    make_repo(tmp_path, {"discount.md": DISCOUNT}, {"doc.md": doc}, CONFIG)
     status, diags = check(tmp_path, capsys)
     assert status == 1
-    found = [d["message"].split(" — ", 1)[1] for d in diags if d["code"] == "E013"]
-    # fences, comments, other code spans, and a qualified target are not reported
-    assert found == ["this document has no frontmatter field 'pct'",
-                     "record discount.md has no frontmatter field 'rate'",
-                     "no record named 'discont'",
-                     "record discount.md has no frontmatter field 'note'",  # null is absent
-                     "'dup' names 2 records; qualify it"], found
-
-
-def test_wiki_fragments_keep_their_meaning(tmp_path, capsys):
-    """`[[term#heading]]` is a wiki-link, never a field ref."""
-    make_repo(tmp_path, {"discount.md": DISCOUNT}, {"doc.md": "[[discount#pct]]\n"}, CONFIG)
-    _, diags = check(tmp_path, capsys)
-    assert not [d for d in diags if d["code"] == "E013"]
+    # A field wins over a same-named heading; a fragment naming no field is an
+    # ordinary anchor; fences, comments, and code are not scanned.
+    assert e013(diags) == [
+        "label '4' ≠ pct '5' — update the label",
+        "label '9' ≠ pct '10' — update the label",
+        "discount.md has no value for field 'note'",
+        "field 'limits' in discount.md is not text or a list of text; link a scalar field",
+    ], diags
 
 
 def test_severity_and_historical_docs(tmp_path, capsys):
     make_repo(tmp_path, {"discount.md": DISCOUNT},
-              {"doc.md": "`= this.x`\n", "CHANGELOG.md": "`= [[discount]].gone`\n"},
+              {"doc.md": f"[1]({LINK}#pct)\n", "CHANGELOG.md": f"[2]({LINK}#pct)\n"},
               CONFIG + 'historical: ["CHANGELOG.md"]\nreferences: {value: {severity: warn}}\n')
     status, diags = check(tmp_path, capsys)
     assert status == 0
-    assert [(d["code"], d["severity"]) for d in diags if d["code"] == "E013"] == [
-        ("E013", "warning")]
+    assert [(d["file"], d["severity"]) for d in diags if d["code"] == "E013"] == [
+        ("doc.md", "warning")]
 
 
-def test_value_of_returns_frontmatter_values_for_renderers(tmp_path):
-    overlay = "---\nsource: glossary/discount.md\npct: 15\n---\n"
+def test_lenient_records_read_leniently(tmp_path, capsys):
+    record = "---\nterm: rate\ntitle: a: b\npct: 3\n---\n"
+    make_repo(tmp_path, {"rate.md": record}, {"doc.md": "[3](glossary/rate.md#pct)\n"},
+              CONFIG + "frontmatter: lenient\n")
+    status, diags = check(tmp_path, capsys)
+    assert status == 0, diags
+
+
+def test_refs_lists_same_file_and_cross_record_links(tmp_path, capsys):
+    make_repo(tmp_path, {"discount.md": DISCOUNT}, {"doc.md": f"[10]({LINK}#pct)\n"}, CONFIG)
+    main(["refs", "discount", "--root", str(tmp_path), "--kind", "value", "--json"])
+    refs = json.loads(capsys.readouterr().out)["references"]
+    assert [(r["file"], r["raw"]) for r in refs] == [
+        ("doc.md", f"[10]({LINK}#pct)"), (LINK, "[10](#pct)")]
+
+
+def test_overlay_fields_win_unless_null(tmp_path):
+    overlay = "---\nsource: glossary/discount.md\npct: 15\nowner:\naliases: [cut]\n---\n"
     make_repo(tmp_path, {"discount.md": DISCOUNT},
-              {"doc.md": "`= [[discount]].pct` `= this.owner`\n", ".ubiq/o.md": overlay},
+              {"doc.md": f"[15]({LINK}#pct)\n", ".ubiq/o.md": overlay},
               CONFIG + 'overlays: [".ubiq/o.md"]\n')
-    (tmp_path / "doc.md").write_text("---\nowner: ops\n---\n`= [[discount]].pct` `= this.owner`\n")
     built = build(tmp_path)
-    refs = [r for r in built.refs if r.kind == "value" and r.file.name == "doc.md"]
-    assert [r.raw for r in refs] == ["`= [[discount]].pct`", "`= this.owner`"]
-    assert [value_of(built.glossary, r) for r in refs] == ["15", "ops"]  # overlay wins
-    assert field_value(tmp_path / "glossary" / "discount.md", "pct") == "10"
+    record = tmp_path / LINK
+    fields = frontmatter_fields(record, built.glossary)
+    assert (fields["pct"], fields["owner"], fields["aliases"]) == ("15", "ops", ["off", "cut"])
+    assert field_value(record, "pct") == "10"
+    [ref] = [r for r in built.refs if r.kind == "value" and r.file.name == "doc.md"]
+    assert value_of(built.glossary, ref) == "15"

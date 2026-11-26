@@ -10,7 +10,7 @@ each kind's policy which document regions it may match in.
   id        — matches of configured id_patterns             (E004)
   field     — values of configured ref_fields in frontmatter (E006)
   catalog   — values from a JSON/YAML inventory (catalog.py) (E006)
-  value     — `= this.field` / `= [[term]].field` code spans   (E013)
+  value     — link whose #fragment names a frontmatter field   (E013)
   mention   — plain-prose occurrence of a known name        (never an error; W002)
   link      — relative link to a missing file, not a record  (W007)
 
@@ -41,6 +41,7 @@ from .records import (
     Term,
     _parse_lenient,
     field_value,
+    frontmatter_fields,
     load_vocabulary_yaml,
     normalize,
 )
@@ -53,8 +54,6 @@ SKIP_FIELD_VALUES = {"", "-", "—", "na", "n/a", "none", "no", "yes"}
 
 # (?<!!) skips ![[...]] embeds/transclusions (Obsidian-style includes, not term refs)
 EXPLICIT_RE = re.compile(r"(?<!!)\[\[([^\[\]|]+?)(?:\|[^\[\]]*)?\]\]")
-# A whole code span `= this.field` or `= [[target]].field` (Dataview inline syntax).
-VALUE_RE = re.compile(r"=\s*(?:this|\[\[([^\[\]|]+?)\]\])\.([A-Za-z_][\w-]*)")
 FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 # GLOSSARY.md, SKILL.md, foo.json — wiki-link targets that are filenames, not terms
 FILE_EXT_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,7}$")
@@ -226,13 +225,13 @@ class Ref:
     ns: str | None
     file: Path
     line: int
-    target: str = ""  # the target as written: a name, an id, or a field value
+    target: str = ""  # as written: a name, an id, a field value, or a value link's label
     historical: bool = False  # historical docs: unresolved refs do not fail
     destination: Path | None = None  # Markdown links resolve by file, not label
     section: int = 0  # ATX headings seen at or before this line (0 = before the first)
     heading: bool = False  # the reference sits on a heading line
     linked: bool = False  # mention inside a non-vocabulary link label (author linked it)
-    field: str = ""  # value refs: the frontmatter field named
+    field: str = ""  # value refs: the frontmatter field the fragment names
 
     @property
     def kind(self) -> str:
@@ -243,27 +242,37 @@ class Ref:
         return self.policy.resolve(glossary, self)
 
 
-def value_of(glossary: Glossary, ref: Ref, lenient: bool = False):
-    """The frontmatter value a `value` ref names, for checks and renderers.
-
-    `= this.field` reads the file the ref is in; `= [[target]].field` reads the
-    one record its target resolves to. Raises LookupError with the reason.
-    """
-    if ref.destination is not None:
-        path, label = ref.destination, "this document"
-    else:
-        records = list(dict.fromkeys(t.file.resolve() for t in ref.resolve(glossary)))
-        if not records:
-            raise LookupError(f"no record named '{ref.target}'")
-        if len(records) > 1:
-            raise LookupError(f"'{ref.target}' names {len(records)} records; qualify it")
-        path, label = records[0], f"record {records[0].name}"
+def frontmatter_keys(path: Path, glossary: Glossary | None = None,
+                     lenient: bool = False) -> dict:
+    """`frontmatter_fields`, or none when the file cannot be read."""
     try:
-        return field_value(path, ref.field, glossary, lenient)
+        return frontmatter_fields(path, glossary, lenient)
+    except InvalidRecord:
+        return {}
+
+
+def value_of(glossary: Glossary, ref: Ref, lenient: bool = False) -> str:
+    """The text of the frontmatter field a `value` ref names, for checks and renderers.
+
+    A list of strings reads as its items joined by ", ". Raises LookupError with
+    the reason when the field is null or not text. Another repository's record
+    reads that repository's overlays.
+    """
+    path = ref.destination
+    assert path is not None, "value refs always have a destination"
+    owner = next((g for g in glossary.external.values() if path in g.by_file), glossary)
+    try:
+        value = field_value(path, ref.field, owner, lenient)
     except KeyError:
-        raise LookupError(f"{label} has no frontmatter field '{ref.field}'") from None
+        raise LookupError(f"{path.name} has no value for field '{ref.field}'") from None
     except InvalidRecord as exc:
-        raise LookupError(f"{label}: {exc}") from None
+        raise LookupError(f"{path.name}: {exc}") from None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return ", ".join(value)
+    raise LookupError(f"field '{ref.field}' in {path.name} is not text or a list of "
+                      "text; link a scalar field")
 
 
 def _blank(text: str) -> str:
@@ -532,8 +541,21 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
     markdown, link = policies["markdown"], policies["link"]
     _, admits = view(markdown, [])
     _, link_admits = view(link, [])
+    value = policies["value"]
+    _, value_admits = view(value, [])
     link_spans: list[tuple[int, int]] = []
     for start, end, spec in document.links:
+        url = urlsplit(spec)
+        fragment = unquote(url.fragment)
+        if fragment and value_admits(start) and not (url.scheme or url.netloc or url.query):
+            # A fragment that names a frontmatter field wins over a heading slug.
+            file = path if not url.path else _doc_link_path(path, spec, cfg.root)
+            if (file is not None and file.is_file()
+                    and fragment in frontmatter_keys(file, glossary, cfg.lenient)):
+                found = MD_LINK_RE.match(document.delimiters, start)
+                label = found["label"].strip() if found else ""
+                refs.append(Ref(value, text[start:end], "", None, path, line_of(start),
+                                target=label, field=fragment, destination=file.resolve()))
         destination = _doc_link_path(path, spec, cfg.root)
         if destination is not None and (
                 destination.resolve() in glossary.by_file
@@ -562,19 +584,6 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
             continue
         refs.append(Ref(wiki, m.group(0), normalize(name), ns, path,
                         line_of(m.start()), target=name.strip()))
-
-    value = policies["value"]
-    _, admits = view(value, [])
-    for start, end in _inline_spans(document.delimiters):
-        span = document.delimiters[start:end]
-        ticks = len(span) - len(span.lstrip("`"))
-        found = VALUE_RE.fullmatch(span[ticks:len(span) - ticks].strip())
-        if not found or not admits(start):
-            continue
-        ns, name = glossary.split(found[1].strip()) if found[1] else (None, "")
-        refs.append(Ref(value, span, normalize(name), ns, path, line_of(start),
-                        target=name.strip(), field=found[2],
-                        destination=None if found[1] else path.resolve()))
 
     delimiter = policies["delimiter"]
     source, admits = view(delimiter, link_spans)

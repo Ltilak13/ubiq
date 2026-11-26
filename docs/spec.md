@@ -61,7 +61,7 @@ resolves, what it reports, and whether it links its term for W002.
 | `id` | id | id | E004 | comment | inline_code, address, comment |
 | `field` | field | id, then name | E006 | frontmatter only | nothing |
 | `catalog` | catalog | id, then name | E006, E007 | inventory only | nothing |
-| `value` | value | own file, or name then id | E013 | code spans only | nothing |
+| `value` | value | destination | E013 | prose only | comment |
 | `mention` | mention | name | W002 | prose only | inline_code, address, comment |
 | `link` | link | nothing | W007 | prose only | comment |
 
@@ -83,23 +83,27 @@ Other missing destinations still report W007. A path-shaped wiki-link to
 a missing file (`[[MISSION.md]]`) is not a reference of any kind.
 
 A `value` ref names a frontmatter field instead of copying its value into prose,
-so the value keeps one home. It is a whole inline code span in the Dataview
-inline syntax, which Obsidian with Dataview already renders as the value:
+so the value keeps one home. It is an ordinary Markdown link whose fragment is a
+top-level frontmatter field name of the link's target, and whose label is the
+field's value:
 
 ```markdown
-Takes `= this.pct` percent off.          the field of the file it is written in
-Orders save `= [[discount]].pct`%.       the field of another record
+Takes [10](#pct) percent off.                  pct of the file it is written in
+Orders save [10](glossary/discount.md#pct)%.   pct of another record's file
 ```
 
-The span holds only `=`, then `this` or a wiki-link target, then `.` and one
-top-level field name; any other code span is code. The target resolves like a
-wiki-link, by name then id, with `ns:` qualification, and must land on one
-record. The field must be present and not null in the file's frontmatter, or in
-its overlay, whose fields win. Otherwise the ref reports E013. A wiki-link
-fragment (`[[term#heading]]`) is still a wiki-link: a field ref is always in
-code, and a wiki-link never is by default. A cross-record field ref uses its
-term for W001. `scan.value_of` returns the value a ref names, so a renderer
-and the check read fields the same way.
+A link is a `value` ref only when its fragment names a top-level frontmatter
+field of an existing local Markdown target, or of an overlay on it, whose
+non-null fields win. A fragment that names no field is an ordinary heading or
+anchor link, unchanged and unchecked, so a misspelled field name reads as a
+heading link. When a heading slug and a field share a name, the field wins,
+also for W004. The label, trimmed, must equal the field's value; a list of
+strings reads as its items joined by `, `. A null field, a mapping or other
+non-text value, or a label that differs reports E013, which names the current
+value. A link to another record still counts as its Markdown reference, and the
+restated-value warning (W008) masks link labels, so the label is not a restated
+value. `scan.value_of` returns the text a ref names, so a renderer and the check
+read fields the same way.
 
 No configuration can contradict a guarantee: a setting that would is E008, and a
 test fails if this spec stops stating one. The guarantees are that fenced code
@@ -135,8 +139,8 @@ include link that resolves nowhere always fails it (see Composition edges).
   that contradicts a guarantee. The message names the field or rules.
 - `E009` schema conformance failure — selected frontmatter or structured data violates its declared JSON Schema, or a target is missing.
 - `E010` graph integrity failure — declared record coverage, relationships, or source evidence is invalid.
-- `E013` unresolved field value — a `value` ref whose target names no single
-  [[record]], or whose field is absent or null in that file's frontmatter.
+- `E013` field value — a `value` link whose field is null or not text, or whose
+  label differs from the field's value. The message names the value to use.
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 - `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,

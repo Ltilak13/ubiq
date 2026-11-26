@@ -203,6 +203,10 @@ Use discovery during maintenance to find new files that have no record yet.
   `only_known: true`, unknown names, including typos, are ignored.
 - Configured ID patterns and frontmatter reference fields must resolve too.
   Plain mentions are indexed for search and never fail the check.
+- A link whose fragment names a frontmatter field of its target is a field
+  value reference: the label must equal that field's value, or the check reports
+  `E013`. Write the value once in frontmatter and link it from prose as
+  `[10](#pct)` (this file) or `[10](glossary/discount.md#pct)` (another record).
 
 Each kind has a policy you can tune per repository: how severe its failures are
 and which regions it scans besides plain prose (`inline_code`, `address`,
@@ -257,7 +261,7 @@ ubiq coverage --since main --markdown  # coverage change and policies for a PR c
 ```
 
 `--kind` is repeatable: results include any selected kind (`explicit`, `id`,
-`field`, `mention`, `catalog`, or `markdown`) or policy (`wiki` or `delimiter`,
+`field`, `mention`, `catalog`, `markdown`, `value`, or `link`) or policy (`wiki` or `delimiter`,
 the two halves of `explicit`). Without filters, `refs` includes all kinds. Its JSON output contains `query`, `definitions`, `references`, and
 `count`; an unknown query returns an empty result with `error` and exits 1.
 Paths inside the repository are relative to its root; external paths are absolute.

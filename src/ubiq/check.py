@@ -13,7 +13,7 @@ Errors (fail the build):
   E008 invalid-configuration  invalid settings or conflicting glossary selection rules
   E011 include-cycle          a shared part includes itself through other parts (graph.py)
   E012 part-input             an include names no value, or an undeclared one, for a part input
-  E013 unresolved-field-value `= this.field` or `= [[record]].field` names no frontmatter field
+  E013 field-value            a link to #field whose field is null, not text, or not its label
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
@@ -181,11 +181,13 @@ def run_checks(glossary: Glossary, refs: list[Ref],
             continue
         if r.kind == "value":
             try:
-                if not r.historical:
-                    value_of(glossary, r, lenient)
+                value = "" if r.historical else value_of(glossary, r, lenient).strip()
+                if not r.historical and r.target != value:
+                    raise LookupError(f"label '{r.target}' ≠ {r.field} '{value}' — "
+                                      "update the label")
             except LookupError as exc:
                 diags += reported(r.policy, r.policy.code,
-                                  f"unresolved field value {r.raw} — {exc}", r.file, r.line)
+                                  f"field value {r.raw} — {exc}", r.file, r.line)
             continue
         matches = r.resolve(glossary)
         if matches:

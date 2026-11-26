@@ -80,7 +80,7 @@ Group diagnostics by code. Fix errors before warnings.
 - **E003 ambiguous** — qualify it: `[[ns:term]]`.
 - **E001 duplicate** — keep one record; move the other name into its `aliases`.
 - **E006 / E007 catalog** — bring the inventory and the records back in sync.
-- **E013 field value** — add the missing frontmatter field, or fix the field name or record the field ref names.
+- **E013 field value** — set the link label to the value the message names, or fix the field in frontmatter.
 - **E005 / E008** — fix the file or setting the message names.
 
 Never delete a failing reference, mark a live doc `historical`, widen a delimiter `except`, or lower a kind's severity or `scans` under `references:` just to pass.

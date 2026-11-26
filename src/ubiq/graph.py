@@ -32,6 +32,7 @@ from .scan import (
     _doc_link_path,
     _interpret_markdown,
     _line_index,
+    frontmatter_keys,
 )
 
 KINDS = ("invoke", "include", "route", "reference")
@@ -434,7 +435,8 @@ def _leaving(docs: list[Path], layout: Layout) -> Iterator[_Link]:
 def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
     """W004: a link that leaves an installed directory must land on a file in both
     layouts, or, for another repository's directory, in the installed one. A
-    `#fragment` must name a heading in the file the agent reads once installed.
+    `#fragment` must name a heading or frontmatter field in the file the agent
+    reads once installed.
     """
     diags = list(layout.problems)
     for link in _leaving(docs, layout):
@@ -454,7 +456,8 @@ def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
             continue
         fragment = unquote(urlsplit(link.spec.strip().strip("<>")).fragment)
         if (fragment and in_install and landed is not None and target is not None
-                and fragment.lower() not in _slugs(landed)):
+                and fragment.lower() not in _slugs(landed)
+                and fragment not in frontmatter_keys(landed)):
             diags.append(Diagnostic("W004", f"link {link.spec} names no heading in "
                                     f"{target.name}/{landed.relative_to(target).as_posix()}",
                                     link.doc, link.line))
