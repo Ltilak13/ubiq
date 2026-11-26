@@ -76,3 +76,20 @@ semantic change within a feature or test.
 Use the [GitHub preview check](github-preview.md) to read canonical metadata
 through the native frontmatter display or Code/Raw. The procedure separates
 source integrity from observed preview access.
+
+## Criterion issues
+
+Each criterion can list the GitHub issues that track it in `issues:`, as issue
+numbers. When a change to a goal file reaches `main`, the `goal-issues` workflow
+runs `scripts/goal_issues.py --apply` on the changed goals:
+
+- A criterion that is not `met`, lists no `issues`, and has no issue with the
+  marker `<!-- ubiq-goal: <name> <AC> -->` gets a new issue. Its body quotes the
+  criterion, its `gap`, and its cited checks, and gives the commands to verify it.
+- A criterion that is `met` closes its listed and marked issues that are still
+  open, with a comment that names the review and the commit.
+
+The script never reopens an issue, edits a title, or touches other issues. On a
+pull request, the workflow prints the same plan read-only. Run
+`python3 scripts/goal_issues.py --dry-run --repo <owner>/<name> [goal files]` to
+see it locally. A manual run of the workflow syncs every goal.
