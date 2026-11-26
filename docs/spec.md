@@ -137,7 +137,8 @@ include link that resolves nowhere always fails it (see Composition edges).
   value lives in frontmatter only. Fenced and inline code, links, wiki-links, URLs,
   HTML, and comments are not prose. Lists, booleans, one-character values, and
   values that spell the record's own term are not checked. A number inside a longer
-  number (`10` in `100` or `10.5`) is not a match; text matches ignore case. Reported
+  number (`10` in `100`, `10.5`, `10,000`, `2026-10-01`, or `10:30`) is not a match.
+  Text matches ignore case, and a multi-word value may wrap across lines. Reported
   once per field, at the first restatement. Off unless `restated_values` lists fields.
 - `E011` include cycle — a [[shared part]] includes itself through Markdown links
   to other parts. The agent would read the same files forever.

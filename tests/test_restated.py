@@ -21,10 +21,12 @@ def test_reports_each_restated_field_once_outside_code_and_links(tmp_path, capsy
               "name: discount\nother: 42\n---\n\n"
               "```\npct is 10 here\n```\n"          # 12: fenced, ignored
               "Inline `10` and [10](https://e.dev/10) are code and links.\n"  # 14
-              "Prices drop 100 or 10.5 units; 42 is unconfigured.\n"          # 15
+              "Prices drop 100 or 10.5 units on 2026-10-01 at 10:30 for 10,000 users "
+              "(ISSUE-10, 1/10); 42 is unconfigured.\n"                      # 15: numbers
               "The discount is true at x.\n"        # 16: boolean, short value, term
               "It takes 10% off.\n"                  # 17: flagged
-              "Again 10%. The spring sale ends.\n")  # 18: label flagged, pct once
+              "Again 10%. The spring\n"             # 18: wrapped label flagged, pct once
+              "sale ends.\n")
     make_repo(tmp_path, {"d.md": record}, {}, config=CFG)
     status, found = w008(tmp_path, capsys)
     assert status == 0

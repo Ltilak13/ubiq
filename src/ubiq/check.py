@@ -144,7 +144,7 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
     return diags
 
 
-# YAML 1.1 booleans: the vocabulary loader keeps them as text.
+# YAML 1.1 booleans: the vocabulary loader keeps every scalar as text.
 BOOLEANS = {"true", "false", "yes", "no", "on", "off", "y", "n"}
 
 
@@ -167,7 +167,7 @@ def restated_values(glossary: Glossary, fields: Sequence[str],
             continue  # already E005
         own = {normalize(s) for s in t.spellings}
         values = {f: str(meta[f]).strip() for f in fields
-                  if isinstance(meta.get(f), (str, int, float))}
+                  if isinstance(meta.get(f), str)}
         values = {f: v for f, v in values.items() if len(v) > 1
                   and v.lower() not in BOOLEANS and normalize(v) not in own}
         if not values:
@@ -177,8 +177,11 @@ def restated_values(glossary: Glossary, fields: Sequence[str],
                       + [m.span() for m in EXPLICIT_RE.finditer(md.prose)])
         line_of = _line_index(prose)
         for f, v in values.items():
-            # A number inside a longer one (10 in 100 or 10.5) is not a restatement.
-            m = re.search(rf"(?<![\w.]){re.escape(v)}(?!\w|\.\d)", prose, re.IGNORECASE)
+            # A number inside a longer one (100, 10.5, 10,000, 2026-10-01, 10:30)
+            # is not a restatement.
+            # Prose may hard-wrap a multi-word value across lines.
+            words = r"\s+".join(map(re.escape, v.split()))
+            m = re.search(rf"(?<![\w.,:/-]){words}(?!\w|[.,:/-]\d)", prose, re.IGNORECASE)
             if m:
                 diags.append(Diagnostic(
                     "W008", f"restated value '{v}' — prose repeats frontmatter "
