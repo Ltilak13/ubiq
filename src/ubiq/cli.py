@@ -59,7 +59,7 @@ from .records import (
     assemble_glossary,
     normalize,
 )
-from .scan import Ref, file_link_targets, scan_docs
+from .scan import Ref, file_link_targets, scan_docs, value_of
 from .schemas import assess_schemas
 
 
@@ -1010,6 +1010,58 @@ def cmd_refs(args) -> int:
     return 0 if wanted else 1
 
 
+def _shown(value) -> str:
+    """A frontmatter value as prose: lists join with ", ", maps as `key: value` pairs."""
+    if isinstance(value, list):
+        return ", ".join(map(_shown, value))
+    if isinstance(value, dict):
+        return ", ".join(f"{key}: {_shown(item)}" for key, item in value.items())
+    return "" if value is None else str(value)
+
+
+def cmd_render(args) -> int:
+    root = Path(args.root).resolve()
+    built = build(root)
+    errors = _assembly_errors(built.glossary, built.diagnostics)
+    if errors:
+        return _report(errors, root, False)
+    status = 0
+    for name in args.files:
+        path = Path(name).resolve()
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            print(f"ubiq render: {exc}", file=sys.stderr)
+            return 2
+        refs = sorted((r for r in built.refs if r.kind == "value" and r.file.resolve() == path),
+                      key=lambda r: r.start)
+        parts, end = [], 0
+        for ref in refs:
+            try:
+                shown = _shown(value_of(built.glossary, ref, built.config.lenient))
+            except LookupError as exc:
+                print(Diagnostic("E013", f"unresolved field value {ref.raw} — {exc}",
+                                 ref.file, ref.line).render(), file=sys.stderr)
+                status = 1
+                continue
+            parts += [text[end:ref.start], shown]
+            end = ref.start + len(ref.raw)
+        rendered = "".join(parts) + text[end:]
+        if args.out is None:
+            sys.stdout.write(rendered)
+            continue
+        if not path.is_relative_to(root):
+            print(f"ubiq render: {name} is outside {root}", file=sys.stderr)
+            return 2
+        dest = Path(args.out).resolve() / path.relative_to(root)
+        if dest == path:
+            print(f"ubiq render: refusing to overwrite source {name}", file=sys.stderr)
+            return 2
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(rendered, encoding="utf-8")
+    return status
+
+
 def cmd_candidates(args) -> int:
     root = Path(args.root).resolve()
     built = build(root)
@@ -1068,6 +1120,12 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--root", default=".")
     c.add_argument("--json", action="store_true")
     c.set_defaults(fn=cmd_check)
+
+    rn = sub.add_parser("render", help="print files with field references replaced by values")
+    rn.add_argument("files", nargs="+")
+    rn.add_argument("--root", default=".")
+    rn.add_argument("--out", help="write each file under this directory instead of stdout")
+    rn.set_defaults(fn=cmd_render)
 
     t = sub.add_parser("terms", help="list the glossary")
     t.add_argument("--root", default=".")

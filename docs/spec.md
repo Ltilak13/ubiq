@@ -101,6 +101,15 @@ code, and a wiki-link never is by default. A cross-record field ref uses its
 term for W001. `scan.value_of` returns the value a ref names, so a renderer
 and the check read fields the same way.
 
+`ubiq render FILE...` prints each file with every resolved `value` ref span
+replaced by its value; `--out DIR` writes each file at its root-relative path
+under `DIR` instead. Text where field refs are not found (fences, frontmatter,
+comments, other code spans) is unchanged. A string, number, or date renders as
+written, a list joins its items with `, `, and a map renders as `key: value`
+pairs joined with `, `. An unresolved ref stays as written and is reported as
+E013 on stderr, and the command exits 1. Render never writes a source file: an
+output path that is the source path exits 2.
+
 No configuration can contradict a guarantee: a setting that would is E008, and a
 test fails if this spec stops stating one. The guarantees are that fenced code
 blocks are never scanned, frontmatter is never scanned as prose, definition lines

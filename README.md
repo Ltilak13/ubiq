@@ -149,6 +149,7 @@ That's the same check you can run on every pull request.
 | List defined words | `ubiq terms` |
 | Find uses of a word | `ubiq refs session` |
 | Find possible new words | `ubiq candidates` |
+| Preview field references as values | `ubiq render docs/a.md` |
 | See why a file is included | `ubiq explain` |
 | See what a change affects | `ubiq impact --since main` |
 | Summarize new and resolved findings | `ubiq compare --since main --markdown` |

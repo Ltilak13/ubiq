@@ -231,6 +231,22 @@ Include a field listed in `ref_fields`, such as `uses`, and omit term metadata
 (`term`, `ns`, `aliases`, and `id`). An empty dependency list is valid.
 The document stays outside the glossary, and each dependency must resolve.
 
+## Reference a field instead of copying it
+
+Write a frontmatter value once and name it in prose with a Dataview inline
+code span: `` `= this.pct` `` for the current file, or
+`` `= [[discount]].pct` `` for another record. `ubiq check` reports `E013` when
+the field does not exist. Obsidian with Dataview shows the value; for other
+previews, `ubiq render` writes a copy with each span replaced by its value:
+
+```bash
+ubiq render docs/pricing.md               # print the rendered file
+ubiq render docs/*.md --out build/docs    # write copies; sources stay unchanged
+```
+
+Lists render as `a, b`, maps as `key: value, key: value`. An unresolved span
+stays as written, and the command exits 1 with the `E013` message.
+
 ## Commands and CI
 
 ```bash
@@ -250,6 +266,7 @@ ubiq candidates --json --min-files 3
 ubiq graph skill:ship                  # invoke, include, and route edges from a record
 ubiq graph part:checkout --callers     # who reuses a shared part
 ubiq overlap --unit line               # prose that several records repeat
+ubiq render docs/a.md --out build      # copy docs with field refs replaced by values
 ubiq impact --since main              # changed records and the callers they affect
 ubiq compare --since main --markdown  # new and resolved findings for a PR comment
 ubiq coverage                          # how many selected files have typed metadata

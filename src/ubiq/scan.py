@@ -233,6 +233,7 @@ class Ref:
     heading: bool = False  # the reference sits on a heading line
     linked: bool = False  # mention inside a non-vocabulary link label (author linked it)
     field: str = ""  # value refs: the frontmatter field named
+    start: int = 0  # value refs: offset of the span in the file, for renderers
 
     @property
     def kind(self) -> str:
@@ -573,7 +574,7 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
             continue
         ns, name = glossary.split(found[1].strip()) if found[1] else (None, "")
         refs.append(Ref(value, span, normalize(name), ns, path, line_of(start),
-                        target=name.strip(), field=found[2],
+                        target=name.strip(), field=found[2], start=start,
                         destination=None if found[1] else path.resolve()))
 
     delimiter = policies["delimiter"]
