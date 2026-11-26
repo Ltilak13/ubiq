@@ -9,6 +9,7 @@ Ubiq helps repositories make their knowledge explicit, connected, and checkable.
 | [Checkable contracts and evidence](checkable-contracts-evidence-goal.md) | Validation outcomes, assessment evidence, and limits of judgment |
 | [Human and agent usability](human-agent-readability-goal.md) | Finding, understanding, navigating, and correctly using information |
 | [Safe adoption and evolution](safe-adoption-evolution-goal.md) | Setup, migration, maintenance, and recovery |
+| [No-code specs](no-code-spec-goal.md) | Records that are the spec, docs, and tests, checked with no agent |
 
 ## Organization and dependencies
 

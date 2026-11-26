@@ -18,7 +18,7 @@ policies:
     sha256: 1c3950e84b849053a825cb686cfb41632533aad5ae6e5a3bc9be503cd8f97b5f
     anchor: '"const": "partial"'
   - path: tests/test_goals.py
-    sha256: 10176061c24282181a3c219add4c8769c1ce94c495d40b28efeb290a5e04a48c
+    sha256: f5cf6654803510a0970f35d69358e68b61f6b697f016a39f6d6e65c73c524f31
     anchor: def test_partial_assessment_requires_provisional_evidence(
 goals:
 - id: ubiq:domain-schema-goal
