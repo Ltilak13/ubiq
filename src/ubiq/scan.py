@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import re
 from bisect import bisect_left, bisect_right
+from collections import Counter
 from dataclasses import dataclass
 from html import unescape
 from html.entities import html5
@@ -255,23 +256,26 @@ def value_of(glossary: Glossary, ref: Ref, lenient: bool = False) -> str:
     """The text of the frontmatter field a `value` ref names, for checks and renderers.
 
     A list of strings reads as its items joined by ", ". Raises LookupError with
-    the reason when the field is null or not text. Another repository's record
+    the reason when the field is absent, null, or not text. Another repository's record
     reads that repository's overlays.
     """
     path = ref.destination
     assert path is not None, "value refs always have a destination"
     owner = next((g for g in glossary.external.values() if path in g.by_file), glossary)
+    where = Path(os.path.relpath(path, ref.file.resolve().parent)).as_posix()
     try:
+        if ref.field not in frontmatter_fields(path, owner, lenient):
+            raise LookupError(f"no field or heading '{ref.field}' in {where}")
         value = field_value(path, ref.field, owner, lenient)
     except KeyError:
-        raise LookupError(f"{path.name} has no value for field '{ref.field}'") from None
+        raise LookupError(f"{where} has no value for field '{ref.field}'") from None
     except InvalidRecord as exc:
-        raise LookupError(f"{path.name}: {exc}") from None
+        raise LookupError(f"{where}: {exc}") from None
     if isinstance(value, str):
         return value
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return ", ".join(value)
-    raise LookupError(f"field '{ref.field}' in {path.name} is not text or a list of "
+    raise LookupError(f"field '{ref.field}' in {where} is not text or a list of "
                       "text; link a scalar field")
 
 
@@ -448,6 +452,21 @@ def _interpret_markdown(text: str) -> _Markdown:
     return _Markdown(prose, delimiters, links, addresses, comments)
 
 
+def _slugs(path: Path) -> set[str]:
+    """GitHub-style anchors for the ATX headings of a Markdown file."""
+    seen: Counter[str] = Counter()
+    slugs = set()
+    for line in _blank_fences(path.read_text(encoding="utf-8")).splitlines():
+        m = re.match(r" {0,3}#{1,6}\s+(.*?)\s*#*\s*$", line)
+        if not m:
+            continue
+        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", m.group(1)).strip().lower()
+        slug = re.sub(r"[^\w\- ]", "", text).replace(" ", "-")
+        slugs.add(f"{slug}-{seen[slug]}" if seen[slug] else slug)
+        seen[slug] += 1
+    return slugs
+
+
 def _line_index(text: str):
     """Return pos -> one-based line number. Masked copies keep every newline."""
     newlines = [m.start() for m in re.finditer("\n", text)]
@@ -549,9 +568,12 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
         fragment = unquote(url.fragment)
         if fragment and value_admits(start) and not (url.scheme or url.netloc or url.query):
             # A fragment that names a frontmatter field wins over a heading slug.
+            # In a file with frontmatter, one naming neither is a misspelled field.
             file = path if not url.path else _doc_link_path(path, spec, cfg.root)
-            if (file is not None and file.is_file()
-                    and fragment in frontmatter_keys(file, glossary, cfg.lenient)):
+            fields = frontmatter_keys(file, glossary, cfg.lenient) if (
+                file is not None and file.is_file()) else {}
+            if file is not None and fields and (
+                    fragment in fields or fragment.lower() not in _slugs(file)):
                 found = MD_LINK_RE.match(document.delimiters, start)
                 label = found["label"].strip() if found else ""
                 refs.append(Ref(value, text[start:end], "", None, path, line_of(start),

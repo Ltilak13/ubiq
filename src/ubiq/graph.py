@@ -28,10 +28,10 @@ from .globs import Glob
 from .records import Glossary, InvalidRecord, Term, parse_frontmatter
 from .scan import (
     Ref,
-    _blank_fences,
     _doc_link_path,
     _interpret_markdown,
     _line_index,
+    _slugs,
     frontmatter_keys,
 )
 
@@ -389,21 +389,6 @@ class Layout:
         parts = PurePosixPath(os.path.normpath(str(PurePosixPath("/i") / within / rel))).parts
         target = self.by_name.get(parts[2]) if len(parts) > 3 and parts[1] == "i" else None
         return (target.joinpath(*parts[3:]) if target else None), target
-
-
-def _slugs(path: Path) -> set[str]:
-    """GitHub-style anchors for the ATX headings of a Markdown file."""
-    seen: Counter[str] = Counter()
-    slugs = set()
-    for line in _blank_fences(path.read_text(encoding="utf-8")).splitlines():
-        m = re.match(r" {0,3}#{1,6}\s+(.*?)\s*#*\s*$", line)
-        if not m:
-            continue
-        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", m.group(1)).strip().lower()
-        slug = re.sub(r"[^\w\- ]", "", text).replace(" ", "-")
-        slugs.add(f"{slug}-{seen[slug]}" if seen[slug] else slug)
-        seen[slug] += 1
-    return slugs
 
 
 class _Link(NamedTuple):

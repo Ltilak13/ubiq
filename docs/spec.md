@@ -94,10 +94,12 @@ Orders save [10](glossary/discount.md#pct)%.   pct of another record's file
 
 A link is a `value` ref only when its fragment names a top-level frontmatter
 field of an existing local Markdown target, or of an overlay on it, whose
-non-null fields win. A fragment that names no field is an ordinary heading or
-anchor link, unchanged and unchecked, so a misspelled field name reads as a
-heading link. When a heading slug and a field share a name, the field wins,
-also for W004. The label, trimmed, must equal the field's value; a list of
+non-null fields win. When the target has frontmatter, a fragment that names
+neither a field nor a heading of that file is a misspelled field: it is a `value`
+ref too and reports E013. Heading slugs are the GitHub-style anchors W004 uses.
+A fragment that names a heading is an ordinary heading link, and fragments into
+files without frontmatter stay unchecked. When a heading slug and a field share
+a name, the field wins, also for W004. The label, trimmed, must equal the field's value; a list of
 strings reads as its items joined by `, `. A null field, a mapping or other
 non-text value, or a label that differs reports E013, which names the current
 value. A link to another record still counts as its Markdown reference, and the
@@ -139,8 +141,9 @@ include link that resolves nowhere always fails it (see Composition edges).
   that contradicts a guarantee. The message names the field or rules.
 - `E009` schema conformance failure — selected frontmatter or structured data violates its declared JSON Schema, or a target is missing.
 - `E010` graph integrity failure — declared record coverage, relationships, or source evidence is invalid.
-- `E013` field value — a `value` link whose field is null or not text, or whose
-  label differs from the field's value. The message names the value to use.
+- `E013` field value — a `value` link whose field is absent (the fragment names
+  neither a field nor a heading of a file with frontmatter), null, or not text, or
+  whose label differs from the field's value. The message names the value to use.
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 - `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,

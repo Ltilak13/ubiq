@@ -33,19 +33,31 @@ def test_matching_labels_pass(tmp_path, capsys):
 
 def test_stale_null_and_non_text_fields_fail(tmp_path, capsys):
     doc = (f"---\npct: 5\n---\n# pct\n\n[4](#pct) [9]({LINK}#pct) [x]({LINK}#note) "
-           f"[x]({LINK}#limits) [heading]({LINK}#Pct) [x](#missing)\n"
+           f"[x]({LINK}#limits) [heading]({LINK}#Pct)\n"
            f"```\n[1]({LINK}#pct)\n```\n<!-- [2]({LINK}#pct) --> `[3]({LINK}#pct)`\n")
     make_repo(tmp_path, {"discount.md": DISCOUNT}, {"doc.md": doc}, CONFIG)
     status, diags = check(tmp_path, capsys)
     assert status == 1
-    # A field wins over a same-named heading; a fragment naming no field is an
-    # ordinary anchor; fences, comments, and code are not scanned.
+    # A field wins over a same-named heading; a heading fragment is an ordinary
+    # anchor; fences, comments, and code are not scanned.
     assert e013(diags) == [
         "label '4' ≠ pct '5' — update the label",
         "label '9' ≠ pct '10' — update the label",
-        "discount.md has no value for field 'note'",
-        "field 'limits' in discount.md is not text or a list of text; link a scalar field",
+        "glossary/discount.md has no value for field 'note'",
+        "field 'limits' in glossary/discount.md is not text or a list of text; link a scalar field",
     ], diags
+
+
+def test_misspelled_field_fragments_fail(tmp_path, capsys):
+    doc = (f"---\npct: 5\n---\n## Real heading\n\n[5](#pcct) [10]({LINK}#pcct) "
+           f"[ok](#real-heading) [ok]({LINK}#pct-1) [ok](plain.md#nothing)\n")
+    make_repo(tmp_path, {"discount.md": DISCOUNT + "\n## Pct\n"},
+              {"doc.md": doc, "plain.md": "# Plain\n"}, CONFIG)
+    status, diags = check(tmp_path, capsys)
+    assert status == 1
+    # Files without frontmatter keep unchecked fragments.
+    assert e013(diags) == ["no field or heading 'pcct' in doc.md",
+                           "no field or heading 'pcct' in glossary/discount.md"], diags
 
 
 def test_severity_and_historical_docs(tmp_path, capsys):

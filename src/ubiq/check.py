@@ -13,7 +13,8 @@ Errors (fail the build):
   E008 invalid-configuration  invalid settings or conflicting glossary selection rules
   E011 include-cycle          a shared part includes itself through other parts (graph.py)
   E012 part-input             an include names no value, or an undeclared one, for a part input
-  E013 field-value            a link to #field whose field is null, not text, or not its label
+  E013 field-value            a link to #field whose field is absent, null, not text, or not
+                              its label (a fragment naming no heading of a record is a field)
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
