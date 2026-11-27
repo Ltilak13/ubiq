@@ -82,6 +82,15 @@ def test_used_features_come_from_config_and_requirements(tmp_path):
         == {"glossary", "refs"}
 
 
+def test_empty_config_does_not_count_as_a_glossary(tmp_path):
+    features = [feature("glossary", config=["glossary"])]
+    (tmp_path / "ubiq.yaml").write_text("{}")
+    assert used_features(features, tmp_path) == set()
+    (tmp_path / "glossary").mkdir()
+    (tmp_path / "glossary" / "term.md").write_text("A glossary record.")
+    assert used_features(features, tmp_path) == {"glossary"}
+
+
 def run(capsys, *argv):
     status = main(["plan", *argv])
     return status, capsys.readouterr().out
@@ -120,6 +129,20 @@ def test_plan_next_for_a_repo_using_some_features(tmp_path, capsys):
     assert out == "every feature is in use\n"
     status, out = run(capsys, "--features", str(features), "--used", "typo", "--next")
     assert status == 1 and "typo" in out
+
+
+def test_plan_rejects_missing_directory(tmp_path, capsys):
+    missing = tmp_path / "missing"
+    status, out = run(capsys, "--features", str(missing), "--next", "--json")
+    assert status == 1
+    assert str(missing) in json.loads(out)["error"]
+
+
+def test_plan_rejects_falsey_non_list_field(tmp_path, capsys):
+    path = tmp_path / "bad.md"
+    path.write_text("---\nname: bad\nsummary: bad\nrequires: false\n---\n")
+    status, out = run(capsys, "--features", str(tmp_path))
+    assert status == 1 and "requires must be a list of strings" in out
 
 
 def test_plan_reports_missing_requirement_and_cycle(tmp_path, capsys):

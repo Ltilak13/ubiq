@@ -45,7 +45,7 @@ class Feature:
 
 
 def _strings(meta: dict, key: str, path: Path) -> tuple[str, ...]:
-    value = meta.get(key) or []
+    value = meta.get(key, [])
     if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
         raise PlanError(f"{path.name}: {key} must be a list of strings")
     return tuple(value)
@@ -53,6 +53,8 @@ def _strings(meta: dict, key: str, path: Path) -> tuple[str, ...]:
 
 def load_features(directory: Path = BUNDLED) -> list[Feature]:
     """Read every feature record in `directory`, sorted by name."""
+    if not directory.is_dir():
+        raise PlanError(f"feature directory does not exist or is not a directory: {directory}")
     features = []
     for path in sorted(directory.glob("*.md")):
         try:
@@ -139,7 +141,7 @@ def used_features(features: Sequence[Feature], root: Path,
     by_name = {f.name: f for f in features}
     used = {f.name for f in features if any(_configured(settings, key) for key in f.config)}
     used.update(name for name in declared if name in by_name)
-    if "glossary" in by_name and (path.is_file() or any(root.glob("glossary/**/*.md"))):
+    if "glossary" in by_name and any(root.glob("glossary/**/*.md")):
         used.add("glossary")
     pending = list(used)
     while pending:

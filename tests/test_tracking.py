@@ -110,6 +110,20 @@ def test_annotated_values_resolve_and_make_named_edges(tmp_path, capsys):
     assert report["edges"] == []
 
 
+def test_graph_selects_annotation_by_field_name_or_edge_kind(tmp_path, capsys):
+    repo(tmp_path, GOOD)
+    schema_path = tmp_path / "schema.json"
+    schema = json.loads(schema_path.read_text())
+    criteria = schema["properties"]["criteria"]["patternProperties"]["^AC[0-9]+$"]
+    criteria["properties"]["requires"]["x-ubiq-ref"]["edge"] = "depends-on"
+    schema_path.write_text(json.dumps(schema))
+    status, by_field = run(tmp_path, capsys, "graph", "--kind", "requires")
+    assert status == 0 and len(by_field["edges"]) == 2
+    status, by_kind = run(tmp_path, capsys, "graph", "--kind", "depends-on")
+    assert status == 0 and by_kind["edges"] == by_field["edges"]
+    assert all(edge["kind"] == "depends-on" for edge in by_field["edges"])
+
+
 def test_missing_target_is_e006_at_the_field(tmp_path, capsys):
     repo(tmp_path, GOOD.replace("beta", "gamma"))
     status, report = run(tmp_path, capsys, "check")
