@@ -8,6 +8,7 @@ frontmatter files, so it needs no glossary. A nested annotation (a goal criterio
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import yaml
@@ -15,17 +16,19 @@ import yaml
 from . import xref
 from .check import Diagnostic
 from .globs import GlobError
-from .records import FRONTMATTER_RE, normalize
-from .schemas import _annotations, load_data
+from .records import FRONTMATTER_RE, Glossary, normalize
+from .scan import Ref
+from .schemas import _annotations, _in_namespace, load_data
 
 READ_ERRORS = (OSError, UnicodeError, ValueError, TypeError, KeyError, yaml.YAMLError, RecursionError)
 
 
-def check_cycles(cfg) -> list[Diagnostic]:
+def check_cycles(cfg, glossary: Glossary) -> list[Diagnostic]:
     """E014 for each cycle among records through an `acyclic` edge."""
     graphs: dict[tuple[str, str], dict[str, list[str]]] = {}
     where: dict[tuple[str, str], dict[str, tuple[Path, int]]] = {}
     shown: dict[str, str] = {}
+    policy = replace(cfg.policies["field"], resolve=_in_namespace)
     for spec in cfg.schemas:
         if spec.format != "frontmatter":
             continue
@@ -55,10 +58,18 @@ def check_cycles(cfg) -> list[Diagnostic]:
             shown.setdefault(node, name.strip())
             for annotation in found:
                 key = (annotation.ref.ns, annotation.ref.edge)
-                targets = [normalize(v) for _, v in xref.values(data, annotation.steps)
-                           if xref.pr_entry(v) is None and v.strip()]
-                graphs.setdefault(key, {}).setdefault(node, []).extend(targets)
                 line = xref.line_of(match.group(1) if match else "", annotation.steps[0][1:2])
+                targets = graphs.setdefault(key, {}).setdefault(node, [])
+                for _, raw in xref.values(data, annotation.steps):
+                    value = raw.strip().strip("'\"")
+                    if not value or xref.pr_entry(value) is not None:
+                        continue
+                    ref = Ref(policy, raw, normalize(value), annotation.ref.ns, path, line, target=value)
+                    resolved = ref.resolve(glossary)
+                    if len(resolved) == 1:
+                        targets.append(resolved[0].term)
+                    elif not resolved:
+                        targets.append(ref.name)
                 where.setdefault(key, {}).setdefault(node, (path, line))
     diagnostics = []
     for (ns, edge), edges in sorted(graphs.items()):

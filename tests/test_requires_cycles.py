@@ -39,6 +39,15 @@ def test_a_requires_cycle_fails_check_and_names_it(tmp_path, capsys):
     assert error["file"].endswith("f/a.md") and error["line"] == 3
 
 
+def test_requires_cycles_resolve_glossary_aliases(tmp_path, capsys):
+    features(tmp_path, a=["other-b"], b=["a"])
+    record = tmp_path / "f/b.md"
+    record.write_text(record.read_text().replace("name: b", "name: b\naliases: [other-b]"))
+    status, found, report = check(tmp_path, capsys)
+    assert status == 1, report
+    assert [d["message"] for d in found] == ["requires cycle: a -> b -> a"]
+
+
 def test_a_self_requirement_is_a_cycle(tmp_path, capsys):
     features(tmp_path, a=["a"])
     assert [d["message"] for d in check(tmp_path, capsys)[1]] == ["requires cycle: a -> a"]

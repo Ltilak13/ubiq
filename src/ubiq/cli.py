@@ -476,7 +476,7 @@ def _check_build(result: Build) -> list[Diagnostic]:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))
         from .cycles import check_cycles
-        diags.extend(check_cycles(cfg))
+        diags.extend(check_cycles(cfg, glossary))
     live = [path for path in result.docs if path not in result.historical]
     diags.extend(check_edges(glossary, refs, cfg.edges, root, live, layout))
     return diags
