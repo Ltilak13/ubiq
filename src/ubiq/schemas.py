@@ -218,6 +218,8 @@ def xref_refs(cfg) -> list[Ref]:
                 continue
             text = match.group(1) if match else ""
             for annotation in found:
+                if annotation.ref.within:
+                    continue  # names in the same file: step_refs.py checks them
                 for keys, value in xref.values(data, annotation.steps):
                     value = value.strip().strip("'\"")
                     if (not value or value.lower() in SKIP_FIELD_VALUES
