@@ -88,6 +88,11 @@ steps:
     requires: [plan-records]
     branch: claude/ecstatic-mendel-nkgz6t-priority-inheritance
     base: claude/ecstatic-mendel-nkgz6t-plan-records
+  decision-records:
+    issue: 152
+    requires: [sync-github, plan-records]
+    branch: claude/ecstatic-mendel-nkgz6t-decision-records
+    base: claude/ecstatic-mendel-nkgz6t-plan-records
   backfill:
     issue: 127
     requires: [feature-lifecycle, plan-records, pr-stacks, part-of-sub-issues, plan-step-cycles, priority-inheritance]
