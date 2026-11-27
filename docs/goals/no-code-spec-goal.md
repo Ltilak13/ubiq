@@ -8,9 +8,16 @@ criteria:
     gap: No implementation is merged. Diagrams (#59) and README composition (#65) have no checked home yet.
     issues: [59, 65]
   AC2:
-    assessment: unassessed
-    support: []
-    gap: No recipe documents the pre-commit and CI setup for ubiq check, cue vet, vale, and cucumber.
+    assessment: partial
+    support:
+    - feature: No-code checks recipe
+      implementation:
+        path: docs/no-code-checks.md
+        anchor: '## Pre-commit'
+      check:
+        path: tests/test_no_code_checks.py
+        anchor: def test_sample_passes_ubiq_check(
+    gap: The test runs only ubiq check. The no-code-checks workflow runs cue vet, vale, and cucumber on the sample in CI. The pre-commit config is not executed in CI. A reviewer must confirm the workflow run passes and the recipe matches the sample.
   AC3:
     assessment: unassessed
     support: []
