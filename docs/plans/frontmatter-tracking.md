@@ -44,6 +44,7 @@ steps:
     requires: [tracking-fields]
     branch: claude/ecstatic-mendel-nkgz6t-feature-lifecycle
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+    pr: 146
   plan-records:
     issue: 124
     requires: [tracking-fields]
