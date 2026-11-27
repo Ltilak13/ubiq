@@ -105,7 +105,7 @@ DEFAULT_CONFIG: dict = {
     # reports setup guidance and exits 2.
     # repo: owner/name of the issue tracker (default: $GITHUB_REPOSITORY).
     # label_prefix: prefix of the labels the sync owns (default "priority: ").
-    # records: the record files to mirror, each a `glob` and its `kind` (goal).
+    # records: the record files to mirror, each a `glob` and its `kind` (goal, feature).
     "sync": None,
 }
 
@@ -148,7 +148,7 @@ class CoverageSpec:
     no_regression: bool
 
 
-SYNC_KINDS = ("goal",)
+SYNC_KINDS = ("goal", "feature")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 

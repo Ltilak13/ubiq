@@ -38,6 +38,8 @@ sync:
   records:
     - glob: "docs/goals/*-goal.md"
       kind: goal
+    - glob: "src/ubiq/features/*.md"
+      kind: feature
 
 ignore:
   - ".git/**"

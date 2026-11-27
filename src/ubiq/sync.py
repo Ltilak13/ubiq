@@ -137,6 +137,45 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
     return items
 
 
+def load_feature(path: Path, root: Path) -> dict[str, Any]:
+    """Read a feature record into its frontmatter plus its repository path."""
+    path = Path(path).resolve()
+    try:
+        data = dict(load_data(path, frontmatter=True))
+        missing = [k for k in ('name', 'summary') if not isinstance(data.get(k), str)]
+        if missing:
+            raise KeyError(', '.join(missing))
+        data['path'] = path.relative_to(Path(root).resolve()).as_posix()
+        return data
+    except (ValueError, KeyError, OSError) as exc:
+        raise SyncError(f"{path}: not a readable feature ({exc})") from exc
+
+
+def feature_desired(feature: Mapping[str, Any], sha: str = '',
+                    label_prefix: str = DEFAULT_LABEL_PREFIX) -> list[Desired]:
+    """One `Desired` for a feature record: open while `planned`, closed once `shipped`.
+
+    A record with no `status` is shipped. `issue` is tracked like a goal criterion's.
+    """
+    name = feature['name']
+    marker = f"ubiq-feature: {name}"
+    shipped = feature.get('status', 'shipped') == 'shipped'
+    requires = ', '.join(f"`{r}`" for r in feature.get('requires') or []) or 'none'
+    body = (f"Feature `{name}`, planned in `{feature['path']}`.\n\n{feature['summary']}\n\n"
+            f"Specified in `{feature.get('docs', '')}`. Requires: {requires}.\n\n"
+            "When the feature ships, set `status: shipped` in the record. The merge closes "
+            f"this issue.\n\n<!-- {marker} -->\n")
+    comment = (f"Feature `{name}` is `shipped` at {sha or 'the merged commit'}.\n\n"
+               f"<!-- ubiq-feature-closed: {name} -->")
+    return [Desired(
+        kind='feature', ident={'feature': name}, marker=marker,
+        title=textwrap.shorten(f"{name}: {feature['summary']}", 200), body=body,
+        state='closed' if shipped else 'open',
+        listed=(feature['issue'],) if 'issue' in feature else (),
+        close_comment=comment if shipped else '', priority=feature.get('priority', ''),
+        label_prefix=label_prefix)]
+
+
 def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
     """Desired state for every record file that `sync.records` selects."""
     assert cfg.sync is not None
@@ -145,6 +184,8 @@ def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
         for path in sorted(record.glob.walk(cfg.ignore)):
             if record.kind == 'goal':
                 items += goal_desired(load_goal(path, cfg.root), sha, cfg.sync.label_prefix)
+            elif record.kind == 'feature':
+                items += feature_desired(load_feature(path, cfg.root), sha, cfg.sync.label_prefix)
     return items
 
 
