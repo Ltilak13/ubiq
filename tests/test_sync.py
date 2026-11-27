@@ -253,7 +253,7 @@ def test_repository_comes_from_the_flag_then_config_then_environment(tmp_path, m
     urls = []
 
     def spy(method, url, token, payload=None):
-        urls.append(url.split('/issues')[0].rsplit('repos/', 1)[-1])
+        urls.append(url.split('/issues')[0].split('/pulls')[0].rsplit('repos/', 1)[-1])
         return []
     (tmp_path / 'a').mkdir()
     (tmp_path / 'b').mkdir()
@@ -262,7 +262,7 @@ def test_repository_comes_from_the_flag_then_config_then_environment(tmp_path, m
     cmd_sync(flags(configured), spy, 0)
     cmd_sync(flags(configured, repo='flag/repo'), spy, 0)
     cmd_sync(flags(bare), spy, 0)
-    assert urls == ['o/r', 'flag/repo', 'env/repo']
+    assert urls == ['o/r', 'o/r', 'flag/repo', 'flag/repo', 'env/repo', 'env/repo']  # issues, pulls
     capsys.readouterr()
     monkeypatch.delenv('GITHUB_REPOSITORY')
     assert cmd_sync(flags(bare), spy, 0) == 2

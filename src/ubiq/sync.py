@@ -11,7 +11,10 @@ Each mirrored fact is one function in `FACTS`: given a desired item and the
 issues that track it, return the actions that make GitHub match. A later fact
 (blocked-by link, sub-issue) adds one function there and one handler in
 `GitHub.handlers`; the matching, drift, and CLI code do not change. `fact_priority`
-is the model: it mirrors `priority` as one `<sync.label_prefix>Pn` label.
+is the model: it mirrors `priority` as one `<sync.label_prefix>Pn` label. Facts that
+need the open pull requests are in `PR_FACTS`: `fact_in_review` derives the
+`status: in review` label and `fact_stack` reports a pull request whose base is not its
+required record's branch (a `stack` action; the sync reports and never retargets).
 
 Current behavior, from the goal-issue script this generalizes: the sync creates
 issues and closes issues that a criterion lists in `issues:` or that carry its
@@ -84,6 +87,26 @@ class Desired:
     # and the pull requests it lists as `pr: <n>`.
     requires: tuple[int, ...] | None = None
     requires_prs: tuple[int, ...] = ()
+    # `pr`: the record's implementing pull requests, and for each record it `requires`
+    # that has a `pr`, that record's name and pull requests (see `Stack`).
+    prs: tuple[int, ...] = ()
+    required_prs: tuple[tuple[str, tuple[int, ...]], ...] = ()
+
+
+@dataclass(frozen=True)
+class Stack:
+    """A record's pull requests and the pull requests of the records it requires."""
+    ident: Mapping[str, str]
+    prs: tuple[int, ...]
+    required: tuple[tuple[str, tuple[int, ...]], ...]
+
+
+@dataclass(frozen=True)
+class Tracked:
+    """What a schema-bound frontmatter record says about its tracking."""
+    issue: int | None
+    prs: tuple[int, ...]
+    requires: tuple[str, ...]
 
 
 # -- desired state: records -> Desired ---------------------------------------------
@@ -117,11 +140,13 @@ def load_goal(path: Path, root: Path) -> dict[str, Any]:
 
 def goal_desired(goal: Mapping[str, Any], sha: str = '',
                  label_prefix: str = DEFAULT_LABEL_PREFIX,
-                 numbers: Mapping[str, int] | None = None) -> list[Desired]:
+                 numbers: Mapping[str, int] | None = None,
+                 pulls: Mapping[str, tuple[int, ...]] | None = None) -> list[Desired]:
     """One `Desired` per criterion: open until the criterion is `met`, then closed.
 
     A criterion's `issue` is tracked like each number in its `issues` list. `numbers`
-    maps a normalized record name to its issue, to resolve the criterion's `requires`.
+    maps a normalized record name to its issue, to resolve the criterion's `requires`;
+    `pulls` maps it to the record's `pr`, for the stack check.
     """
     items = []
     for ac, criterion in goal['criteria'].items():
@@ -142,7 +167,9 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
             close_comment=comment, priority=criterion.get('priority', ''),
-            label_prefix=label_prefix, **_requires(criterion, numbers or {})))
+            label_prefix=label_prefix, prs=tuple(criterion.get('pr', ())),
+            required_prs=_required_prs(criterion, pulls or {}),
+            **_requires(criterion, numbers or {})))
     return items
 
 
@@ -164,9 +191,15 @@ def _requires(criterion: Mapping[str, Any], numbers: Mapping[str, int]) -> dict[
     return {'requires': tuple(dict.fromkeys(blockers)), 'requires_prs': tuple(dict.fromkeys(prs))}
 
 
-def tracked_issue_numbers(cfg: Config) -> dict[str, int]:
-    """Normalized record name -> `issue`, for each schema-bound frontmatter record that has both."""
-    numbers: dict[str, int] = {}
+def _required_prs(item: Mapping[str, Any], pulls: Mapping[str, tuple[int, ...]]) -> tuple[tuple[str, tuple[int, ...]], ...]:
+    """The records `item` requires that list a `pr`, as (name, pull requests)."""
+    names = dict.fromkeys(normalize(v) for v in item.get('requires', ()) if xref.pr_entry(v) is None)
+    return tuple((name, pulls[name]) for name in names if pulls.get(name))
+
+
+def tracked_records(cfg: Config) -> dict[str, Tracked]:
+    """Normalized record name -> its tracking fields, for each schema-bound frontmatter record."""
+    found: dict[str, Tracked] = {}
     for spec in cfg.schemas:
         if spec.format != 'frontmatter':
             continue
@@ -176,21 +209,40 @@ def tracked_issue_numbers(cfg: Config) -> dict[str, int]:
                     data = load_data(path, frontmatter=True)
                 except (ValueError, OSError):
                     continue
-                name, number = (data.get('name'), data.get('issue')) if isinstance(data, dict) else (None, None)
-                if isinstance(name, str) and isinstance(number, int) and not isinstance(number, bool):
-                    numbers.setdefault(normalize(name), number)
-    return numbers
+                if not isinstance(data, dict) or not isinstance(data.get('name'), str):
+                    continue
+                number = data.get('issue')
+                prs, requires = data.get('pr'), data.get('requires')
+                found.setdefault(normalize(data['name']), Tracked(
+                    number if isinstance(number, int) and not isinstance(number, bool) else None,
+                    tuple(n for n in prs if isinstance(n, int)) if isinstance(prs, list) else (),
+                    tuple(v for v in requires if isinstance(v, str)) if isinstance(requires, list) else ()))
+    return found
+
+
+def tracked_issue_numbers(cfg: Config) -> dict[str, int]:
+    """Normalized record name -> `issue`, for each schema-bound frontmatter record that has both."""
+    return {name: t.issue for name, t in tracked_records(cfg).items() if t.issue is not None}
+
+
+def record_stacks(records: Mapping[str, Tracked]) -> list[Stack]:
+    """A `Stack` for each record that lists a `pr`; a record's name is its ident."""
+    pulls = {name: t.prs for name, t in records.items()}
+    return [Stack({'record': name}, t.prs, _required_prs({'requires': t.requires}, pulls))
+            for name, t in records.items() if t.prs]
 
 
 def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
     """Desired state for every record file that `sync.records` selects."""
     assert cfg.sync is not None
     items: list[Desired] = []
-    numbers = tracked_issue_numbers(cfg)
+    records = tracked_records(cfg)
+    numbers = {name: t.issue for name, t in records.items() if t.issue is not None}
+    pulls = {name: t.prs for name, t in records.items()}
     for record in cfg.sync.records:
         for path in sorted(record.glob.walk(cfg.ignore)):
             if record.kind == 'goal':
-                items += goal_desired(load_goal(path, cfg.root), sha, cfg.sync.label_prefix, numbers)
+                items += goal_desired(load_goal(path, cfg.root), sha, cfg.sync.label_prefix, numbers, pulls)
     return items
 
 
@@ -327,15 +379,94 @@ def fact_blocked_line(item: Desired, tracked: Sequence[int], issues: Mapping[int
     return actions
 
 
+# -- pull requests: the stack check and the derived `status: in review` label --------
+
+STATUS_PREFIX = 'status: '
+IN_REVIEW = STATUS_PREFIX + 'in review'
+IN_PROGRESS = STATUS_PREFIX + 'in progress'
+# `Closes #12`, `fixed: #12`, `Resolves owner/repo#12`: GitHub's closing keywords.
+CLOSING_RE = re.compile(r'\b(?:close[sd]?|fix(?:e[sd]?)?|resolve[sd]?)\b:?[ \t]+(?:([\w.-]+/[\w.-]+))?#(\d+)',
+                        re.IGNORECASE)
+
+Pull = Mapping[str, Any]
+
+
+def closing_numbers(body: str | None, repo: str = '') -> tuple[int, ...]:
+    """Issue numbers that a pull request body closes in `repo` (a bare `#n` or `repo#n`)."""
+    return tuple(dict.fromkeys(int(m.group(2)) for m in CLOSING_RE.finditer(body or '')
+                               if not m.group(1) or m.group(1).casefold() == repo.casefold()))
+
+
+def stack_of(item: Desired) -> Stack:
+    return Stack(item.ident, item.prs, item.required_prs)
+
+
+def stack_findings(stack: Stack, pulls: Mapping[int, Pull]) -> list[Action]:
+    """A `stack` action when an open pull request of the record is based elsewhere than
+    on the head branch of an open pull request of a record it requires.
+
+    A record whose required records have no open pull request makes no claim (those
+    merged, and the pull request targets the trunk). A pull request has one base, so with
+    several required records the base may be any of their heads. Report only: the sync
+    never retargets a pull request.
+    """
+    wanted = {r: pulls[r]['head'] for _, prs in stack.required for r in prs
+              if r in pulls and r not in stack.prs}
+    if not wanted:
+        return []
+    names = [name for name, prs in stack.required if any(r in wanted for r in prs)]
+    return [{'action': 'stack', **stack.ident, 'pr': n, 'base': pulls[n]['base'],
+             'expected': sorted(set(wanted.values())), 'requires': names,
+             'reason': "pull request base is not the head branch of a required record's pull request"}
+            for n in stack.prs if n in pulls and pulls[n]['base'] not in wanted.values()]
+
+
+def fact_in_review(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue],
+                   pulls: Mapping[int, Pull]) -> list[Action]:
+    """An issue carries `status: in review` exactly while an open pull request closes it.
+
+    The label is derived, so it is stored nowhere in the record. Adding it removes
+    `status: in progress`; every other `status: ` label is left alone. A closed issue
+    only loses the label. It is independent of `sync.label_prefix`.
+    """
+    actions: list[Action] = []
+    for n in tracked:
+        issue = issues.get(n)
+        if issue is None:
+            continue
+        names = _label_names(issue)
+        has = any(x.casefold() == IN_REVIEW for x in names)
+        reviewing = issue.get('state') == 'open' and any(n in p['closes'] for p in pulls.values())
+        if reviewing and not has:
+            remove = [x for x in names if x.casefold() == IN_PROGRESS]
+            actions.append({'action': 'label', **item.ident, 'issue': n, 'add': [IN_REVIEW], 'remove': remove})
+        elif has and not reviewing:
+            remove = [x for x in names if x.casefold() == IN_REVIEW]
+            actions.append({'action': 'label', **item.ident, 'issue': n, 'add': [], 'remove': remove})
+    return actions
+
+
+def fact_stack(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue],
+               pulls: Mapping[int, Pull]) -> list[Action]:
+    return stack_findings(stack_of(item), pulls)
+
+
+# Each pull-request fact: (item, tracked issue numbers, issues, open pulls by number) -> actions.
+PR_FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue], Mapping[int, Pull]], list[Action]], ...] = (
+    fact_in_review, fact_stack)
+
 # Each mirrored fact: (item, tracked issue numbers, issues by number) -> actions.
 FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action]], ...] = (
     fact_exists, fact_state, fact_priority, fact_requires, fact_blocked_line)
 
 
-def plan(desired: Iterable[Desired], snapshot: Sequence[Issue]) -> list[Action]:
-    """Return create, close, noop, and warn actions for every desired item.
+def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
+         pulls: Sequence[Pull] = (), stacks: Iterable[Stack] = ()) -> list[Action]:
+    """Return create, close, label, stack, noop, and warn actions for every desired item.
 
-    `snapshot` holds dicts with `number`, `state`, `body`, and `user.login`.
+    `snapshot` holds dicts with `number`, `state`, `body`, and `user.login`. `pulls`
+    holds the open pull requests (`number`, `head`, `base`, `closes`); `stacks` are
+    further records whose pull requests are checked, though they mirror no issue.
     Markers count only in issues opened by `BOT`. Issues that are neither listed
     by a record nor marked by `BOT` are ignored. A listed number that is not an
     existing issue (a pull request, a typo) gets a `warn`. Applying the result
@@ -343,6 +474,7 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue]) -> list[Action]:
     """
     by_number = {i['number']: i for i in snapshot}
     by_marker = _marked(snapshot)
+    open_pulls = {p['number']: p for p in pulls}
     actions: list[Action] = []
     for item in desired:
         marked = [i['number'] for i in by_marker.get(item.marker, [])]
@@ -350,10 +482,13 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue]) -> list[Action]:
         actions += [{'action': 'warn', **item.ident, 'issue': n, 'reason': 'listed number is not an issue'}
                     for n in item.listed if n not in by_number]
         found = [a for fact in FACTS for a in fact(item, tracked, by_number)]
+        found += [a for pr_fact in PR_FACTS for a in pr_fact(item, tracked, by_number, open_pulls)]
         actions += found
         if not found:
             reason = 'met; no open issue' if item.state == 'closed' else 'tracked'
             actions.append({'action': 'noop', **item.ident, 'reason': reason, 'issues': tracked})
+    for stack in stacks:
+        actions += stack_findings(stack, open_pulls)
     return actions
 
 
@@ -400,6 +535,19 @@ class GitHub:
             issues += [self._with_links(i) for i in batch if 'pull_request' not in i]
             if len(batch) < 100:
                 return issues
+            page += 1
+
+    def pulls(self) -> list[Pull]:
+        """Every open pull request: number, head branch, base branch, and the issues it closes."""
+        found: list[Pull] = []
+        page = 1
+        while True:
+            batch = self._call('GET', f'https://api.github.com/repos/{self.repo}/pulls'
+                                      f'?state=open&per_page=100&page={page}')
+            found += [{'number': p['number'], 'head': p['head']['ref'], 'base': p['base']['ref'],
+                       'closes': closing_numbers(p.get('body'), self.repo)} for p in batch]
+            if len(batch) < 100:
+                return found
             page += 1
 
     def _with_links(self, issue: dict) -> dict:
@@ -566,7 +714,8 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
         return 0
     github = GitHub(repo, token, transport, pause)
     try:
-        actions = plan(desired_from_config(cfg, _head(root, getattr(args, 'ref', None))), github.snapshot())
+        actions = plan(desired_from_config(cfg, _head(root, getattr(args, 'ref', None))), github.snapshot(),
+                       github.pulls(), record_stacks(tracked_records(cfg)))
     except SyncError as exc:
         print(f'error: {exc}', file=sys.stderr)
         return 2
@@ -582,7 +731,7 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
     if not args.apply:
         _dump(actions)
         return 0
-    warnings = [a for a in actions if a['action'] == 'warn']
+    warnings = [a for a in actions if a['action'] in ('warn', 'stack')]
     done: list[Action] = []
     try:
         github.apply(actions, done)
