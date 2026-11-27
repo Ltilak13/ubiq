@@ -72,8 +72,9 @@ A criterion's `issue` number, like each number in `issues`, names an issue the s
 
 A criterion is `part_of` one record, and the sync makes the criterion's issues
 sub-issues of that record's issue. By default a criterion is part of its own goal.
-A criterion's `part_of` names another goal instead, and `ubiq check` rejects more
-than one name (`single`, E009). `fact_part_of` in `FACTS` plans it, and two `GitHub`
+An explicit `part_of` names the parent instead. A schema-bound record with an
+`issue` can also declare `part_of` to link that issue to its parent.
+`ubiq check` rejects more than one name for a field annotated with `single` (E009). `fact_part_of` in `FACTS` plans it, and two `GitHub`
 handlers perform it.
 
 - **The goal's issue.** A goal gets its own issue through a goal-level `issue` field

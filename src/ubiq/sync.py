@@ -37,6 +37,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .config import Config, load_config
 from .records import normalize
 from .schemas import load_data
@@ -161,7 +163,7 @@ def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
     for path in sorted(paths):
         try:
             data = load_data(path, frontmatter=True)
-        except (OSError, ValueError):
+        except (OSError, ValueError, yaml.YAMLError):
             continue  # Schema validation reports unreadable records.
         if not isinstance(data, dict):
             continue
@@ -464,7 +466,7 @@ def _git(root: Path, rev: str, *cmd: str) -> bytes:
 
 @contextlib.contextmanager
 def revision_root(root: Path, rev: str) -> Iterator[Path]:
-    """A temporary directory holding `ubiq.yaml` and the sync's record files as they are at `rev`.
+    """A temporary directory holding `ubiq.yaml` and the records used by sync as they are at `rev`.
 
     Only those files are read, with `git show`, and only regular files are written
     (symlinks are skipped), so nothing in the revision can point outside the
