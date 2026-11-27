@@ -560,7 +560,7 @@ def cmd_graph(args) -> int:
     if args.kind:
         from .schemas import edge_names
         known = {*GRAPH_KINDS, *built.config.ref_fields, *edge_names(built.config),
-                 *(e.kind for e in edges)}
+                 *(e.kind for e in edges), *(e.name for e in edges if e.name)}
         unknown = sorted(set(args.kind) - known)
         if unknown:
             print(f"error: unknown edge kind {', '.join(unknown)}; expected one of "
