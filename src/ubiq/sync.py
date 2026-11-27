@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Config, load_config
+from .records import normalize
 from .schemas import load_data
 
 # A criterion line and its indented continuation lines.
@@ -123,6 +124,7 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
     names to their `issue`, which becomes the parent of the criterion's issues.
     """
     goal_issues = {goal['name']: goal.get('issue', 0), **(goal_issues or {})}
+    goal_issues = {normalize(name): number for name, number in goal_issues.items()}
     items = []
     for ac, criterion in goal['criteria'].items():
         marker = f"ubiq-goal: {goal['name']} {ac}"
@@ -143,7 +145,7 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
             close_comment=comment, priority=criterion.get('priority', ''),
-            label_prefix=label_prefix, parent=parent, parent_issue=goal_issues.get(parent, 0)))
+            label_prefix=label_prefix, parent=parent, parent_issue=goal_issues.get(normalize(parent), 0)))
     return items
 
 
@@ -152,8 +154,29 @@ def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
     assert cfg.sync is not None
     goals = [load_goal(path, cfg.root) for record in cfg.sync.records if record.kind == 'goal'
              for path in sorted(record.glob.walk(cfg.ignore))]
-    issues = {g['name']: g['issue'] for g in goals}
-    return [item for g in goals for item in goal_desired(g, sha, cfg.sync.label_prefix, issues)]
+    issues = {normalize(g['name']): g['issue'] for g in goals}
+    children: list[tuple[str, int, str]] = []
+    paths = {path for spec in cfg.schemas if spec.format == 'frontmatter'
+             for pattern in spec.files for path in pattern.walk(cfg.ignore)}
+    for path in sorted(paths):
+        try:
+            data = load_data(path, frontmatter=True)
+        except (OSError, ValueError):
+            continue  # Schema validation reports unreadable records.
+        if not isinstance(data, dict):
+            continue
+        name, number = data.get('name'), data.get('issue')
+        if not isinstance(name, str) or type(number) is not int or number < 1:
+            continue
+        issues.setdefault(normalize(name), number)
+        parents = data.get('part_of')
+        if isinstance(parents, list) and len(parents) == 1 and isinstance(parents[0], str):
+            children.append((name, number, parents[0]))
+    items = [item for g in goals for item in goal_desired(g, sha, cfg.sync.label_prefix, issues)]
+    items.extend(Desired('record', {'record': name}, '', '', '', 'open', listed=(number,),
+                         parent=parent, parent_issue=issues[normalize(parent)])
+                 for name, number, parent in children if issues.get(normalize(parent)))
+    return items
 
 
 # -- planner: desired vs snapshot -> actions ---------------------------------------
@@ -460,10 +483,13 @@ def revision_root(root: Path, rev: str) -> Iterator[Path]:
             fetch('ubiq.yaml')
         cfg = load_config(tmp)
         if cfg.sync is not None:
+            patterns = [record.glob for record in cfg.sync.records]
+            patterns.extend(pattern for spec in cfg.schemas if spec.format == 'frontmatter'
+                            for pattern in spec.files)
             listing = _git(root, rev, 'ls-tree', '-r', '-z', rev).decode().split('\0')
             for entry in filter(None, listing):
                 meta, path = entry.split('\t', 1)
-                if meta.startswith('100') and any(r.glob.matches(tmp / path) for r in cfg.sync.records):
+                if meta.startswith('100') and any(pattern.matches(tmp / path) for pattern in patterns):
                     fetch(path)
         yield tmp
 

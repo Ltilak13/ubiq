@@ -251,3 +251,19 @@ def test_config_reads_the_goal_issue_and_part_of(tmp_path):
     items = {(d.ident["goal"], d.ident["criterion"]): d for d in desired_from_config(load_config(root))}
     assert items[("demo-goal", "AC1")].parent_issue == 12
     assert items[("elsewhere", "AC1")].parent_issue == 12
+
+
+
+def test_feature_part_of_links_its_issue_to_the_parent(tmp_path):
+    root = write_repo(tmp_path)
+    (root / "f").mkdir()
+    (root / "f/parent.md").write_text("---\nname: parent-feature\nissue: 11\n---\n")
+    (root / "f/child.md").write_text(
+        "---\nname: child\nissue: 12\npart_of: [parent-feature]\n---\n")
+    config = root / "ubiq.yaml"
+    config.write_text(config.read_text() + (
+        '\nschemas:\n  - schema: schema.json\n    files: ["f/*.md"]\n    format: frontmatter\n'))
+    (root / "schema.json").write_text("{}")
+    desired = desired_from_config(load_config(root))
+    [link] = drift(plan(desired, [gh(5, marker="AC1"), gh(11), gh(12)]))
+    assert (link["record"], link["issue"], link["parent"]) == ("child", 12, 11)
