@@ -21,6 +21,7 @@ steps:
     requires: [feature-records, goal-issue-hardening]
     branch: claude/ecstatic-mendel-nkgz6t-sync-github
     base: claude/ecstatic-mendel-nkgz6t-issue-70
+    pr: 132
   tracking-fields:
     issue: 120
     requires: [sync-github]
