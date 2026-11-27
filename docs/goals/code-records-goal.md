@@ -37,6 +37,7 @@ criteria:
     assessment: unassessed
     support: []
     gap: Decisions and wayfinder resolutions live only as GitHub comments, not as records the comments mirror.
+    issues: [152]
 ---
 
 # Goal: code as records
