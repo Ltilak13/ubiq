@@ -78,9 +78,19 @@ steps:
     requires: [tracking-fields, schema-edge-diagrams]
     branch: claude/ecstatic-mendel-nkgz6t-view-sync
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+  plan-step-cycles:
+    issue: 149
+    requires: [requires-links, plan-records]
+    branch: claude/ecstatic-mendel-nkgz6t-plan-step-cycles
+    base: claude/ecstatic-mendel-nkgz6t-plan-records
+  priority-inheritance:
+    issue: 150
+    requires: [plan-records]
+    branch: claude/ecstatic-mendel-nkgz6t-priority-inheritance
+    base: claude/ecstatic-mendel-nkgz6t-plan-records
   backfill:
     issue: 127
-    requires: [feature-lifecycle, plan-records, pr-stacks, part-of-sub-issues]
+    requires: [feature-lifecycle, plan-records, pr-stacks, part-of-sub-issues, plan-step-cycles, priority-inheritance]
     branch: claude/ecstatic-mendel-nkgz6t-backfill
     base: claude/ecstatic-mendel-nkgz6t-pr-stacks
 ---
