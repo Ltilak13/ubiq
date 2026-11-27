@@ -1128,6 +1128,8 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--apply", action="store_true", help="perform the plan (needs GITHUB_TOKEN)")
     mode.add_argument("--check", action="store_true",
                       help="exit 1 when GitHub differs from the records; skips without GITHUB_TOKEN")
+    gh.add_argument("--ref", metavar="REV",
+                    help="read the records and ubiq.yaml as they are at REV (a pull request's base)")
     gh.add_argument("--repo", metavar="OWNER/NAME",
                     help="issue repository (default: sync.repo, then $GITHUB_REPOSITORY)")
     gh.set_defaults(fn=cmd_sync)

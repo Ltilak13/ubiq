@@ -19,15 +19,19 @@ title.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import re
 import subprocess
 import sys
+import tarfile
+import tempfile
 import textwrap
 import time
 import urllib.request
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -267,19 +271,52 @@ def _dump(value: Any) -> None:
     print(json.dumps(value, indent=2))
 
 
-def _head(root: Path) -> str:
-    sha = os.environ.get('GITHUB_SHA')
+def _head(root: Path, rev: str | None = None) -> str:
+    sha = None if rev else os.environ.get('GITHUB_SHA')
     if sha:
         return sha
-    done = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=root, capture_output=True,
+    done = subprocess.run(['git', 'rev-parse', rev or 'HEAD'], cwd=root, capture_output=True,
                           text=True, check=False)
     return done.stdout.strip()
 
 
+@contextlib.contextmanager
+def revision_root(root: Path, rev: str) -> Iterator[Path]:
+    """A temporary checkout of `rev` (a read-only `git archive`); the repository is not touched."""
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = subprocess.run(['git', 'archive', rev], cwd=root, capture_output=True, check=False)
+        if archive.returncode:
+            raise SyncError(f'cannot read revision {rev}: {archive.stderr.decode().strip()}')
+        with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
+            if hasattr(tarfile, 'data_filter'):
+                tar.extractall(tmp, filter='data')
+            else:  # Python before the extraction filters; git archive output is trusted here.
+                tar.extractall(tmp)
+        yield Path(tmp)
+
+
 def cmd_sync(args, transport: Transport = urllib_transport, pause: float = 1.0) -> int:
-    """`ubiq sync github`: print the plan (default), `--apply` it, or `--check` for drift."""
+    """`ubiq sync github`: print the plan (default), `--apply` it, or `--check` for drift.
+
+    `--ref REV` reads the records and `ubiq.yaml` as they are at REV instead of the
+    working tree. A pull request checks drift against its base this way: drift is
+    GitHub disagreeing with the base, and what the pull request itself changes is
+    pending on merge, not drift.
+    """
     root = Path(args.root).resolve()
-    cfg = load_config(root)
+    ref = getattr(args, 'ref', None)
+    if not ref:
+        return _sync(args, root, root, transport, pause)
+    try:
+        with revision_root(root, ref) as snapshot:
+            return _sync(args, root, snapshot, transport, pause)
+    except SyncError as exc:
+        print(f'error: {exc}', file=sys.stderr)
+        return 2
+
+
+def _sync(args, root: Path, source: Path, transport: Transport, pause: float) -> int:
+    cfg = load_config(source)
     if cfg.sync is None:
         print(f"error: {GUIDANCE}", file=sys.stderr)
         return 2
@@ -297,7 +334,7 @@ def cmd_sync(args, transport: Transport = urllib_transport, pause: float = 1.0) 
         return 0
     github = GitHub(repo, token, transport, pause)
     try:
-        actions = plan(desired_from_config(cfg, _head(root)), github.snapshot())
+        actions = plan(desired_from_config(cfg, _head(root, getattr(args, 'ref', None))), github.snapshot())
     except SyncError as exc:
         print(f'error: {exc}', file=sys.stderr)
         return 2

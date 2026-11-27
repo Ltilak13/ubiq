@@ -319,3 +319,33 @@ def test_old_script_forwards_to_the_command():
                           env={'PATH': '/usr/bin:/bin', 'PYTHONPATH': str(ROOT / 'src')})
     # No GITHUB_TOKEN in this environment, so check mode skips and says so.
     assert done.returncode == 0 and 'skipped' in done.stderr
+
+
+def test_pull_request_that_meets_a_criterion_is_pending_not_drift(tmp_path, monkeypatch, capsys):
+    root = write_repo(tmp_path, issues='    issues: [5]\n')
+    monkeypatch.setenv('GITHUB_TOKEN', 't')
+
+    def vcs(*cmd):
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *cmd], cwd=root,
+                       check=True, capture_output=True)
+    vcs('init', '-q', '-b', 'main')
+    vcs('add', '.')
+    vcs('commit', '-q', '-m', 'base')
+    vcs('checkout', '-q', '-b', 'pr')
+    (root / 'goals/demo-goal.md').write_text(
+        '---\nname: demo-goal\nstatus: proposed\ncriteria:\n  AC1:\n    assessment: met\n'
+        '    support: []\n    gap: g\n    issues: [5]\n    review: {by: Lucas, note: checked}\n'
+        '---\n\n1. AC1: First.\n')
+    vcs('commit', '-qam', 'meet AC1')
+    remote = Fake({READ: [issue(5)]})
+    # Against the base the mirror matches: no drift, so the check passes.
+    assert cmd_sync(flags(root, check=True, ref='main'), remote, 0) == 0
+    assert json.loads(capsys.readouterr().out) == []
+    # The head's plan is the preview: closing issue 5 is pending on merge.
+    assert cmd_sync(flags(root), remote, 0) == 0
+    assert [(a['action'], a['issue']) for a in json.loads(capsys.readouterr().out)] == [('close', 5)]
+    # The head's own check would call that drift, which is why the base is checked.
+    assert cmd_sync(flags(root, check=True), remote, 0) == 1
+    capsys.readouterr()
+    assert cmd_sync(flags(root, check=True, ref='nope'), remote, 0) == 2
+    assert 'nope' in capsys.readouterr().err
