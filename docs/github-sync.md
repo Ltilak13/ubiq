@@ -35,6 +35,8 @@ pure function that returns actions:
 | --- | --- |
 | `create` | A record that is not done has no issue; open one (with its priority label). |
 | `label` | An open issue's priority label differs from the record; add and remove labels. |
+| `link` | An issue that tracks a record is not a sub-issue of its parent record's issue; add it. |
+| `unlink` | A sub-issue of a parent issue that no record puts there (added on GitHub); remove it. |
 | `close` | A record that is done still has an open issue; close it with a comment. |
 | `warn` | A record lists a number that is not an issue (a pull request, a typo). |
 | `noop` | The issue already matches. |
@@ -65,6 +67,35 @@ function in `FACTS` plans it, and one `GitHub` handler performs it.
 - A new issue is created with its label.
 
 A criterion's `issue` number, like each number in `issues`, names an issue the sync tracks.
+
+## Sub-issues
+
+A criterion is `part_of` one record, and the sync makes the criterion's issues
+sub-issues of that record's issue. By default a criterion is part of its own goal.
+A criterion's `part_of` names another goal instead, and `ubiq check` rejects more
+than one name (`single`, E009). `fact_part_of` in `FACTS` plans it, and two `GitHub`
+handlers perform it.
+
+- **The goal's issue.** A goal gets its own issue through a goal-level `issue` field
+  (`issue: 118` beside `name` and `status` in the goal's frontmatter). This is the
+  smallest design that works: the sync does not create goal issues, so a goal is
+  opened by hand (or by an earlier tool) and named once. A goal with no `issue` has no
+  parent issue, and its criteria's issues are not nested; nothing is planned or
+  reported for them.
+- **Which issues.** Every issue that tracks the criterion (its `issue`, its `issues`,
+  and the marked issue), open or closed, except the parent itself.
+- **`link`.** An issue missing from the parent's sub-issues is added with
+  `POST repos/{o}/{r}/issues/{parent}/sub_issues` and the issue's numeric `id` as
+  `sub_issue_id`. GitHub allows one parent per issue, so the request sets
+  `replace_parent` and moves an issue that has another parent. A new issue is created
+  and then attached in the same `--apply`.
+- **`unlink`.** A sub-issue of the parent that no record asks for was added on GitHub.
+  `--check` reports it as drift, and `--apply` removes it with
+  `DELETE repos/{o}/{r}/issues/{parent}/sub_issue` and the `sub_issue_id` in the body.
+  An issue that a record moves to a different parent is a `link`, not an `unlink`.
+- **`warn`.** A parent `issue` that is not an issue in the repository.
+- **Reading.** The snapshot reads `GET repos/{o}/{r}/issues/{parent}/sub_issues` for each
+  parent issue, so the token needs `issues: read`, as before.
 
 ## Goal behavior
 
