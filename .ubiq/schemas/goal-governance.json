@@ -49,6 +49,10 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "docs/goals/code-records-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "docs/goals/composable-knowledge-goal.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },

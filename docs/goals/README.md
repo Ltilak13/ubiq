@@ -10,6 +10,7 @@ Ubiq helps repositories make their knowledge explicit, connected, and checkable.
 | [Human and agent usability](human-agent-readability-goal.md) | Finding, understanding, navigating, and correctly using information |
 | [Safe adoption and evolution](safe-adoption-evolution-goal.md) | Setup, migration, maintenance, and recovery |
 | [No-code specs](no-code-spec-goal.md) | Records that are the spec, docs, and tests, checked with no agent |
+| [Code as records](code-records-goal.md) | Code units defined by records and named by one vocabulary |
 
 ## Organization and dependencies
 
