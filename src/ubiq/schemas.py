@@ -229,6 +229,44 @@ def xref_refs(cfg) -> list[Ref]:
     return refs
 
 
+def single_diagnostics(cfg) -> list[Diagnostic]:
+    """E009 for a `single` property that names more than one record, at the field's line.
+
+    Reads the same files as `xref_refs`; unreadable files and schemas are reported
+    elsewhere. Values that are not strings are the schema's to report.
+    """
+    found_errors: list[Diagnostic] = []
+    for spec in cfg.schemas:
+        try:
+            found = [a for a in _annotations(cfg.root, spec.schema) if a.ref.single]
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError, yaml.YAMLError, RecursionError):
+            continue
+        if not found or spec.format != "frontmatter":
+            continue
+        paths: set[Path] = set()
+        for pattern in spec.files:
+            try:
+                paths.update(p for p in pattern.walk(cfg.ignore)
+                             if not any(g.matches(p) for g in cfg.ignore))
+            except GlobError:
+                continue
+        for path in sorted(paths):
+            try:
+                data = load_data(path, frontmatter=True)
+                match = FRONTMATTER_RE.match(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, RecursionError):
+                continue
+            text = match.group(1) if match else ""
+            for annotation in found:
+                for keys, names in xref.groups(data, annotation.steps):
+                    if len(names) > 1:
+                        found_errors.append(Diagnostic(
+                            "E009", f"{'.'.join(keys)}: {annotation.ref.edge} names {len(names)} "
+                            f"records ({', '.join(names)}); at most one is allowed",
+                            path, xref.line_of(text, keys)))
+    return found_errors
+
+
 @dataclass
 class Target:
     """One file a binding selects: what loaded, and how it conforms."""

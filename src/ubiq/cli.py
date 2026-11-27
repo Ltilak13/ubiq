@@ -242,8 +242,9 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
             extra.append(Diagnostic("E005", str(e), spec.file))
 
     if cfg.schemas:
-        from .schemas import xref_refs
+        from .schemas import single_diagnostics, xref_refs
         refs.extend(xref_refs(cfg))
+        extra.extend(single_diagnostics(cfg))
     result.refs.extend(refs)
     result.diagnostics.extend(extra)
     result.docs.extend(doc_files)
