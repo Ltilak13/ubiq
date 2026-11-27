@@ -27,6 +27,7 @@ steps:
     requires: [sync-github]
     branch: claude/ecstatic-mendel-nkgz6t-tracking-fields
     base: claude/ecstatic-mendel-nkgz6t-sync-github
+    pr: 135
   requires-links:
     issue: 121
     requires: [tracking-fields]
