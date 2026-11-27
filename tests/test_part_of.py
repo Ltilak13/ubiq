@@ -262,8 +262,9 @@ def test_feature_part_of_links_its_issue_to_the_parent(tmp_path):
         "---\nname: child\nissue: 12\npart_of: [parent-feature]\n---\n")
     config = root / "ubiq.yaml"
     config.write_text(config.read_text() + (
-        '\nschemas:\n  - schema: schema.json\n    files: ["f/*.md"]\n    format: frontmatter\n'))
-    (root / "schema.json").write_text("{}")
+        '\nglossary:\n  - {glob: "f/*.md", term_field: name, ns: feature}\n'
+        'schemas:\n  - schema: schema.json\n    files: ["f/*.md"]\n    format: frontmatter\n'))
+    (root / "schema.json").write_text(json.dumps({"properties": {"part_of": PART_OF}}))
     desired = desired_from_config(load_config(root))
     [link] = drift(plan(desired, [gh(5, marker="AC1"), gh(11), gh(12)]))
     assert (link["record"], link["issue"], link["parent"]) == ("child", 12, 11)

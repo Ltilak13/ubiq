@@ -40,8 +40,8 @@ from typing import Any
 import yaml
 
 from .config import Config, load_config
-from .records import normalize
-from .schemas import load_data
+from .records import DEFAULT_NS, normalize
+from .schemas import _annotations, load_data
 
 # A criterion line and its indented continuation lines.
 CRITERION_RE = re.compile(r'^\d+\. (AC\d+): .+(?:\n[ \t]+\S.*)*', re.MULTILINE)
@@ -157,10 +157,21 @@ def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
     goals = [load_goal(path, cfg.root) for record in cfg.sync.records if record.kind == 'goal'
              for path in sorted(record.glob.walk(cfg.ignore))]
     issues = {normalize(g['name']): g['issue'] for g in goals}
-    children: list[tuple[str, int, str]] = []
-    paths = {path for spec in cfg.schemas if spec.format == 'frontmatter'
-             for pattern in spec.files for path in pattern.walk(cfg.ignore)}
-    for path in sorted(paths):
+    record_issues: dict[tuple[str, str], set[int]] = {}
+    children: set[tuple[str, int, str, str]] = set()
+    by_path: dict[Path, set[str]] = {}
+    for spec in cfg.schemas:
+        if spec.format != 'frontmatter':
+            continue
+        try:
+            namespaces = {a.ref.ns for a in _annotations(cfg.root, spec.schema)
+                          if a.ref.edge == 'part_of' and a.steps == (('key', 'part_of'),)}
+        except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError, RecursionError):
+            namespaces = set()
+        for pattern in spec.files:
+            for path in pattern.walk(cfg.ignore):
+                by_path.setdefault(path, set()).update(namespaces)
+    for path, parent_namespaces in sorted(by_path.items()):
         try:
             data = load_data(path, frontmatter=True)
         except (OSError, ValueError, yaml.YAMLError):
@@ -170,14 +181,20 @@ def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
         name, number = data.get('name'), data.get('issue')
         if not isinstance(name, str) or type(number) is not int or number < 1:
             continue
-        issues.setdefault(normalize(name), number)
+        for rule in cfg.glossary:
+            if rule.glob.matches(path):
+                key = (normalize(rule.ns or DEFAULT_NS), normalize(name))
+                record_issues.setdefault(key, set()).add(number)
         parents = data.get('part_of')
-        if isinstance(parents, list) and len(parents) == 1 and isinstance(parents[0], str):
-            children.append((name, number, parents[0]))
+        if (len(parent_namespaces) == 1 and isinstance(parents, list)
+                and len(parents) == 1 and isinstance(parents[0], str)):
+            children.add((name, number, parents[0], next(iter(parent_namespaces))))
     items = [item for g in goals for item in goal_desired(g, sha, cfg.sync.label_prefix, issues)]
-    items.extend(Desired('record', {'record': name}, '', '', '', 'open', listed=(number,),
-                         parent=parent, parent_issue=issues[normalize(parent)])
-                 for name, number, parent in children if issues.get(normalize(parent)))
+    for name, number, parent, namespace in sorted(children):
+        parent_numbers = record_issues.get((normalize(namespace), normalize(parent)), set())
+        if len(parent_numbers) == 1:
+            items.append(Desired('record', {'record': name}, '', '', '', 'open', listed=(number,),
+                                 parent=parent, parent_issue=next(iter(parent_numbers))))
     return items
 
 
@@ -488,10 +505,12 @@ def revision_root(root: Path, rev: str) -> Iterator[Path]:
             patterns = [record.glob for record in cfg.sync.records]
             patterns.extend(pattern for spec in cfg.schemas if spec.format == 'frontmatter'
                             for pattern in spec.files)
+            schemas = {spec.schema.partition('#')[0] for spec in cfg.schemas}
             listing = _git(root, rev, 'ls-tree', '-r', '-z', rev).decode().split('\0')
             for entry in filter(None, listing):
                 meta, path = entry.split('\t', 1)
-                if meta.startswith('100') and any(pattern.matches(tmp / path) for pattern in patterns):
+                if meta.startswith('100') and (path in schemas
+                                               or any(pattern.matches(tmp / path) for pattern in patterns)):
                     fetch(path)
         yield tmp
 
