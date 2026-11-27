@@ -510,6 +510,9 @@ existing `issues:` list, which keeps working; a criterion's `issue` is tracked l
 number in `issues`. On a feature they are optional properties of the record, and the
 feature's own `requires` stays required.
 
+A feature also has a `status`, `planned` or `shipped` (the default), which `ubiq plan` and
+`ubiq sync github` read; see [planned features](features.md#planned-features).
+
 A schema declares a relationship once, by annotating the property that holds the
 names:
 
