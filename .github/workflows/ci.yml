@@ -90,6 +90,26 @@ jobs:
           git cat-file -e "$BASE^{commit}" 2>/dev/null || BASE=HEAD~1
           ubiq coverage --since "$BASE" --markdown | tee -a "$GITHUB_STEP_SUMMARY"
 
+  # Read-only: compares the records with GitHub's issues and writes nothing.
+  # Without a token (some fork pull requests) the command skips and says so.
+  sync-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Check that GitHub issues match the records
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ubiq sync github --check
+
   package:
     runs-on: ubuntu-latest
     timeout-minutes: 10

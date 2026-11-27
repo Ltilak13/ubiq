@@ -2,9 +2,9 @@ name: goal-issues
 on:
   push:
     branches: [main]
-    paths: ["docs/goals/*-goal.md"]
+    paths: ["docs/goals/*-goal.md", "ubiq.yaml"]
   pull_request:
-    paths: ["docs/goals/*-goal.md"]
+    paths: ["docs/goals/*-goal.md", "ubiq.yaml"]
   workflow_dispatch:
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           FENCE: "```"
         run: |
-          python scripts/goal_issues.py --dry-run > "$RUNNER_TEMP/plan.json"
+          ubiq sync github --dry-run > "$RUNNER_TEMP/plan.json"
           { echo "${FENCE}json"; cat "$RUNNER_TEMP/plan.json"; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
 
   apply:
@@ -57,6 +57,6 @@ jobs:
           FENCE: "```"
         run: |
           status=0
-          python scripts/goal_issues.py --apply > "$RUNNER_TEMP/plan.json" || status=$?
+          ubiq sync github --apply > "$RUNNER_TEMP/plan.json" || status=$?
           { echo "${FENCE}json"; cat "$RUNNER_TEMP/plan.json"; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
           exit "$status"
