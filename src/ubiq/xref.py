@@ -3,15 +3,15 @@
 A property annotated `{"x-ubiq-ref": {"ns": "feature", "edge": "requires"}}` holds a
 record name (or a list of them) that must resolve to a record in `ns` (E006). The
 resolved link is a composition edge named `edge`, so `ubiq graph --kind requires`
-selects it. `acyclic` and `single` are parsed and kept for the checks that enforce
-them (cycles, one parent); nothing here enforces them yet.
+selects it. `acyclic` is enforced by cycles.py (E013); `single` is parsed and kept for
+the one-parent check, which nothing enforces yet.
 
 This module reads schemas and walks instance data. It does not touch the glossary.
 """
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -145,3 +145,43 @@ def line_of(frontmatter: str, keys: tuple[str, ...]) -> int:
         if found is not None:
             at = found
     return at + 2
+
+
+# A `requires` entry that names a pull request, not a record: `pr: 12`.
+PR_ENTRY_RE = re.compile(r"pr:\s*(\d+)")
+
+
+def pr_entry(value: str) -> int | None:
+    """The pull request number of a `pr: <n>` entry, else None (the entry names a record)."""
+    match = PR_ENTRY_RE.fullmatch(value.strip().strip("'\""))
+    return int(match.group(1)) if match else None
+
+
+def find_cycles(edges: Mapping[str, Sequence[str]]) -> list[list[str]]:
+    """Each distinct cycle in a directed graph, as `[a, b, a]`, smallest node first.
+
+    `edges` maps a node to the nodes it points at. Nodes are visited in sorted order,
+    so the result is stable. A self-edge is the cycle `[a, a]`.
+    """
+    found: dict[tuple[str, ...], list[str]] = {}
+    state: dict[str, int] = {}  # 1 on the current path, 2 finished
+    path: list[str] = []
+
+    def visit(node: str) -> None:
+        state[node] = 1
+        path.append(node)
+        for nxt in sorted(set(edges.get(node, ()))):
+            if state.get(nxt) == 1:
+                loop = path[path.index(nxt):]
+                at = loop.index(min(loop))
+                ring = loop[at:] + loop[:at]
+                found.setdefault(tuple(ring), [*ring, ring[0]])
+            elif nxt not in state:
+                visit(nxt)
+        path.pop()
+        state[node] = 2
+
+    for node in sorted(edges):
+        if node not in state:
+            visit(node)
+    return list(found.values())

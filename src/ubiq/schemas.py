@@ -224,6 +224,8 @@ def xref_refs(cfg) -> list[Ref]:
                             or (len(keys) == 1 and keys[0] in cfg.ref_fields)):
                         continue
                     ref = annotation.ref
+                    if ref.edge == "requires" and xref.pr_entry(value) is not None:
+                        continue  # `pr: <n>` names a pull request, not a record
                     refs.append(Ref(policy, f"{ref.edge}: {value}", normalize(value), ref.ns,
                                     path, xref.line_of(text, keys), target=value, edge=ref.edge))
     return refs
