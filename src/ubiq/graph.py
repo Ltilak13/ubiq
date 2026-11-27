@@ -120,8 +120,8 @@ def build_edges(glossary: Glossary, refs: list[Ref], edges: EdgeConfig, root: Pa
         source = owner(r.file)
         if source is None or (source is target and kind != "include"):
             continue
-        key = (kind, id(source), id(target), r.file, r.line)
         name = r.raw.split(":", 1)[0] if r.kind == "field" else ""
+        key = (kind, id(source), id(target), r.file, r.line, name)
         found.setdefault(key, Edge(kind, source, target, r.file, r.line, name))
     return list(found.values())
 

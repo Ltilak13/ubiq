@@ -175,11 +175,14 @@ def _in_namespace(glossary, ref: Ref):
 
 
 def edge_names(cfg) -> set[str]:
-    """The edge names that bound schemas declare with `x-ubiq-ref`."""
+    """The edge and field names that bound schemas declare with `x-ubiq-ref`."""
     names: set[str] = set()
     for spec in cfg.schemas:
         try:
-            names.update(a.ref.edge for a in _annotations(cfg.root, spec.schema))
+            for annotation in _annotations(cfg.root, spec.schema):
+                names.add(annotation.ref.edge)
+                if annotation.steps and annotation.steps[-1][0] == "key":
+                    names.add(annotation.steps[-1][1])
         except (OSError, UnicodeError, ValueError, TypeError, KeyError, yaml.YAMLError, RecursionError):
             continue  # an unreadable schema is E008
     return names
@@ -224,7 +227,8 @@ def xref_refs(cfg) -> list[Ref]:
                             or (len(keys) == 1 and keys[0] in cfg.ref_fields)):
                         continue
                     ref = annotation.ref
-                    refs.append(Ref(policy, f"{ref.edge}: {value}", normalize(value), ref.ns,
+                    field_name = keys[-1] if keys else ref.edge
+                    refs.append(Ref(policy, f"{field_name}: {value}", normalize(value), ref.ns,
                                     path, xref.line_of(text, keys), target=value, edge=ref.edge))
     return refs
 
