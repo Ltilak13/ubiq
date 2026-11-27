@@ -302,7 +302,7 @@ def cmd_sync(args, transport: Transport = urllib_transport, pause: float = 1.0) 
         print(f'error: {exc}', file=sys.stderr)
         return 2
     except OSError as exc:  # URLError and HTTPError are OSErrors.
-        print(f'error: cannot read issues of {repo}: {exc}', file=sys.stderr)
+        print(f'error: cannot read the records or the issues of {repo}: {exc}', file=sys.stderr)
         return 2
     if args.check:
         found = drift(actions)
