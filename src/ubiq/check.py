@@ -23,7 +23,7 @@ Warnings (reported, exit 0):
   W005 drift                  a reference without an edge, or an edge the text never names
   W006 coverage-scope         a coverage pattern or exclusion matches nothing (coverage.py)
   W007 broken-link            a relative link to a missing file that is not a record
-  W008 graph-block            a `<!-- ubiq:graph -->` block that differs from `ubiq graph`
+  W009 graph-block            a `<!-- ubiq:graph -->` block that differs from `ubiq graph`
                               output, or cannot be read (mermaid.py)
 
 A reference kind's policy (kinds.py) sets the severity of what its refs report:

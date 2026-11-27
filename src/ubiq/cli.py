@@ -454,7 +454,7 @@ def _check(root: Path, cfg: Config | None = None,
 
 
 def _graph_blocks(built: Build) -> list[Diagnostic]:
-    """W008: marked mermaid blocks in this repository's live docs that differ from its graph."""
+    """W009: marked mermaid blocks in this repository's live docs that differ from its graph."""
     def select(attrs: dict[str, str]) -> list:
         kinds = [k for k in attrs.get("kind", "").split(",") if k]
         return _select_edges(built, attrs.get("target"), kinds, "callers" in attrs,

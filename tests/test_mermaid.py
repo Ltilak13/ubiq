@@ -1,4 +1,4 @@
-"""`ubiq graph --format mermaid` and `<!-- ubiq:graph -->` blocks (W008)."""
+"""`ubiq graph --format mermaid` and `<!-- ubiq:graph -->` blocks (W009)."""
 
 import json
 
@@ -32,7 +32,7 @@ def mermaid_out(tmp_path, capsys, *argv):
 def w008(tmp_path, capsys):
     main(["check", "--root", str(tmp_path), "--json"])
     out = json.loads(capsys.readouterr().out)
-    return [d for d in out["diagnostics"] if d["code"] == "W008"]
+    return [d for d in out["diagnostics"] if d["code"] == "W009"]
 
 
 def test_format_is_sorted_and_labels_mixed_kinds(tmp_path, capsys):

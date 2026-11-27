@@ -1,4 +1,4 @@
-"""Mermaid output for `ubiq graph --format mermaid` and `<!-- ubiq:graph -->` blocks (W008).
+"""Mermaid output for `ubiq graph --format mermaid` and `<!-- ubiq:graph -->` blocks (W009).
 
 A document keeps a generated diagram between markers:
 
@@ -10,7 +10,7 @@ A document keeps a generated diagram between markers:
     <!-- /ubiq:graph -->
 
 `ubiq check` compares the fenced block with what `ubiq graph` would print for the same
-selection and reports W008 where they differ. Markers inside fenced code blocks are
+selection and reports W009 where they differ. Markers inside fenced code blocks are
 examples, not blocks to check.
 """
 
@@ -166,7 +166,7 @@ def command(attrs: dict[str, str]) -> str:
 
 
 def check(docs: list[Path], select: Callable[[dict[str, str]], list[Edge]]) -> list[Diagnostic]:
-    """W008 for each marked block that is unreadable or differs from the generated one.
+    """W009 for each marked block that is unreadable or differs from the generated one.
 
     `select` returns the edges a marker's attributes pick, or raises LookupError.
     """
@@ -182,15 +182,15 @@ def check(docs: list[Path], select: Callable[[dict[str, str]], list[Edge]]) -> l
             continue
         for marker in parse(text):
             if marker.problem:
-                diags.append(Diagnostic("W008", f"graph marker: {marker.problem}", path, marker.line))
+                diags.append(Diagnostic("W009", f"graph marker: {marker.problem}", path, marker.line))
                 continue
             try:
                 expected = render(select(marker.attrs))
             except LookupError as exc:
-                diags.append(Diagnostic("W008", f"graph marker: {exc}", path, marker.line))
+                diags.append(Diagnostic("W009", f"graph marker: {exc}", path, marker.line))
                 continue
             if [s.rstrip() for s in marker.body] != expected:
                 diags.append(Diagnostic(
-                    "W008", "graph block differs from the records — replace it with the output of "
+                    "W009", "graph block differs from the records — replace it with the output of "
                     f"`{command(marker.attrs)}`", path, marker.body_line or marker.line))
     return diags

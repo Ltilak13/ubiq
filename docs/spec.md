@@ -132,7 +132,7 @@ include link that resolves nowhere always fails it (see Composition edges).
   `coverage.exclude` glob matches no selected file. Only `ubiq coverage` reports it.
 - `W007` broken link — a relative Markdown link to a missing file or directory that
   is not a [[record]] (see the `link` kind). `references.link.severity` tunes it.
-- `W008` graph block — a `<!-- ubiq:graph -->` block (see Mermaid blocks) differs from
+- `W009` graph block — a `<!-- ubiq:graph -->` block (see Mermaid blocks) differs from
   the `ubiq graph --format mermaid` output for its selection, or cannot be read: an
   unknown attribute or kind, a target that names no single record, a missing closing
   marker, or no single fenced `mermaid` block between the markers. Reported at the
@@ -288,7 +288,7 @@ The opening marker takes the `graph` selections as `name=value` attributes, all
 optional: `target` (a record, resolved as for `graph`), `kind` (one or more of the
 edge kinds, comma-separated), `depth` (a positive integer), and `callers=true`.
 `ubiq check` reads the marked block in every live document of the repository,
-regenerates it, and reports W008 when the fenced lines differ (trailing whitespace
+regenerates it, and reports W009 when the fenced lines differ (trailing whitespace
 aside). Ubiq never rewrites the block: paste the output of the `ubiq graph` command
 the warning names. Markers inside fenced code blocks are examples and are not
 checked, and the code's severity is not configurable.
