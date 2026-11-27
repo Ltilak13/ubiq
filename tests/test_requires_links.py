@@ -1,5 +1,6 @@
 """`requires`: blocked-by links, and the generated "Blocked by" section."""
 import json
+import subprocess
 import urllib.error
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ from ubiq.sync import (
     drift,
     goal_desired,
     plan,
+    revision_root,
     set_blocked_by,
 )
 
@@ -36,6 +38,13 @@ def run_plan(criterion, existing, numbers):
 NUMBERS = {"alpha": 11, "beta": 12, "plain": 13}
 
 
+def test_removing_the_requires_field_clears_its_generated_section():
+    body = f"Intro.\n{BLOCKED_BEGIN}\nBlocked by: #9\n{BLOCKED_END}\nOutro."
+    [action] = run_plan(unmet(issues=[7]), [{**blocked(7), "body": body}], NUMBERS)
+    assert action["action"] == "body"
+    assert action["body"] == "Intro.\n\nOutro."
+
+
 def test_adding_a_requires_entry_links_the_blocker_by_its_numeric_id():
     [link] = run_plan(unmet(requires=["alpha"]), [blocked(7), blocker(11)], NUMBERS)
     assert link == {"action": "link", "goal": "demo-goal", "criterion": "AC1", "issue": 7,
@@ -55,7 +64,7 @@ def test_an_extra_link_on_github_is_drift_even_with_an_empty_requires():
     assert extra["action"] == "unlink" and extra["blocked_by"] == 99 and drift([extra])
 
 
-def test_no_requires_field_leaves_links_and_body_alone():
+def test_no_requires_field_leaves_manual_links_alone():
     assert [a["action"] for a in run_plan(unmet(), [blocked(7, 99)], NUMBERS)] == ["noop"]
 
 
@@ -88,7 +97,7 @@ def test_changing_and_dropping_a_pr_rewrites_only_between_the_markers():
     changed = set_blocked_by(before, [5])
     assert changed.startswith("Top text.\n\n" + BLOCKED_BEGIN) and "#5" in changed
     assert changed.endswith(BLOCKED_END + "\n\nBottom text.\n")
-    assert set_blocked_by(changed, []) == "Top text.\n\nBottom text.\n"
+    assert set_blocked_by(changed, []) == "Top text.\n\n\n\nBottom text.\n"
 
 
 def test_add_then_drop_restores_the_body_and_nothing_to_drop_is_unchanged():
@@ -172,3 +181,15 @@ def test_sync_check_reports_the_missing_link_end_to_end(tmp_path, monkeypatch, c
     args = SimpleNamespace(root=str(tmp_path), repo=None, apply=False, check=True, dry_run=False)
     assert cmd_sync(args, fake, 0) == 1
     assert {a["action"] for a in json.loads(capsys.readouterr().out)} == {"link", "body"}
+
+
+def test_revision_root_keeps_schema_bound_blockers(tmp_path):
+    write_records(tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                    "commit", "-qm", "Add records"], cwd=tmp_path, check=True)
+    (tmp_path / "f/alpha.md").unlink()
+    with revision_root(tmp_path, "HEAD") as source:
+        [item] = desired_from_config(load_config(source))
+        assert item.requires == (11,)

@@ -89,7 +89,7 @@ only be an issue"), so it becomes text.
   `<!-- ubiq-blocked-by:end -->`. The section is appended when missing, replaced in
   place when it differs, and removed when no `pr:` entry remains. Text outside the
   markers is never changed.
-- A criterion with no `requires` leaves links and the body alone; `requires: []`
+- A criterion with no `requires` removes the generated section and leaves native links alone; `requires: []`
   removes every link. A name that resolves to no record with an `issue` makes no link. A
   required issue that is not in the repository is a `warn`.
 
