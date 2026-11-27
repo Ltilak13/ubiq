@@ -131,8 +131,7 @@ on every sync and is the one tracking state not stored in frontmatter.
 
 - Adding it removes `status: in progress` in the same `label` action. Every other
   `status: ` label (`blocked`, `ready`, and so on) is left alone.
-- It applies to the issues a goal criterion tracks. A draft pull request counts, because
-  it is open. A hand-added or hand-removed label is drift that `--apply` restores.
+- It applies to all issues in the repository. A draft pull request counts. A hand-added or hand-removed label is drift that `--apply` restores.
 - The label name is fixed (`STATUS_PREFIX` in `src/ubiq/sync.py`) and is independent of
   `sync.label_prefix`.
 

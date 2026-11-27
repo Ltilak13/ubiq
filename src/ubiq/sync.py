@@ -232,11 +232,13 @@ def record_stacks(records: Mapping[str, Tracked]) -> list[Stack]:
             for name, t in records.items() if t.prs]
 
 
-def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
+def desired_from_config(cfg: Config, sha: str = '',
+                        records: Mapping[str, Tracked] | None = None) -> list[Desired]:
     """Desired state for every record file that `sync.records` selects."""
     assert cfg.sync is not None
     items: list[Desired] = []
-    records = tracked_records(cfg)
+    if records is None:
+        records = tracked_records(cfg)
     numbers = {name: t.issue for name, t in records.items() if t.issue is not None}
     pulls = {name: t.prs for name, t in records.items()}
     for record in cfg.sync.records:
@@ -421,7 +423,7 @@ def stack_findings(stack: Stack, pulls: Mapping[int, Pull]) -> list[Action]:
             for n in stack.prs if n in pulls and pulls[n]['base'] not in wanted.values()]
 
 
-def fact_in_review(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue],
+def fact_in_review(ident: Mapping[str, str], tracked: Sequence[int], issues: Mapping[int, Issue],
                    pulls: Mapping[int, Pull]) -> list[Action]:
     """An issue carries `status: in review` exactly while an open pull request closes it.
 
@@ -439,10 +441,10 @@ def fact_in_review(item: Desired, tracked: Sequence[int], issues: Mapping[int, I
         reviewing = issue.get('state') == 'open' and any(n in p['closes'] for p in pulls.values())
         if reviewing and not has:
             remove = [x for x in names if x.casefold() == IN_PROGRESS]
-            actions.append({'action': 'label', **item.ident, 'issue': n, 'add': [IN_REVIEW], 'remove': remove})
+            actions.append({'action': 'label', **ident, 'issue': n, 'add': [IN_REVIEW], 'remove': remove})
         elif has and not reviewing:
             remove = [x for x in names if x.casefold() == IN_REVIEW]
-            actions.append({'action': 'label', **item.ident, 'issue': n, 'add': [], 'remove': remove})
+            actions.append({'action': 'label', **ident, 'issue': n, 'add': [], 'remove': remove})
     return actions
 
 
@@ -453,7 +455,7 @@ def fact_stack(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue
 
 # Each pull-request fact: (item, tracked issue numbers, issues, open pulls by number) -> actions.
 PR_FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue], Mapping[int, Pull]], list[Action]], ...] = (
-    fact_in_review, fact_stack)
+    fact_stack,)
 
 # Each mirrored fact: (item, tracked issue numbers, issues by number) -> actions.
 FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action]], ...] = (
@@ -468,7 +470,7 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
     holds the open pull requests (`number`, `head`, `base`, `closes`); `stacks` are
     further records whose pull requests are checked, though they mirror no issue.
     Markers count only in issues opened by `BOT`. Issues that are neither listed
-    by a record nor marked by `BOT` are ignored. A listed number that is not an
+    by a record nor marked by `BOT` only receive derived status updates. A listed number that is not an
     existing issue (a pull request, a typo) gets a `warn`. Applying the result
     and planning again returns only `noop` actions.
     """
@@ -476,17 +478,23 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
     by_marker = _marked(snapshot)
     open_pulls = {p['number']: p for p in pulls}
     actions: list[Action] = []
+    tracked_issues: set[int] = set()
     for item in desired:
         marked = [i['number'] for i in by_marker.get(item.marker, [])]
         tracked = list(dict.fromkeys([*item.listed, *marked]))
+        tracked_issues.update(tracked)
         actions += [{'action': 'warn', **item.ident, 'issue': n, 'reason': 'listed number is not an issue'}
                     for n in item.listed if n not in by_number]
         found = [a for fact in FACTS for a in fact(item, tracked, by_number)]
+        found += fact_in_review(item.ident, tracked, by_number, open_pulls)
         found += [a for pr_fact in PR_FACTS for a in pr_fact(item, tracked, by_number, open_pulls)]
         actions += found
         if not found:
             reason = 'met; no open issue' if item.state == 'closed' else 'tracked'
             actions.append({'action': 'noop', **item.ident, 'reason': reason, 'issues': tracked})
+    untracked = [n for n in by_number if n not in tracked_issues]
+    if untracked:
+        actions += fact_in_review({}, untracked, by_number, open_pulls)
     for stack in stacks:
         actions += stack_findings(stack, open_pulls)
     return actions
@@ -714,8 +722,9 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
         return 0
     github = GitHub(repo, token, transport, pause)
     try:
-        actions = plan(desired_from_config(cfg, _head(root, getattr(args, 'ref', None))), github.snapshot(),
-                       github.pulls(), record_stacks(tracked_records(cfg)))
+        records = tracked_records(cfg)
+        desired = desired_from_config(cfg, _head(root, getattr(args, 'ref', None)), records)
+        actions = plan(desired, github.snapshot(), github.pulls(), record_stacks(records))
     except SyncError as exc:
         print(f'error: {exc}', file=sys.stderr)
         return 2

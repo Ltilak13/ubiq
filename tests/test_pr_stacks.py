@@ -101,6 +101,14 @@ def test_a_matching_label_state_is_noop_and_a_closed_issue_is_never_labelled():
     assert [a["action"] for a in run_plan(unmet(), [labelled(7, state="closed")], pulls)] == ["noop"]
 
 
+def test_untracked_issues_get_and_lose_the_derived_status():
+    untracked = issue(8)
+    [add] = plan([], [untracked], [pull(30, "w", closes=[8])])
+    assert add == {"action": "label", "issue": 8, "add": ["status: in review"], "remove": []}
+    [remove] = plan([], [{**untracked, "labels": add["add"]}], [])
+    assert remove["remove"] == ["status: in review"]
+
+
 def test_applying_the_label_plan_converges():
     existing = [labelled(7, "status: in progress")]
     pulls = [pull(30, "w", closes=[7])]
