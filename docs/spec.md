@@ -549,7 +549,9 @@ one-parent check comes with the `part_of` work. `acyclic` is enforced (E014, bel
 `requires` is a list of record names. An entry `"pr: <n>"` (quote it, or YAML reads a
 mapping) names a pull request, not a record, so it is exempt from E006. `ubiq sync
 github` mirrors `requires` as blocked-by links and the `pr:` entries as a generated line
-(see [GitHub sync](github-sync.md)).
+(see [GitHub sync](github-sync.md)). A record's `pr` lists its pull requests: the sync
+reports a pull request that is not based on the head ref of a required record's open pull
+request, and derives the `status: in review` label (see [GitHub sync](github-sync.md)).
 
 ## Coverage
 
