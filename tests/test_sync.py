@@ -368,3 +368,24 @@ def test_ref_reads_only_the_records_and_ignores_symlinks(tmp_path, monkeypatch, 
     vcs('commit', '-q', '-m', 'base')
     assert cmd_sync(flags(root, check=True, ref='main'), Fake({READ: [issue(3, marker='AC1')]}), 0) == 0
     assert json.loads(capsys.readouterr().out) == []
+
+
+def test_ref_without_a_sync_section_skips(tmp_path, monkeypatch, capsys):
+    root = write_repo(tmp_path, sync='docs: ["*.md"]\n')
+    monkeypatch.setenv('GITHUB_TOKEN', 't')
+    (tmp_path / 'bare').mkdir()
+
+    def vcs(*cmd):
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *cmd], cwd=root,
+                       check=True, capture_output=True)
+    vcs('init', '-q', '-b', 'main')
+    vcs('add', '.')
+    vcs('commit', '-q', '-m', 'base')
+    vcs('rm', '-q', 'ubiq.yaml')
+    vcs('commit', '-q', '-m', 'no config')
+    remote = Fake()
+    # A base that predates the sync section (a stacked pull request) mirrors nothing: no drift.
+    assert cmd_sync(flags(root, check=True, ref='main~1'), remote, 0) == 0
+    assert 'has no sync section' in capsys.readouterr().err
+    assert cmd_sync(flags(root, check=True, ref='main'), remote, 0) == 0
+    assert 'has no sync section' in capsys.readouterr().err and not remote.calls

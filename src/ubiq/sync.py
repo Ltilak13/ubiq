@@ -301,7 +301,9 @@ def revision_root(root: Path, rev: str) -> Iterator[Path]:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(_git(root, rev, 'show', f'{rev}:{path}'))
 
-        fetch('ubiq.yaml')
+        _git(root, rev, 'rev-parse', '--verify', '--quiet', f'{rev}^{{commit}}')
+        if _git(root, rev, 'ls-tree', '--name-only', rev, 'ubiq.yaml').strip():
+            fetch('ubiq.yaml')
         cfg = load_config(tmp)
         if cfg.sync is not None:
             listing = _git(root, rev, 'ls-tree', '-r', '-z', rev).decode().split('\0')
@@ -334,6 +336,9 @@ def cmd_sync(args, transport: Transport = urllib_transport, pause: float = 1.0) 
 
 def _sync(args, root: Path, source: Path, transport: Transport, pause: float) -> int:
     cfg = load_config(source)
+    if cfg.sync is None and getattr(args, 'ref', None):
+        print(f'skipped: {args.ref} has no sync section in ubiq.yaml, so it mirrors nothing', file=sys.stderr)
+        return 0
     if cfg.sync is None:
         print(f"error: {GUIDANCE}", file=sys.stderr)
         return 2
