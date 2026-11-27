@@ -1,0 +1,57 @@
+name: no-code-checks
+# Runs the recipe in docs/no-code-checks.md against examples/no-code-checks.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/no-code-checks/**"
+      - ".github/workflows/no-code-checks.yml"
+  pull_request:
+    paths:
+      - "examples/no-code-checks/**"
+      - ".github/workflows/no-code-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: examples/no-code-checks
+    env:
+      CUE_VERSION: "0.12.1"
+      CUE_SHA256: "40ef0a84594494c953945fb297842d3168c92170694928c9565cc0b581235ac5"
+      VALE_VERSION: "3.9.1"
+      VALE_SHA256: "fbc2eb47d0b8c50220ed1a2c5c611fbe0904ed567d638143d482016a18fd2db0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install ubiq from this checkout
+        run: python -m pip install ../..
+      - name: Install cue and vale at pinned versions
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl --fail --silent --show-error --location \
+            "https://github.com/cue-lang/cue/releases/download/v${CUE_VERSION}/cue_v${CUE_VERSION}_linux_amd64.tar.gz" \
+            --output "$RUNNER_TEMP/cue.tgz"
+          echo "$CUE_SHA256  $RUNNER_TEMP/cue.tgz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/cue.tgz" -C "$RUNNER_TEMP/bin" cue
+          curl --fail --silent --show-error --location \
+            "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" \
+            --output "$RUNNER_TEMP/vale.tgz"
+          echo "$VALE_SHA256  $RUNNER_TEMP/vale.tgz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/vale.tgz" -C "$RUNNER_TEMP/bin" vale
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: npm ci
+      - run: ubiq check
+      - run: cue vet -d '#Limits' limits/limits.cue limits/limits.yaml
+      - run: vale --config .vale.ini specs
+      - run: npm run cucumber
