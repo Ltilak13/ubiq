@@ -84,3 +84,14 @@ def test_reserved_and_colliding_names_get_unique_ids(tmp_path, capsys):
     status, lines = mermaid_out(tmp_path, capsys)
     assert status == 0
     assert lines == ["flowchart LR", '  skill_end["skill:end"]', "  a --> skill_end"]
+
+
+
+def test_quoted_record_name_uses_mermaid_entities(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/ship/SKILL.md": skill("ship", "Follow [checkout](../_shared/checkout.md)."),
+        "skills/_shared/checkout.md": part('check"out', "Check out the branch."),
+    })
+    status, lines = mermaid_out(tmp_path, capsys, "--kind", "include")
+    assert status == 0
+    assert '  check_out["part:check#34;out"]' in lines

@@ -30,6 +30,7 @@ _CLOSE = re.compile(r"^\s*<!--\s*/ubiq:graph\s*-->\s*$")
 _FENCE = re.compile(r"^\s{0,3}(?P<mark>`{3,}|~{3,})\s*(?P<info>[^`]*)$")
 _ATTRS = ("target", "kind", "depth", "callers")
 _UNSAFE = re.compile(r"[^A-Za-z0-9_-]")
+_LABEL_SPECIAL = re.compile(r'[#"&<>\r\n]')
 
 
 def _node_ids(edges: list[Edge]) -> tuple[dict[str, str], list[str]]:
@@ -53,6 +54,11 @@ def _node_ids(edges: list[Edge]) -> tuple[dict[str, str], list[str]]:
     return ids, labelled
 
 
+def _label(name: str) -> str:
+    """Quote Mermaid label delimiters and preserve special characters as entities."""
+    return _LABEL_SPECIAL.sub(lambda match: f"#{ord(match[0])};", name)
+
+
 def render(edges: list[Edge]) -> list[str]:
     """A flowchart of `edges`: nodes and edges sorted, duplicates dropped.
 
@@ -62,7 +68,7 @@ def render(edges: list[Edge]) -> list[str]:
     unique = sorted({(e.source.qualified, e.target.qualified, e.kind) for e in edges})
     mixed = len({kind for _, _, kind in unique}) > 1
     lines = ["flowchart LR"]
-    lines += [f'  {ids[q]}["{q}"]' for q in labelled]
+    lines += [f'  {ids[q]}["{_label(q)}"]' for q in labelled]
     for source, target, kind in unique:
         arrow = f"-->|{kind}|" if mixed else "-->"
         lines.append(f"  {ids[source]} {arrow} {ids[target]}")
