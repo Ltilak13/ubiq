@@ -315,6 +315,8 @@ def _sync(raw, root: Path) -> SyncSpec | None:
     prefix = raw.get("label_prefix", "priority: ")
     if not isinstance(prefix, str):
         raise InvalidConfig("sync.label_prefix: expected a string")
+    if not prefix.strip():
+        raise InvalidConfig("sync.label_prefix: must not be empty (the sync owns every label with it)")
     entries = raw.get("records")
     if not isinstance(entries, list) or not entries:
         raise InvalidConfig("sync.records: list the record files to mirror")

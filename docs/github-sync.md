@@ -7,7 +7,7 @@ repository chooses which records sync and where in `ubiq.yaml`.
 ```yaml
 sync:
   repo: owner/name          # default: $GITHUB_REPOSITORY
-  label_prefix: "priority: " # labels the sync owns; reserved, not used yet
+  label_prefix: "priority: " # the sync owns labels that start with this; never empty
   records:
     - glob: "docs/goals/*-goal.md"
       kind: goal             # the only kind today
@@ -33,7 +33,8 @@ pure function that returns actions:
 
 | Action | Meaning |
 | --- | --- |
-| `create` | A record that is not done has no issue; open one. |
+| `create` | A record that is not done has no issue; open one (with its priority label). |
+| `label` | An open issue's priority label differs from the record; add and remove labels. |
 | `close` | A record that is done still has an open issue; close it with a comment. |
 | `warn` | A record lists a number that is not an issue (a pull request, a typo). |
 | `noop` | The issue already matches. |
@@ -43,6 +44,27 @@ Everything except `noop` is drift. `--check` exits 1 on any drift, and
 Each mirrored fact is one small function in `FACTS` (`src/ubiq/sync.py`); a new
 fact adds a function and an adapter handler, and the planner, drift check, and
 command stay as they are.
+
+## Priority
+
+A criterion's `priority` (`P1`, `P2`, or `P3`, one of the [[tracking field]]s) is
+mirrored as the label `<label_prefix>Pn`, for example `priority: P1`. The `fact_priority`
+function in `FACTS` plans it, and one `GitHub` handler performs it.
+
+- An open issue that tracks the criterion carries exactly that label. A missing label
+  is added, and any other label with the prefix is removed, in one `label` action
+  for the issue.
+- Only labels that start with the prefix are added or removed. Every other label is left alone.
+  Names compare without regard to case, as GitHub does.
+- Changing `priority` in the record is therefore one `label` action in the dry run. A
+  label edited by hand on GitHub is the same action, so `--check` reports it as drift
+  and `--apply` restores it.
+- A criterion with no `priority` leaves labels unmanaged, so adopting the sync does not
+  strip labels that were set by hand. A closed issue, or an issue whose criterion is
+  `met`, is not relabelled.
+- A new issue is created with its label.
+
+A criterion's `issue` number, like each number in `issues`, names an issue the sync tracks.
 
 ## Goal behavior
 
