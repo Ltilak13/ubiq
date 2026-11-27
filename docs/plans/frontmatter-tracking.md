@@ -50,6 +50,7 @@ steps:
     requires: [tracking-fields]
     branch: claude/ecstatic-mendel-nkgz6t-plan-records
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+    pr: 147
   pr-stacks:
     issue: 125
     requires: [requires-links]
