@@ -69,6 +69,14 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "glossary/contract.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/registry.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "glossary/catalog.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
