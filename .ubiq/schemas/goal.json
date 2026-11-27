@@ -90,6 +90,31 @@
                 "minimum": 1
               },
               "uniqueItems": true
+            },
+            "issue": {
+              "$ref": "#/$defs/tracking/properties/issue"
+            },
+            "priority": {
+              "$ref": "#/$defs/tracking/properties/priority"
+            },
+            "requires": {
+              "$ref": "#/$defs/tracking/properties/requires",
+              "x-ubiq-ref": {
+                "ns": "feature",
+                "edge": "requires",
+                "acyclic": true
+              }
+            },
+            "part_of": {
+              "$ref": "#/$defs/tracking/properties/part_of",
+              "x-ubiq-ref": {
+                "ns": "goal",
+                "edge": "part_of",
+                "single": true
+              }
+            },
+            "pr": {
+              "$ref": "#/$defs/tracking/properties/pr"
             }
           },
           "additionalProperties": false,
@@ -161,6 +186,47 @@
         }
       },
       "additionalProperties": false
+    },
+    "tracking": {
+      "description": "Copy of .ubiq/schemas/tracking.json; a test keeps them equal.",
+      "type": "object",
+      "properties": {
+        "issue": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "priority": {
+          "enum": [
+            "P1",
+            "P2",
+            "P3"
+          ]
+        },
+        "requires": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
+        "part_of": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
+        "pr": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
     }
   }
 }

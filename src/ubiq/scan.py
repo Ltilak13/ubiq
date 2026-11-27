@@ -227,6 +227,7 @@ class Ref:
     section: int = 0  # ATX headings seen at or before this line (0 = before the first)
     heading: bool = False  # the reference sits on a heading line
     linked: bool = False  # mention inside a non-vocabulary link label (author linked it)
+    edge: str = ""  # edge name from an `x-ubiq-ref` schema annotation; empty for other refs
 
     @property
     def kind(self) -> str:

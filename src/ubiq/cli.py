@@ -241,6 +241,9 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
         except CatalogError as e:
             extra.append(Diagnostic("E005", str(e), spec.file))
 
+    if cfg.schemas:
+        from .schemas import xref_refs
+        refs.extend(xref_refs(cfg))
     result.refs.extend(refs)
     result.diagnostics.extend(extra)
     result.docs.extend(doc_files)
@@ -553,7 +556,17 @@ def cmd_graph(args) -> int:
     layout = built.layout
     edges = _composition_edges(built)
     if args.kind:
-        edges = [e for e in edges if e.kind in args.kind]
+        from .schemas import edge_names
+        known = {*GRAPH_KINDS, *built.config.ref_fields, *edge_names(built.config),
+                 *(e.kind for e in edges)}
+        unknown = sorted(set(args.kind) - known)
+        if unknown:
+            print(f"error: unknown edge kind {', '.join(unknown)}; expected one of "
+                  f"{', '.join(sorted(known))}", file=sys.stderr)
+            return 2
+        # A kind selects its edges, and a field name selects the edges that field declares.
+        edges = [e for e in edges if e.kind in args.kind
+                 or (e.name in args.kind and e.name not in GRAPH_KINDS)]
     try:
         start = (_resolve_one(built.glossary, args.target, layout.repositories)
                  if args.target else None)
@@ -1103,8 +1116,9 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--root", default=".")
     g.add_argument("--json", action="store_true")
     g.add_argument("--callers", action="store_true", help="follow incoming edges")
-    g.add_argument("--kind", action="append", choices=GRAPH_KINDS,
-                   help="include this edge kind (repeat to select several)")
+    g.add_argument("--kind", action="append", metavar="KIND",
+                   help="include this edge kind, a ref_fields field, or an x-ubiq-ref edge name "
+                        "(repeat to select several)")
     g.add_argument("--depth", type=_positive, default=None,
                    help="stop after this many hops from the target (default: no limit)")
     g.set_defaults(fn=cmd_graph)

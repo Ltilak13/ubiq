@@ -105,7 +105,8 @@ include link that resolves nowhere always fails it (see Composition edges).
   a `ref_fields` value that is not a string or list of strings, unparsable
   frontmatter in a document scanned for `ref_fields` (strict mode), and a catalog
   entry that is not a string or number are E005 too.
-- `E006` unresolved field ref — a value in a configured `ref_fields` frontmatter field
+- `E006` unresolved field ref — a value in a configured `ref_fields` frontmatter field,
+  a value of a schema property annotated [[x-ubiq-ref]] (the message names its namespace),
   or a [[catalog]] entry with no defining [[record]] by id or name;
   `external_id_patterns` whitelists ids defined outside records.
 - `E007` catalog cover gap — a [[record]] matching a [[catalog]]'s `cover` globs is
@@ -166,12 +167,14 @@ Documents with no owner contribute no edges.
 | `route` | a value in an `edges.route.fields` field (default: none) | W005 when the source's text never names the target |
 | `reference` | a value in an `edges.reference.fields` field (default: none) | W005 when the source's text never names the target |
 | `include` | a Markdown link to a record in an `edges.include.ns` namespace (default: `part`), or one that lands on another repository's record once installed | E011 on a cycle; E012 on a part input |
+| *edge name* | a value of a schema property annotated [[x-ubiq-ref]]; the kind is the annotation's `edge` | E006 when the target is not in its namespace |
 
 Invoke and include edges are dependencies: the source needs the target to run.
 A route edge points elsewhere without depending on the target, as in "not for X;
 use Y". A reference edge identifies an informational example, comparison, or caller
 without declaring a dependency or directing the reader to another workflow.
-Route and reference edges are shown in graph walks but are not followed.
+Route and reference edges are shown in graph walks but are not followed. So are
+the edges that [[x-ubiq-ref]] declares: they record order or containment, not a call.
 Each configured edge field must also be in `ref_fields`, so every target resolves
 (E006). A field may have only one edge kind; either
 mistake is E008. Unresolved and ambiguous references make no edge. Invoke cycles
@@ -249,7 +252,11 @@ separate record. While a repository is unreadable, links into it make no edge.
 `graph --json` returns `target`, `view` (`dependencies` or `callers`), `count`,
 and `edges`, each with `kind`, `source`, `target`, `file`, and `line`. Without a
 target it lists every edge. `--callers` follows incoming edges; `--depth` limits
-hops; `--kind` filters by kind. A walk shows route edges where it reaches them
+hops; `--kind` filters by kind. A kind is one of the four above, or the edge name that
+an [[x-ubiq-ref]] annotation declares (`--kind requires`). A `ref_fields` field name
+selects the edges that field declares too, so `--kind requires` finds a record's
+`requires:` list whether the schema annotates it or `ref_fields` names it. An unknown
+kind exits 2. A walk shows route edges where it reaches them
 but does not follow them. A target that names no single record exits 1. A name
 defined here wins, the way a local directory wins once installed; a name nothing
 here defines resolves in `edges.external` repositories, and `<repository>/<name>`
@@ -482,6 +489,56 @@ Invalid schemas and bindings report E008. Instance failures report E009.
 The optional `x-ubiq` extension checks graph integrity and registered source coverage with E010.
 These explicit contracts add validation without changing lexical vocabulary parsing or reference policies.
 See [native schema validation](schema-validation.md) for the contract and limits.
+
+### Tracking fields and `x-ubiq-ref`
+
+A [[tracking field]] says what a record of work is, what it waits on, and what holds
+it. The fields are one shared fragment, `.ubiq/schemas/tracking.json`; the goal
+and feature schemas carry an exact copy in `$defs.tracking` (a schema cannot
+reference another file, and a test keeps the copies equal) and point each property at it.
+
+| Field | Value |
+| --- | --- |
+| `issue` | the number of the GitHub issue that mirrors the record |
+| `priority` | `P1`, `P2`, or `P3`; mirrored as the label `<sync.label_prefix>Pn` |
+| `requires` | names of records that must finish first |
+| `part_of` | the name of the record this one belongs to |
+| `pr` | numbers of the pull requests that implement the record |
+
+On a goal, they are optional properties of a criterion (`criteria.AC1.issue`), next to the
+existing `issues:` list, which keeps working; a criterion's `issue` is tracked like each
+number in `issues`. On a feature they are optional properties of the record, and the
+feature's own `requires` stays required.
+
+A schema declares a relationship once, by annotating the property that holds the
+names:
+
+```json
+"requires": {
+  "$ref": "#/$defs/tracking/properties/requires",
+  "x-ubiq-ref": {"ns": "feature", "edge": "requires", "acyclic": true}
+}
+```
+
+| Member | Meaning |
+| --- | --- |
+| `ns` | required; the namespace of the records the values name |
+| `edge` | required; the [[edge name]]: lowercase words joined by `-` or `_`, and not `invoke`, `include`, `route`, or `reference` |
+| `acyclic` | optional boolean; the edge must have no cycle |
+| `single` | optional boolean; at most one value |
+
+`x-ubiq-ref` sits on a property whose value is a string or a list of strings, anywhere
+a schema reaches (nested properties, `patternProperties`, `items`, `allOf`, `$ref`
+within the document). `ubiq check` reads each file a frontmatter binding selects, and
+each value must name a record in `ns` by name or id: otherwise E006, at the line of the
+field. A bad annotation (an unknown member, a missing `ns`, a reserved `edge`) is E008. Each
+value makes an edge from the record that owns the file to its target, and the edge's kind
+is `edge`, so `ubiq graph --kind requires` selects it.
+
+`ref_fields` and `edges.*.fields` keep working unchanged. A top-level field that is in
+`ref_fields` is resolved once, as before (an `invoke` edge, any namespace); annotating
+it only adds the rules. `acyclic` and `single` are parsed and validated but not yet
+enforced: cycle and one-parent checks come with the `requires` and `part_of` work.
 
 ## Coverage
 
