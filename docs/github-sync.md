@@ -10,7 +10,9 @@ sync:
   label_prefix: "priority: " # the sync owns labels that start with this; never empty
   records:
     - glob: "docs/goals/*-goal.md"
-      kind: goal             # the only kind today
+      kind: goal             # goal or plan
+    - glob: "docs/plans/*.md"
+      kind: plan
 ```
 
 ```bash
@@ -79,6 +81,25 @@ A criterion's `issue` number, like each number in `issues`, names an issue the s
 Limits: deleting
 a record leaves its issues open. An issue created with a personal token has no
 bot author, so list its number in `issues:` to track it.
+
+## Plan behavior
+
+A `plan` record (see [plan records](spec.md#plan-records)) syncs each of its steps as one
+item, with the marker `<!-- ubiq-plan: <plan> <step> -->`.
+
+- A step that lists an `issue` tracks that issue. A step with no `issue` and no `pr`, and
+  no issue with its marker, gets a new issue. A step that names a `pr` and no `issue` is
+  tracked by that pull request and gets no issue.
+- A plan with status `proposed` or `abandoned` mirrors nothing. A `done` plan closes the
+  open issues of its steps. An `active` plan never closes or reopens anything: a step's
+  issue closes with its pull request.
+- Each item carries the links the sync will mirror once the link facts land:
+  `Desired.parent_issue` is the plan's `issue` (the sub-issue parent) and
+  `Desired.requires_markers` holds the markers of the steps it waits on (the blocked-by
+  targets). `plan()` resolves a marker to an issue number through the same marker index it
+  uses to find an item's issues. No fact reads these fields yet; the blocked-by and
+  sub-issue facts (#121, #122) each add one function to `FACTS` and one handler.
+- A step has no priority, so no label is managed.
 
 ## What the sync writes
 
