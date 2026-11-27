@@ -43,6 +43,7 @@ from typing import Any
 from . import xref
 from .config import Config, load_config
 from .records import normalize
+from .scan import HTML_COMMENT_RE, _blank_fences, _blank_inline
 from .schemas import load_data
 
 # A criterion line and its indented continuation lines.
@@ -394,7 +395,10 @@ Pull = Mapping[str, Any]
 
 def closing_numbers(body: str | None, repo: str = '') -> tuple[int, ...]:
     """Issue numbers that a pull request body closes in `repo` (a bare `#n` or `repo#n`)."""
-    return tuple(dict.fromkeys(int(m.group(2)) for m in CLOSING_RE.finditer(body or '')
+    prose = _blank_inline(_blank_fences(body or ''))
+    prose = HTML_COMMENT_RE.sub('', prose)
+    prose = re.sub(r'(?m)^[ \t]{0,3}>[^\n]*', '', prose)
+    return tuple(dict.fromkeys(int(m.group(2)) for m in CLOSING_RE.finditer(prose)
                                if not m.group(1) or m.group(1).casefold() == repo.casefold()))
 
 
@@ -551,8 +555,12 @@ class GitHub:
         while True:
             batch = self._call('GET', f'https://api.github.com/repos/{self.repo}/pulls'
                                       f'?state=open&per_page=100&page={page}')
-            found += [{'number': p['number'], 'head': p['head']['ref'], 'base': p['base']['ref'],
-                       'closes': closing_numbers(p.get('body'), self.repo)} for p in batch]
+            for pull in batch:
+                base = pull['base']['ref']
+                default = (pull['base'].get('repo') or {}).get('default_branch', base)
+                closes = closing_numbers(pull.get('body'), self.repo) if base == default else ()
+                found.append({'number': pull['number'], 'head': pull['head']['ref'],
+                              'base': base, 'closes': closes})
             if len(batch) < 100:
                 return found
             page += 1

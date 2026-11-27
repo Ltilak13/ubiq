@@ -124,7 +124,7 @@ With those records, #145 must target `claude/..-tracking-fields`, the head of #1
 
 ### Derived status: in review
 
-An issue that an open pull request closes carries the label `status: in review`. The
+An issue that an open pull request targeting the default branch closes carries the label `status: in review`. The
 label is removed when no open pull request closes the issue (the pull request merged or
 closed, or its `Closes` line was removed), including on a closed issue. It is derived
 on every sync and is the one tracking state not stored in frontmatter.

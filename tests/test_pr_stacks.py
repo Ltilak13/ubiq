@@ -123,11 +123,14 @@ def test_closing_keywords_in_the_body():
     body = "Closes #1, fixes: #2\nResolved #3 and RESOLVES o/r#4, closes x/y#5, see #6, closes #1"
     assert closing_numbers(body, "o/r") == (1, 2, 3, 4)
     assert closing_numbers(None) == ()
+    examples = "> fixes #1\n<!-- closes #2 -->\n`fixes #3`\n```\nfixes #4\n```\nCloses #5"
+    assert closing_numbers(examples) == (5,)
 
 
 def test_pulls_reads_open_pull_requests_with_head_base_and_closed_issues():
     page = [{"number": 5, "head": {"ref": "h"}, "base": {"ref": "b"}, "body": "Closes #7"},
-            {"number": 6, "head": {"ref": "i"}, "base": {"ref": "h"}, "body": None}]
+            {"number": 6, "head": {"ref": "i"},
+             "base": {"ref": "h", "repo": {"default_branch": "main"}}, "body": "Closes #8"}]
     seen = []
 
     def transport(method, url, token, payload=None):
