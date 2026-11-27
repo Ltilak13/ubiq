@@ -317,7 +317,6 @@ def fact_priority(item: Desired, tracked: Sequence[int], issues: Mapping[int, Is
 BLOCKED_BEGIN = '<!-- ubiq-blocked-by:begin -->'
 BLOCKED_END = '<!-- ubiq-blocked-by:end -->'
 BLOCKED_SPAN_RE = re.compile(f'{re.escape(BLOCKED_BEGIN)}.*?{re.escape(BLOCKED_END)}', re.DOTALL)
-BLOCKED_RE = re.compile(f'\n?{BLOCKED_SPAN_RE.pattern}\n?', re.DOTALL)
 
 
 def set_blocked_by(body: str, prs: Sequence[int]) -> str:
@@ -328,7 +327,7 @@ def set_blocked_by(body: str, prs: Sequence[int]) -> str:
     one is appended after the body.
     """
     if not prs:
-        return BLOCKED_RE.sub('', body, count=1)
+        return BLOCKED_SPAN_RE.sub('', body, count=1)
     section = (f"{BLOCKED_BEGIN}\nBlocked by: {', '.join(f'#{n}' for n in prs)} "
                f"(pull requests, generated from `requires`)\n{BLOCKED_END}")
     if BLOCKED_SPAN_RE.search(body):
@@ -367,7 +366,7 @@ def fact_requires(item: Desired, tracked: Sequence[int], issues: Mapping[int, Is
 
 def fact_blocked_line(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
     """An open issue's body holds the generated "Blocked by" section for the `pr:` entries."""
-    if item.requires is None or item.state != 'open':
+    if item.state != 'open':
         return []
     actions: list[Action] = []
     for n in tracked:
@@ -653,7 +652,7 @@ def _git(root: Path, rev: str, *cmd: str) -> bytes:
 
 @contextlib.contextmanager
 def revision_root(root: Path, rev: str) -> Iterator[Path]:
-    """A temporary directory holding `ubiq.yaml` and the sync's record files as they are at `rev`.
+    """A temporary directory holding `ubiq.yaml` and the records used by sync as they are at `rev`.
 
     Only those files are read, with `git show`, and only regular files are written
     (symlinks are skipped), so nothing in the revision can point outside the
@@ -672,10 +671,13 @@ def revision_root(root: Path, rev: str) -> Iterator[Path]:
             fetch('ubiq.yaml')
         cfg = load_config(tmp)
         if cfg.sync is not None:
+            patterns = [record.glob for record in cfg.sync.records]
+            patterns.extend(pattern for spec in cfg.schemas if spec.format == 'frontmatter'
+                            for pattern in spec.files)
             listing = _git(root, rev, 'ls-tree', '-r', '-z', rev).decode().split('\0')
             for entry in filter(None, listing):
                 meta, path = entry.split('\t', 1)
-                if meta.startswith('100') and any(r.glob.matches(tmp / path) for r in cfg.sync.records):
+                if meta.startswith('100') and any(pattern.matches(tmp / path) for pattern in patterns):
                     fetch(path)
         yield tmp
 
