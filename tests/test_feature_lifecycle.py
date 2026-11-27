@@ -12,6 +12,7 @@ from ubiq.config import load_config
 from ubiq.plan import BUNDLED, PlanError, load_features, order
 from ubiq.sync import (
     GitHub,
+    SyncError,
     cmd_sync,
     desired_from_config,
     drift,
@@ -126,6 +127,11 @@ def test_feature_without_a_summary_is_not_readable(tmp_path):
     (root / "features" / "bad.md").write_text("---\nname: bad\n---\n\nBody.\n")
     with pytest.raises(Exception, match="not a readable feature"):
         desired_from_config(load_config(root))
+
+
+def test_feature_desired_rejects_an_unknown_status():
+    with pytest.raises(SyncError, match="f/a.md: status must be one of"):
+        feature_desired({"name": "a", "summary": "s", "path": "f/a.md", "status": "done"})
 
 
 def test_feature_desired_defaults_to_shipped():

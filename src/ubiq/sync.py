@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Config, load_config
+from .plan import PlanError, feature_status
 from .schemas import load_data
 
 # A criterion line and its indented continuation lines.
@@ -159,7 +160,10 @@ def feature_desired(feature: Mapping[str, Any], sha: str = '',
     """
     name = feature['name']
     marker = f"ubiq-feature: {name}"
-    shipped = feature.get('status', 'shipped') == 'shipped'
+    try:
+        shipped = feature_status(feature) == 'shipped'
+    except PlanError as exc:
+        raise SyncError(f"{feature['path']}: {exc}") from exc
     requires = ', '.join(f"`{r}`" for r in feature.get('requires') or []) or 'none'
     body = (f"Feature `{name}`, planned in `{feature['path']}`.\n\n{feature['summary']}\n\n"
             f"Specified in `{feature.get('docs', '')}`. Requires: {requires}.\n\n"

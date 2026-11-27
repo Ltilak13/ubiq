@@ -51,6 +51,14 @@ def _strings(meta: dict, key: str, path: Path) -> tuple[str, ...]:
     return tuple(value)
 
 
+def feature_status(meta: Mapping[str, object]) -> str:
+    """Read the lifecycle state shared by the adoption plan and GitHub sync."""
+    status = meta.get("status", "shipped")
+    if not isinstance(status, str) or status not in STATUSES:
+        raise PlanError(f"status must be one of {', '.join(STATUSES)}")
+    return status
+
+
 def load_features(directory: Path = BUNDLED) -> list[Feature]:
     """Read every feature record in `directory`, sorted by name."""
     if not directory.is_dir():
@@ -64,9 +72,10 @@ def load_features(directory: Path = BUNDLED) -> list[Feature]:
         name, summary = meta.get("name"), meta.get("summary")
         if not isinstance(name, str) or not isinstance(summary, str):
             raise PlanError(f"{path.name}: name and summary must be strings")
-        status = meta.get("status", "shipped")
-        if status not in STATUSES:
-            raise PlanError(f"{path.name}: status must be one of {', '.join(STATUSES)}")
+        try:
+            status = feature_status(meta)
+        except PlanError as exc:
+            raise PlanError(f"{path.name}: {exc}") from exc
         issue = meta.get("issue")
         if issue is not None:
             if isinstance(issue, bool) or not str(issue).isdigit() or int(issue) < 1:
