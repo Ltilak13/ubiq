@@ -68,6 +68,11 @@ steps:
     requires: [tracking-fields, schema-edge-diagrams]
     branch: claude/ecstatic-mendel-nkgz6t-workflow-records
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+  view-sync:
+    issue: 134
+    requires: [tracking-fields, schema-edge-diagrams]
+    branch: claude/ecstatic-mendel-nkgz6t-view-sync
+    base: claude/ecstatic-mendel-nkgz6t-tracking-fields
   backfill:
     issue: 127
     requires: [feature-lifecycle, plan-records, pr-stacks, part-of-sub-issues]
