@@ -1,4 +1,4 @@
-"""`acyclic` from `x-ubiq-ref`: a cycle among records fails `ubiq check` (E013).
+"""`acyclic` from `x-ubiq-ref`: a cycle among records fails `ubiq check` (E014).
 
 A schema property annotated `{"ns": ..., "edge": ..., "acyclic": true}` at the top
 of a record (for example a feature's `requires`) makes the edges of that kind among
@@ -22,7 +22,7 @@ READ_ERRORS = (OSError, UnicodeError, ValueError, TypeError, KeyError, yaml.YAML
 
 
 def check_cycles(cfg) -> list[Diagnostic]:
-    """E013 for each cycle among records through an `acyclic` edge."""
+    """E014 for each cycle among records through an `acyclic` edge."""
     graphs: dict[tuple[str, str], dict[str, list[str]]] = {}
     where: dict[tuple[str, str], dict[str, tuple[Path, int]]] = {}
     shown: dict[str, str] = {}
@@ -65,5 +65,5 @@ def check_cycles(cfg) -> list[Diagnostic]:
         for loop in xref.find_cycles(edges):
             file, line = where[(ns, edge)][loop[0]]
             names = " -> ".join(shown.get(n, n) for n in loop)
-            diagnostics.append(Diagnostic("E013", f"{edge} cycle: {names}", file, line))
+            diagnostics.append(Diagnostic("E014", f"{edge} cycle: {names}", file, line))
     return diagnostics

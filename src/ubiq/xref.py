@@ -3,7 +3,7 @@
 A property annotated `{"x-ubiq-ref": {"ns": "feature", "edge": "requires"}}` holds a
 record name (or a list of them) that must resolve to a record in `ns` (E006). The
 resolved link is a composition edge named `edge`, so `ubiq graph --kind requires`
-selects it. `acyclic` is enforced by cycles.py (E013); `single` is parsed and kept for
+selects it. `acyclic` is enforced by cycles.py (E014); `single` is parsed and kept for
 the one-parent check, which nothing enforces yet.
 
 This module reads schemas and walks instance data. It does not touch the glossary.

@@ -1,10 +1,10 @@
-"""`acyclic` from `x-ubiq-ref`: a cycle fails `ubiq check` (E013)."""
+"""`acyclic` from `x-ubiq-ref`: a cycle fails `ubiq check` (E014)."""
 import json
 
 from ubiq import xref
 from ubiq.cli import main
 
-# -- E013: acyclic ---------------------------------------------------------------------
+# -- E014: acyclic ---------------------------------------------------------------------
 
 SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
@@ -27,7 +27,7 @@ def features(root, **requires):
 def check(root, capsys):
     status = main(["check", "--root", str(root), "--json"])
     report = json.loads(capsys.readouterr().out)
-    return status, [d for d in report["diagnostics"] if d["code"] == "E013"], report
+    return status, [d for d in report["diagnostics"] if d["code"] == "E014"], report
 
 
 def test_a_requires_cycle_fails_check_and_names_it(tmp_path, capsys):
