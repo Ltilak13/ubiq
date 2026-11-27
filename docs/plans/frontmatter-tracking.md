@@ -33,6 +33,7 @@ steps:
     requires: [tracking-fields]
     branch: claude/ecstatic-mendel-nkgz6t-requires-links
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+    pr: 145
   part-of-sub-issues:
     issue: 122
     requires: [tracking-fields]
