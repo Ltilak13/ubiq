@@ -349,3 +349,22 @@ def test_pull_request_that_meets_a_criterion_is_pending_not_drift(tmp_path, monk
     capsys.readouterr()
     assert cmd_sync(flags(root, check=True, ref='nope'), remote, 0) == 2
     assert 'nope' in capsys.readouterr().err
+
+
+def test_ref_reads_only_the_records_and_ignores_symlinks(tmp_path, monkeypatch, capsys):
+    root = write_repo(tmp_path)
+    monkeypatch.setenv('GITHUB_TOKEN', 't')
+    outside = tmp_path.parent / f'{tmp_path.name}-outside'
+    outside.mkdir()
+    (root / 'goals/linked-goal.md').symlink_to(outside / 'goal.md')  # absolute, dangling, matches the glob
+    (root / '.agents').mkdir()
+    (root / '.agents/skill').symlink_to(outside)  # absolute, escapes the checkout
+
+    def vcs(*cmd):
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *cmd], cwd=root,
+                       check=True, capture_output=True)
+    vcs('init', '-q', '-b', 'main')
+    vcs('add', '.')
+    vcs('commit', '-q', '-m', 'base')
+    assert cmd_sync(flags(root, check=True, ref='main'), Fake({READ: [issue(3, marker='AC1')]}), 0) == 0
+    assert json.loads(capsys.readouterr().out) == []

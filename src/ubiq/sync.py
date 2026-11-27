@@ -20,13 +20,11 @@ title.
 from __future__ import annotations
 
 import contextlib
-import io
 import json
 import os
 import re
 import subprocess
 import sys
-import tarfile
 import tempfile
 import textwrap
 import time
@@ -280,19 +278,38 @@ def _head(root: Path, rev: str | None = None) -> str:
     return done.stdout.strip()
 
 
+def _git(root: Path, rev: str, *cmd: str) -> bytes:
+    done = subprocess.run(['git', *cmd], cwd=root, capture_output=True, check=False)
+    if done.returncode:
+        raise SyncError(f'cannot read revision {rev}: {done.stderr.decode().strip()}')
+    return done.stdout
+
+
 @contextlib.contextmanager
 def revision_root(root: Path, rev: str) -> Iterator[Path]:
-    """A temporary checkout of `rev` (a read-only `git archive`); the repository is not touched."""
-    with tempfile.TemporaryDirectory() as tmp:
-        archive = subprocess.run(['git', 'archive', rev], cwd=root, capture_output=True, check=False)
-        if archive.returncode:
-            raise SyncError(f'cannot read revision {rev}: {archive.stderr.decode().strip()}')
-        with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
-            if hasattr(tarfile, 'data_filter'):
-                tar.extractall(tmp, filter='data')
-            else:  # Python before the extraction filters; git archive output is trusted here.
-                tar.extractall(tmp)
-        yield Path(tmp)
+    """A temporary directory holding `ubiq.yaml` and the sync's record files as they are at `rev`.
+
+    Only those files are read, with `git show`, and only regular files are written
+    (symlinks are skipped), so nothing in the revision can point outside the
+    directory. The repository itself is not touched.
+    """
+    with tempfile.TemporaryDirectory() as name:
+        tmp = Path(name)
+
+        def fetch(path: str) -> None:
+            target = tmp / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(_git(root, rev, 'show', f'{rev}:{path}'))
+
+        fetch('ubiq.yaml')
+        cfg = load_config(tmp)
+        if cfg.sync is not None:
+            listing = _git(root, rev, 'ls-tree', '-r', '-z', rev).decode().split('\0')
+            for entry in filter(None, listing):
+                meta, path = entry.split('\t', 1)
+                if meta.startswith('100') and any(r.glob.matches(tmp / path) for r in cfg.sync.records):
+                    fetch(path)
+        yield tmp
 
 
 def cmd_sync(args, transport: Transport = urllib_transport, pause: float = 1.0) -> int:
