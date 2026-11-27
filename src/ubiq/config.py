@@ -101,6 +101,12 @@ DEFAULT_CONFIG: dict = {
     # setup guidance and exits 2. `files` selects the denominator; each
     # `exclude` entry needs a `reason`.
     "coverage": None,
+    # Mirror records to GitHub issues (`ubiq sync github`). Unset: the command
+    # reports setup guidance and exits 2.
+    # repo: owner/name of the issue tracker (default: $GITHUB_REPOSITORY).
+    # label_prefix: prefix of the labels the sync owns (default "priority: ").
+    # records: the record files to mirror, each a `glob` and its `kind` (goal).
+    "sync": None,
 }
 
 
@@ -142,6 +148,23 @@ class CoverageSpec:
     no_regression: bool
 
 
+SYNC_KINDS = ("goal",)
+REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+@dataclass(frozen=True)
+class SyncRecord:
+    glob: Glob
+    kind: str
+
+
+@dataclass(frozen=True)
+class SyncSpec:
+    records: tuple[SyncRecord, ...]
+    repo: str | None = None
+    label_prefix: str = "priority: "
+
+
 @dataclass(frozen=True)
 class Config:
     root: Path
@@ -163,6 +186,7 @@ class Config:
     candidate_shapes: Shape
     edges: EdgeConfig
     coverage: CoverageSpec | None = None
+    sync: SyncSpec | None = None
 
     @property
     def part_rules(self) -> tuple[GlossaryRule, ...]:
@@ -277,6 +301,35 @@ def _relative(pattern: str, field: str) -> str:
     if os.path.isabs(pattern) or ".." in Path(pattern).parts:
         raise InvalidConfig(f"{field}: expected a repository-relative pattern")
     return pattern
+
+
+def _sync(raw, root: Path) -> SyncSpec | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise InvalidConfig("sync: expected a mapping")
+    _known(raw, "sync", ("repo", "label_prefix", "records"))
+    repo = raw.get("repo")
+    if repo is not None and (not isinstance(repo, str) or not REPO_RE.match(repo)):
+        raise InvalidConfig("sync.repo: expected owner/name")
+    prefix = raw.get("label_prefix", "priority: ")
+    if not isinstance(prefix, str):
+        raise InvalidConfig("sync.label_prefix: expected a string")
+    entries = raw.get("records")
+    if not isinstance(entries, list) or not entries:
+        raise InvalidConfig("sync.records: list the record files to mirror")
+    records: list[SyncRecord] = []
+    for i, entry in enumerate(entries):
+        field = f"sync.records[{i}]"
+        if not isinstance(entry, dict):
+            raise InvalidConfig(f"{field}: expected a mapping with glob and kind")
+        _known(entry, field, ("glob", "kind"))
+        pattern = _relative(_string(entry.get("glob"), f"{field}.glob"), f"{field}.glob")
+        kind = entry.get("kind")
+        if kind not in SYNC_KINDS:
+            raise InvalidConfig(f"{field}.kind: expected one of {', '.join(SYNC_KINDS)}")
+        records.append(SyncRecord(Glob.parse(pattern, root), kind))
+    return SyncSpec(tuple(records), repo, prefix)
 
 
 def _coverage(raw, root: Path) -> CoverageSpec | None:
@@ -518,6 +571,7 @@ def load_config(root: Path) -> Config:
         candidate_shapes=shapes,
         edges=_edges(cfg["edges"], tuple(cfg["ref_fields"]), root),
         coverage=_coverage(cfg["coverage"], root),
+        sync=_sync(cfg["sync"], root),
     )
     broken = broken_guarantees(config)
     if broken:

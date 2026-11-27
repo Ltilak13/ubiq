@@ -62,6 +62,7 @@ from .records import (
 )
 from .scan import Ref, file_link_targets, scan_docs
 from .schemas import assess_schemas
+from .sync import cmd_sync
 
 
 def _display_path(path: Path, root: Path) -> str:
@@ -1117,6 +1118,19 @@ def main(argv: list[str] | None = None) -> int:
                     help="count this feature as used (repeat); ubiq.yaml is read as well")
     pl.add_argument("--features", metavar="DIR", help="feature records (default: ubiq's own)")
     pl.set_defaults(fn=cmd_plan)
+
+    sy = sub.add_parser("sync", help="mirror records to a tracker")
+    targets = sy.add_subparsers(dest="target", required=True)
+    gh = targets.add_parser("github", help="mirror records to GitHub issues, or check that they match")
+    gh.add_argument("--root", default=".")
+    mode = gh.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="print the plan as JSON (default)")
+    mode.add_argument("--apply", action="store_true", help="perform the plan (needs GITHUB_TOKEN)")
+    mode.add_argument("--check", action="store_true",
+                      help="exit 1 when GitHub differs from the records; skips without GITHUB_TOKEN")
+    gh.add_argument("--repo", metavar="OWNER/NAME",
+                    help="issue repository (default: sync.repo, then $GITHUB_REPOSITORY)")
+    gh.set_defaults(fn=cmd_sync)
 
     im = sub.add_parser("impact", help="records a change touches and the callers it affects")
     im.add_argument("--since", required=True, metavar="REV",
