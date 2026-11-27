@@ -18,6 +18,9 @@
         "in-progress"
       ]
     },
+    "issue": {
+      "$ref": "#/$defs/tracking/properties/issue"
+    },
     "criteria": {
       "type": "object",
       "minProperties": 1,

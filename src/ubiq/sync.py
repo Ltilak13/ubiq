@@ -65,7 +65,10 @@ class Desired:
     inside the generated body marker that finds the issue again. `state` is
     `closed` when the record is done, else `open`. `priority` (`P1`, `P2`, `P3`, or
     empty when the record sets none) is mirrored as the label `label_prefix + priority`.
-    Later tickets add fields here (requires, part_of) and one fact function each.
+    `parent` names the record this one is part of (its goal, or the criterion's `part_of`)
+    and `parent_issue` is that record's issue number, or 0 when it has none: the item's
+    issues are then sub-issues of that issue.
+    Later tickets add fields here (requires) and one fact function each.
     """
     kind: str
     ident: Mapping[str, str]
@@ -77,6 +80,8 @@ class Desired:
     close_comment: str = ''
     priority: str = ''
     label_prefix: str = DEFAULT_LABEL_PREFIX
+    parent: str = ''
+    parent_issue: int = 0
 
 
 # -- desired state: records -> Desired ---------------------------------------------
@@ -103,17 +108,21 @@ def load_goal(path: Path, root: Path) -> dict[str, Any]:
         text = {m.group(1): ' '.join(m.group(0).split())
                 for m in CRITERION_RE.finditer(path.read_text(encoding='utf-8'))}
         return {'name': data['name'], 'path': path.relative_to(Path(root).resolve()).as_posix(),
-                'criteria': data['criteria'], 'text': text}
+                'criteria': data['criteria'], 'text': text, 'issue': data.get('issue', 0)}
     except (ValueError, KeyError, OSError) as exc:
         raise SyncError(f"{path}: not a readable goal ({exc})") from exc
 
 
 def goal_desired(goal: Mapping[str, Any], sha: str = '',
-                 label_prefix: str = DEFAULT_LABEL_PREFIX) -> list[Desired]:
+                 label_prefix: str = DEFAULT_LABEL_PREFIX,
+                 goal_issues: Mapping[str, int] | None = None) -> list[Desired]:
     """One `Desired` per criterion: open until the criterion is `met`, then closed.
 
-    A criterion's `issue` is tracked like each number in its `issues` list.
+    A criterion's `issue` is tracked like each number in its `issues` list. A criterion
+    is part of its goal, or of the goal its `part_of` names; `goal_issues` maps goal
+    names to their `issue`, which becomes the parent of the criterion's issues.
     """
+    goal_issues = {goal['name']: goal.get('issue', 0), **(goal_issues or {})}
     items = []
     for ac, criterion in goal['criteria'].items():
         marker = f"ubiq-goal: {goal['name']} {ac}"
@@ -125,6 +134,7 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             comment = (f"Goal `{goal['name']}` {ac} is `met` at {sha or 'the merged commit'}. "
                        f"Review by {review['by']}: {review['note']}\n\n"
                        + CLOSED_MARKER.format(name=goal['name'], ac=ac))
+        parent = (criterion.get('part_of') or [goal['name']])[0]
         items.append(Desired(
             kind='goal', ident={'goal': goal['name'], 'criterion': ac}, marker=marker,
             title=textwrap.shorten(f"{goal['name']} {ac}: {title}", 200),
@@ -133,19 +143,17 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
             close_comment=comment, priority=criterion.get('priority', ''),
-            label_prefix=label_prefix))
+            label_prefix=label_prefix, parent=parent, parent_issue=goal_issues.get(parent, 0)))
     return items
 
 
 def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
     """Desired state for every record file that `sync.records` selects."""
     assert cfg.sync is not None
-    items: list[Desired] = []
-    for record in cfg.sync.records:
-        for path in sorted(record.glob.walk(cfg.ignore)):
-            if record.kind == 'goal':
-                items += goal_desired(load_goal(path, cfg.root), sha, cfg.sync.label_prefix)
-    return items
+    goals = [load_goal(path, cfg.root) for record in cfg.sync.records if record.kind == 'goal'
+             for path in sorted(record.glob.walk(cfg.ignore))]
+    issues = {g['name']: g['issue'] for g in goals}
+    return [item for g in goals for item in goal_desired(g, sha, cfg.sync.label_prefix, issues)]
 
 
 # -- planner: desired vs snapshot -> actions ---------------------------------------
@@ -166,7 +174,8 @@ def fact_exists(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issu
         return []
     labels = [item.label_prefix + item.priority] if _mirrors_priority(item) else []
     return [{'action': 'create', **item.ident, 'title': item.title, 'body': item.body,
-             **({'labels': labels} if labels else {})}]
+             **({'labels': labels} if labels else {}),
+             **({'parent_issue': item.parent_issue} if item.parent_issue else {})}]
 
 
 def fact_state(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
@@ -211,9 +220,48 @@ def fact_priority(item: Desired, tracked: Sequence[int], issues: Mapping[int, Is
     return actions
 
 
+def fact_part_of(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
+    """Each issue that tracks the record is a sub-issue of the parent record's issue.
+
+    An issue missing from the parent's `sub_issues` (the snapshot's list of its children)
+    is a `link`; GitHub allows one parent per issue, so the link replaces any other parent.
+    A record whose parent has no `issue` plans nothing, and a parent that is not an issue
+    gets a `warn`. A sub-issue that GitHub holds but no record asks for is `unlink`,
+    planned across items by `unexpected_sub_issues`.
+    """
+    if not item.parent_issue:
+        return []
+    parent = issues.get(item.parent_issue)
+    if parent is None:
+        return [{'action': 'warn', **item.ident, 'issue': item.parent_issue,
+                 'reason': f'parent issue of {item.parent} is not an issue'}]
+    children = set(parent.get('sub_issues') or ())
+    return [{'action': 'link', **item.ident, 'issue': n, 'parent': item.parent_issue,
+             'sub_issue_id': issues[n].get('id')}
+            for n in tracked if n in issues and n != item.parent_issue and n not in children]
+
+
+def unexpected_sub_issues(desired: Sequence[Desired], issues: Mapping[int, Issue],
+                          tracked: Mapping[int, Sequence[int]]) -> list[Action]:
+    """Sub-issues on a parent issue that no record puts there: added by hand on GitHub.
+
+    `tracked` maps each item's index in `desired` to its issue numbers. An issue that a
+    record moves to another parent is not unexpected: its `link` replaces the old parent.
+    """
+    expected = {n for i, item in enumerate(desired) if item.parent_issue for n in tracked[i]}
+    found: list[Action] = []
+    for parent in sorted({d.parent_issue for d in desired if d.parent_issue in issues}):
+        for n in issues[parent].get('sub_issues') or ():
+            if n not in expected:
+                found.append({'action': 'unlink', 'issue': n, 'parent': parent,
+                              'sub_issue_id': issues.get(n, {}).get('id'),
+                              'reason': 'sub-issue is not part_of the parent record'})
+    return found
+
+
 # Each mirrored fact: (item, tracked issue numbers, issues by number) -> actions.
 FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action]], ...] = (
-    fact_exists, fact_state, fact_priority)
+    fact_exists, fact_state, fact_priority, fact_part_of)
 
 
 def plan(desired: Iterable[Desired], snapshot: Sequence[Issue]) -> list[Action]:
@@ -228,9 +276,12 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue]) -> list[Action]:
     by_number = {i['number']: i for i in snapshot}
     by_marker = _marked(snapshot)
     actions: list[Action] = []
-    for item in desired:
+    desired = list(desired)
+    tracked_by_item: dict[int, list[int]] = {}
+    for index, item in enumerate(desired):
         marked = [i['number'] for i in by_marker.get(item.marker, [])]
         tracked = list(dict.fromkeys([*item.listed, *marked]))
+        tracked_by_item[index] = tracked
         actions += [{'action': 'warn', **item.ident, 'issue': n, 'reason': 'listed number is not an issue'}
                     for n in item.listed if n not in by_number]
         found = [a for fact in FACTS for a in fact(item, tracked, by_number)]
@@ -238,7 +289,7 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue]) -> list[Action]:
         if not found:
             reason = 'met; no open issue' if item.state == 'closed' else 'tracked'
             actions.append({'action': 'noop', **item.ident, 'reason': reason, 'issues': tracked})
-    return actions
+    return actions + unexpected_sub_issues(desired, by_number, tracked_by_item)
 
 
 def drift(actions: Iterable[Action]) -> list[Action]:
@@ -269,21 +320,57 @@ class GitHub:
         self.repo, self.token, self.transport, self.pause = repo, token, transport, pause
         self.base = f'https://api.github.com/repos/{repo}/issues'
         self.handlers: dict[str, Callable[[Action], None]] = {
-            'create': self._create, 'close': self._close, 'label': self._label}
+            'create': self._create, 'close': self._close, 'label': self._label,
+            'link': self._link, 'unlink': self._unlink}
 
     def _call(self, method: str, url: str, payload: dict | None = None) -> Any:
         return self.transport(method, url, self.token, payload)
 
-    def snapshot(self) -> list[Issue]:
-        """Every issue (not pull request) in the repository, open or closed."""
+    def snapshot(self, parents: Iterable[int] = ()) -> list[Issue]:
+        """Every issue (not pull request) in the repository, open or closed.
+
+        For each number in `parents` that is an issue, `sub_issues` lists the numbers
+        of its sub-issues.
+        """
         issues: list[Issue] = []
         page = 1
         while True:
             batch = self._call('GET', f'{self.base}?state=all&per_page=100&page={page}')
             issues += [i for i in batch if 'pull_request' not in i]
             if len(batch) < 100:
-                return issues
+                break
             page += 1
+        by_number: dict[int, Any] = {i['number']: i for i in issues}
+        for parent in dict.fromkeys(parents):
+            if parent in by_number:
+                by_number[parent]['sub_issues'] = self._sub_issues(parent)
+        return issues
+
+    def _sub_issues(self, parent: int) -> list[int]:
+        found: list[int] = []
+        page = 1
+        while True:
+            batch = self._call('GET', f'{self.base}/{parent}/sub_issues?per_page=100&page={page}')
+            found += [i['number'] for i in batch]
+            if len(batch) < 100:
+                return found
+            page += 1
+
+    def _attach(self, parent: int, sub_issue_id: Any) -> None:
+        # One parent per issue: replace_parent moves an issue that has another parent.
+        self._call('POST', f'{self.base}/{parent}/sub_issues',
+                   {'sub_issue_id': sub_issue_id, 'replace_parent': True})
+
+    def _link(self, action: Action) -> None:
+        self._attach(action['parent'], action['sub_issue_id'])
+
+    def _unlink(self, action: Action) -> None:
+        try:
+            self._call('DELETE', f"{self.base}/{action['parent']}/sub_issue",
+                       {'sub_issue_id': action['sub_issue_id']})
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:  # already gone is the state we want
+                raise
 
     def _create(self, action: Action) -> None:
         payload = {'title': action['title'], 'body': action['body']}
@@ -291,6 +378,8 @@ class GitHub:
             payload['labels'] = action['labels']
         issue = self._call('POST', self.base, payload)
         action['issue'] = issue['number']
+        if action.get('parent_issue'):
+            self._attach(action['parent_issue'], issue['id'])
 
     def _label(self, action: Action) -> None:
         url = f"{self.base}/{action['issue']}/labels"
@@ -421,7 +510,8 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
         return 0
     github = GitHub(repo, token, transport, pause)
     try:
-        actions = plan(desired_from_config(cfg, _head(root, getattr(args, 'ref', None))), github.snapshot())
+        desired = desired_from_config(cfg, _head(root, getattr(args, 'ref', None)))
+        actions = plan(desired, github.snapshot(d.parent_issue for d in desired if d.parent_issue))
     except SyncError as exc:
         print(f'error: {exc}', file=sys.stderr)
         return 2
