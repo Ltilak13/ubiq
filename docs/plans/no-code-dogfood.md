@@ -10,6 +10,7 @@ steps:
     requires: []
     branch: claude/ecstatic-mendel-nkgz6t-plan-records
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+    pr: 147
   feature-records:
     issue: 70
     requires: []
