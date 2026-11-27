@@ -95,8 +95,8 @@ with the shell scripts in skills, follow once the Python form is proven.
 Out of scope: algorithm bodies written in frontmatter. A record names and
 constrains a bound function; it does not contain a programming language.
 
-Open decisions, such as the rule language for interpreted checks and how step
-definitions bind to symbols, are tracked on the wayfinder map for this goal.
+Open decisions are tracked on the wayfinder map for this goal (#137). Accepted
+decisions are records in [docs/decisions](../decisions/README.md).
 
 ## Acceptance evidence
 
