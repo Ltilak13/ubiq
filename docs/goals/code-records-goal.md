@@ -6,6 +6,7 @@ criteria:
     assessment: unassessed
     support: []
     gap: Public symbols have no records, and nothing reports a symbol without one.
+    issues: [155]
   AC2:
     assessment: unassessed
     support: []
@@ -38,6 +39,11 @@ criteria:
     support: []
     gap: Decisions and wayfinder resolutions live only as GitHub comments, not as records the comments mirror.
     issues: [152]
+  AC9:
+    assessment: unassessed
+    support: []
+    gap: Feature interactions, change impact, and collisions between open pull requests are not derived from records.
+    issues: [156]
 ---
 
 # Goal: code as records
@@ -110,3 +116,4 @@ The goal is achieved when:
 6. AC6: Renaming a term in its record carries the rename to prose, step phrases, and code symbols through `ubiq sync`, and a dry run shows every edit first.
 7. AC7: Each namespace is a registry. Public records are exactly the registered ones, a link from outside a module to a private symbol fails `ubiq check`, and `ubiq export schema` writes a versioned JSON Schema bundle that another repository can import by `$ref`.
 8. AC8: Decisions, including wayfinder resolutions, are records, and the GitHub comments that announce them are generated from those records.
+9. AC9: Feature interactions are derived from shared symbols, configuration keys, diagnostic codes, and record kinds; every pull request reports the features it involves and breaks; and collisions between open pull requests are reported. Only semantic conflicts are declared.
