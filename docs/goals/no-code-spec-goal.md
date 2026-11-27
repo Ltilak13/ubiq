@@ -5,8 +5,8 @@ criteria:
   AC1:
     assessment: unassessed
     support: []
-    gap: No implementation is merged. Diagrams (#59) and README composition (#65) have no checked home yet.
-    issues: [59, 65]
+    gap: No implementation is merged. Diagrams have no checked home yet (#59).
+    issues: [59]
   AC2:
     assessment: unassessed
     support: []
@@ -14,8 +14,8 @@ criteria:
   AC3:
     assessment: unassessed
     support: []
-    gap: Restated-value warnings (PR #60) and checked field links (PR #61) are open, unmerged pull requests. Prose-first values (#63) depend on #61.
-    issues: [63]
+    gap: Restated-value warnings (PR #60) and checked field links (PR #61) are open, unmerged pull requests. Prose-first values (#63) and READMEs composed from record fields (#65) depend on #61.
+    issues: [63, 65]
   AC4:
     assessment: unassessed
     support: []
@@ -63,8 +63,9 @@ Agents help write and maintain records. No check needs an agent to pass.
 Pre-commit hooks, CI, Vale, CUE, and Cucumber stay outside Ubiq. Ubiq documents
 how to combine them as a recipe.
 
-Out of scope: proving that prose is true. Ubiq makes risky sentences visible and
-moves facts into frontmatter or scenarios. What remains is for review.
+Out of scope: proving that prose is true. Ubiq makes risky sentences visible
+(restated values, and claim-word rules in Vale) and moves facts into frontmatter
+or scenarios. What remains is for review.
 
 Tabled: a renderer for field references (PR #62). Checked links read well in
 GitHub previews, so it is not needed now.
