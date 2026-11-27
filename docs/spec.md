@@ -138,6 +138,12 @@ include link that resolves nowhere always fails it (see Composition edges).
 - `E012` part input — an include names no value, or an undeclared value, for an
   input its part declares; or a part's `edges.include.inputs` field is not a
   mapping of input names to lists of values.
+- `E014` edge cycle — records form a loop through an `x-ubiq-ref` edge whose
+  annotation sets `acyclic: true`, for example features that `requires` each other.
+  The message names the loop (`requires cycle: a -> b -> a`) at the first record's
+  field. Only a top-level annotated field of a frontmatter-bound record is a node,
+  because a nested field (a goal criterion's `requires`) has a source that is not a
+  record of the namespace.
 - `W003` blocked invoke — an invoke edge targets a record whose
   `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
 - `W004` install layout — a link that leaves an `edges.install` directory resolves
@@ -538,8 +544,13 @@ is `edge`, so `ubiq graph --kind requires` selects it.
 
 `ref_fields` and `edges.*.fields` keep working unchanged. A top-level field that is in
 `ref_fields` is resolved once, as before (an `invoke` edge, any namespace); annotating
-it only adds the rules. `acyclic` and `single` are parsed and validated but not yet
-enforced: cycle and one-parent checks come with the `requires` and `part_of` work.
+it only adds the rules. `single` is parsed and validated but not yet enforced; the
+one-parent check comes with the `part_of` work. `acyclic` is enforced (E014, below).
+
+`requires` is a list of record names. An entry `"pr: <n>"` (quote it, or YAML reads a
+mapping) names a pull request, not a record, so it is exempt from E006. `ubiq sync
+github` mirrors `requires` as blocked-by links and the `pr:` entries as a generated line
+(see [GitHub sync](github-sync.md)).
 
 ### Plan records
 

@@ -37,6 +37,9 @@ pure function that returns actions:
 | --- | --- |
 | `create` | A record that is not done has no issue; open one (with its priority label). |
 | `label` | An open issue's priority label differs from the record; add and remove labels. |
+| `link` | A required issue is not yet a blocker; add the blocked-by link. |
+| `unlink` | An issue blocks this one but `requires` does not name it; remove the link. |
+| `body` | The generated "Blocked by" section differs; rewrite it between its markers. |
 | `close` | A record that is done still has an open issue; close it with a comment. |
 | `warn` | A record lists a number that is not an issue (a pull request, a typo). |
 | `noop` | The issue already matches. |
@@ -67,6 +70,30 @@ function in `FACTS` plans it, and one `GitHub` handler performs it.
 - A new issue is created with its label.
 
 A criterion's `issue` number, like each number in `issues`, names an issue the sync tracks.
+
+## Requires
+
+A criterion's `requires` (one of the [[tracking field]]s) is mirrored two ways. A name
+that resolves to a record with an `issue` (a feature record, for example) becomes a
+native GitHub blocked-by link on the criterion's open issue. An entry `"pr: <n>"`
+cannot be a link, because GitHub rejects a pull request as a blocker ("Target issue may
+only be an issue"), so it becomes text.
+
+- `fact_requires` plans `link` (POST `issues/{n}/dependencies/blocked_by` with the
+  blocker's numeric `issue_id`) for each missing link and `unlink` (DELETE
+  `.../blocked_by/{issue_id}`) for each extra one. Both are drift, so adding or removing
+  a `requires` entry is one action in the dry run, and a link added by hand is reported
+  and removed by `--apply`.
+- The snapshot reads an issue's links (GET `.../blocked_by`) only when its
+  `issue_dependencies_summary.blocked_by` is above zero.
+- `fact_blocked_line` plans a `body` action that writes one line, `Blocked by: #12, #15
+  (pull requests, generated from requires)`, between `<!-- ubiq-blocked-by:begin -->` and
+  `<!-- ubiq-blocked-by:end -->`. The section is appended when missing, replaced in
+  place when it differs, and removed when no `pr:` entry remains. Text outside the
+  markers is never changed.
+- A criterion with no `requires` leaves links and the body alone; `requires: []`
+  removes every link. A name that resolves to no record with an `issue` makes no link. A
+  required issue that is not in the repository is a `warn`.
 
 ## Goal behavior
 
