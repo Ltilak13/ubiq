@@ -21,3 +21,8 @@ cue vet -d '#Limits' limits/limits.cue limits/limits.yaml
 vale --config .vale.ini specs
 npm ci && npm run cucumber
 ```
+
+To verify the hooks, copy this directory into a separate Git repository and
+stage the example files. Pre-commit runs from the repository root. Install the
+tools from the recipe, run `npm ci`, then run `pre-commit run --all-files` in the
+copy. The no-code checks workflow also runs this setup in CI.

@@ -55,3 +55,12 @@ jobs:
       - run: cue vet -d '#Limits' limits/limits.cue limits/limits.yaml
       - run: vale --config .vale.ini specs
       - run: npm run cucumber
+      - name: Run the example as a standalone pre-commit repository
+        run: |
+          python -m pip install pre-commit==4.7.0
+          example_root="$(mktemp -d "$RUNNER_TEMP/no-code-example.XXXXXX")"
+          cp -a . "$example_root/"
+          git -C "$example_root" init --quiet
+          git -C "$example_root" add .
+          cd "$example_root"
+          pre-commit run --all-files
