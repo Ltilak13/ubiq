@@ -80,7 +80,7 @@ source integrity from observed preview access.
 ## Criterion issues
 
 Each criterion can list the GitHub issues that track it in `issues:`, as issue
-numbers. When a change to a goal file reaches `main`, the `goal-issues` workflow
+numbers. When a change reaches `main`, the `github-sync` workflow
 runs `ubiq sync github --apply` on every goal ([GitHub sync](../github-sync.md)):
 
 - A criterion that is not `met`, lists no `issues`, and has no issue with the
@@ -93,7 +93,7 @@ runs `ubiq sync github --apply` on every goal ([GitHub sync](../github-sync.md))
 
 Only markers in issues opened by `github-actions[bot]` count, because anyone can
 write a marker into an issue. The sync never reopens an issue, edits a title,
-or touches other issues. On a pull request, the workflow prints the same plan
+or touches other issues. On a pull request, CI prints the same plan
 read-only. Run `ubiq sync github --dry-run`
 to see it locally.
 

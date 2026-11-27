@@ -1,44 +1,25 @@
-name: goal-issues
+name: github-sync
+# Mirrors records to GitHub issues (`ubiq sync github`). It reads records and
+# writes only to issues; it never commits or opens pull requests. Pull requests
+# are checked by the `sync-check` job in ci.yml, against the base branch.
 on:
   push:
     branches: [main]
-    paths: ["docs/goals/*-goal.md", "ubiq.yaml"]
-  pull_request:
-    paths: ["docs/goals/*-goal.md", "ubiq.yaml"]
   workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
 
 permissions:
   contents: read
 
 jobs:
-  # Read-only preview of what merging this pull request will do to issues.
-  plan:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python -m pip install -e .
-      - name: Plan issue changes for every goal
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          FENCE: "```"
-        run: |
-          ubiq sync github --dry-run > "$RUNNER_TEMP/plan.json"
-          { echo "${FENCE}json"; cat "$RUNNER_TEMP/plan.json"; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
-
+  # No `paths:` filter: GitHub cannot read `sync.records` from ubiq.yaml, and
+  # planning with nothing to do is cheap and idempotent.
   apply:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'schedule' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    concurrency: goal-issues
+    concurrency: github-sync
     permissions:
       contents: read
       issues: write
@@ -48,9 +29,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -e .
-      # Every run syncs every goal. The sync is idempotent, so a run that the
+      # Every run syncs every record. The sync is idempotent, so a run that the
       # concurrency group cancels loses nothing: the next run covers it.
-      - name: Create and close goal issues
+      - name: Create and close issues
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -59,4 +40,32 @@ jobs:
           status=0
           ubiq sync github --apply > "$RUNNER_TEMP/plan.json" || status=$?
           { echo "${FENCE}json"; cat "$RUNNER_TEMP/plan.json"; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  # Reports edits made on GitHub (a closed or deleted issue, a stray number).
+  # Read-only: it never applies. A difference fails the run.
+  drift:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Report drift between main and GitHub
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FENCE: "```"
+        run: |
+          status=0
+          ubiq sync github --check > "$RUNNER_TEMP/drift.json" || status=$?
+          { echo "Drift between \`main\` and GitHub issues:"; echo "${FENCE}json"; cat "$RUNNER_TEMP/drift.json"; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
           exit "$status"

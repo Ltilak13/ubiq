@@ -91,6 +91,8 @@ jobs:
           ubiq coverage --since "$BASE" --markdown | tee -a "$GITHUB_STEP_SUMMARY"
 
   # Read-only: compares the records with GitHub's issues and writes nothing.
+  # Drift is GitHub disagreeing with the base branch, so the check reads the
+  # records at the base. What this pull request changes is only previewed.
   # Without a token (some fork pull requests) the command skips and says so.
   sync-check:
     if: github.event_name == 'pull_request'
@@ -101,14 +103,25 @@ jobs:
       issues: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the check reads the records at the base revision
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: python -m pip install -e .
-      - name: Check that GitHub issues match the records
+      - name: Preview what merging will change
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ubiq sync github --check
+          FENCE: "```"
+        run: |
+          # Read-only and never fails: a pending change is not drift.
+          { echo "Pending on merge:"; echo "${FENCE}json"; ubiq sync github --dry-run || true; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Check that GitHub issues match the base branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASE: origin/${{ github.base_ref }}
+        run: ubiq sync github --check --ref "$BASE"
 
   package:
     runs-on: ubuntu-latest

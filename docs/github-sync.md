@@ -18,6 +18,7 @@ ubiq sync github             # same as --dry-run: print the plan as JSON, write 
 ubiq sync github --apply     # perform the plan; needs GITHUB_TOKEN with issues: write
 ubiq sync github --check     # exit 1 when GitHub differs from the records
 ubiq sync github --repo o/n  # override sync.repo
+ubiq sync github --check --ref origin/main  # read the records as they are at a revision
 ```
 
 A dry run needs only read access. It reads public repositories without a token.
@@ -53,7 +54,29 @@ command stay as they are.
   can write a marker into an issue. Listed issues are trusted.
 - The sync never reopens an issue, edits a title, or touches other issues.
 
-Limits: a pull request that sets a criterion to `met` shows a pending `close`
-as drift until it merges, because the merge is what closes the issue. Deleting
+Limits: deleting
 a record leaves its issues open. An issue created with a personal token has no
 bot author, so list its number in `issues:` to track it.
+
+## What the sync writes
+
+The sync never writes to git: no commits, no branches, no pull requests. It
+reads records (from the working tree, or from a revision with `--ref`, through a
+read-only `git archive`) and writes only to GitHub issues, and only with
+`--apply`. Changing a fact means a pull request that edits the record.
+
+## Drift and pending changes
+
+Drift is GitHub disagreeing with the records on the base branch. On a pull
+request, CI therefore runs `--check --ref origin/<base>` and fails only on that.
+What the pull request itself changes (a criterion set to `met` whose issue is
+still open) is not drift; CI prints the head's plan as "Pending on merge" in the
+step summary, read-only, and never fails on it.
+
+## Workflow
+
+`.github/workflows/github-sync.yml` runs `--apply` on every push to `main` and on
+manual dispatch. It has no `paths:` filter, because GitHub path filters cannot
+read `sync.records` from `ubiq.yaml`, and a plan with nothing to do is cheap. A
+daily schedule runs `--check` against `main`, reports edits made on GitHub in
+the step summary, and may fail the run; it never applies.
