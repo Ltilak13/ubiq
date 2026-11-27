@@ -57,6 +57,7 @@ steps:
     requires: [requires-links]
     branch: claude/ecstatic-mendel-nkgz6t-pr-stacks
     base: claude/ecstatic-mendel-nkgz6t-requires-links
+    pr: 162
   schema-edge-diagrams:
     issue: 126
     requires: [tracking-fields, mermaid-blocks]
