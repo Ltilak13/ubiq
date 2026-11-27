@@ -42,6 +42,8 @@ criteria:
 
 This goal defines outcomes and acceptance evidence. It replaces the tracking
 issue #64. It does not claim that Ubiq supports these outcomes today.
+The sequence of work that proves the outcomes, with each step's issue and
+blockers, is in [[plan:no-code-dogfood]] (issue #113).
 
 ## Objective
 

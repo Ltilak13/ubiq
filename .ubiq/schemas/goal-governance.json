@@ -195,6 +195,18 @@
         {
           "source": "src/ubiq/features/tracking-fields.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/plans/frontmatter-tracking.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/plans/no-code-dogfood.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/plan-records.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         }
       ]
     },
