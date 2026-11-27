@@ -20,7 +20,7 @@ form supplies the joins. jq is a full language with a C extension, CUE needs a
 Go binary, `jsonpath-ng` needs Python 3.11, and Semgrep is large and aimed at
 code.
 
-Open follow-up (#154): compare `jsonpath-ng`, `python-jsonpath` (RFC 9535), and
+Follow-up resolved by decision 0005 (#154): this decision stands. Compared `jsonpath-ng`, `python-jsonpath` (RFC 9535), and
 JsonLogic for selection and rule evaluation. Per-feature runtime requirements
 (#153) would let a rule feature require Python 3.11 while Ubiq keeps 3.10.
 
