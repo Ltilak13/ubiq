@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Python module symbol records",
+  "type": "object",
+  "required": ["symbols"],
+  "additionalProperties": false,
+  "properties": {
+    "symbols": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$": {"$ref": "#/$defs/symbol"}
+      }
+    }
+  },
+  "$defs": {
+    "contract": {"type": ["object", "boolean"]},
+    "symbol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "params", "result", "errors", "term", "form", "scenarios", "feature"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^symbol:[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+$"},
+        "params": {
+          "type": "object",
+          "required": ["type", "properties"],
+          "properties": {"type": {"const": "object"}, "properties": {"type": "object"}}
+        },
+        "result": {"$ref": "#/$defs/contract"},
+        "errors": {"$ref": "#/$defs/contract"},
+        "term": {"type": "string", "pattern": "\\S"},
+        "form": {"enum": ["interpreted", "generated", "bound"]},
+        "scenarios": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "\\S"}
+        },
+        "feature": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "not": {"enum": ["na", "none", "no", "yes"]},
+          "x-ubiq-ref": {"ns": "feature", "edge": "owned-by", "single": true}
+        }
+      }
+    }
+  }
+}

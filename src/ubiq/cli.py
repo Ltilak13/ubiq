@@ -515,6 +515,9 @@ def _check_build(result: Build) -> list[Diagnostic]:
         diags.extend(check_schemas(cfg, glossary))
         from .cycles import check_cycles
         diags.extend(check_cycles(cfg, glossary))
+    if cfg.symbol_coverage:
+        from .symbols import load_symbols
+        diags.extend(load_symbols(cfg).diagnostics)
     if cfg.support:
         from .support_check import check_support
         diags.extend(check_support(cfg))

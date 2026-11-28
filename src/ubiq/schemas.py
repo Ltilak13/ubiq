@@ -195,15 +195,21 @@ def _escape(name: str) -> str:
     return name.replace("~", "~0").replace("/", "~1")
 
 
-def _validator(root: Path, location: str):
-    filename, separator, fragment = location.partition("#")
-    path = root / filename
-    schema = load_schema(root, path)
+def validate_schema(schema):
+    """Validate a Draft 2020-12 schema and index its local reference targets."""
     Draft202012Validator.check_schema(schema)
     resource = DRAFT202012.create_resource(schema)
     resolver = Registry().resolver_with_root(resource)
     locations = _schema_locations(resource)
     _check_refs(resource, resolver, locations)
+    return resolver, locations
+
+
+def _validator(root: Path, location: str):
+    filename, separator, fragment = location.partition("#")
+    path = root / filename
+    schema = load_schema(root, path)
+    resolver, locations = validate_schema(schema)
     validator: Validator = Draft202012Validator(schema, registry=Registry())
     selected = schema
     if separator:

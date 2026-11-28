@@ -107,6 +107,8 @@ DEFAULT_CONFIG: dict = {
     # setup guidance and exits 2. `files` selects the denominator; each
     # `exclude` entry needs a `reason`.
     "coverage": None,
+    # Python modules whose public symbols require sibling Markdown records.
+    "symbols": {},
     # Mirror records to GitHub issues (`ubiq sync github`). Unset: the command
     # reports setup guidance and exits 2.
     # repo: owner/name of the issue tracker (default: $GITHUB_REPOSITORY).
@@ -225,6 +227,7 @@ class Config:
     coverage: CoverageSpec | None = None
     readme_field: str = "readme"
     sync: SyncSpec | None = None
+    symbol_coverage: tuple[Glob, ...] = ()
     support: SupportSpec | None = None
 
     @property
@@ -643,6 +646,14 @@ def load_config(root: Path) -> Config:
         except (ValueError, re.error) as exc:
             raise InvalidConfig(f"{field}: {exc}") from exc
 
+    symbols = cfg["symbols"]
+    if not isinstance(symbols, dict):
+        raise InvalidConfig("symbols: expected a mapping")
+    _known(symbols, "symbols", ("coverage",))
+    symbol_coverage = [
+        _relative(pattern, "symbols.coverage")
+        for pattern in _strings(symbols.get("coverage", []), "symbols.coverage")
+    ]
     config = Config(
         root=root,
         glossary=tuple(rules),
@@ -667,6 +678,7 @@ def load_config(root: Path) -> Config:
         coverage=_coverage(cfg["coverage"], root),
         readme_field=_string(cfg["readme_field"], "readme_field"),
         sync=_sync(cfg["sync"], root),
+        symbol_coverage=globs(symbol_coverage),
         support=_support(cfg["support"], root),
     )
     broken = broken_guarantees(config)

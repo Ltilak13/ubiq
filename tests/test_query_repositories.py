@@ -389,3 +389,21 @@ def test_pinned_symlink_cycle_is_an_invalid_checkout(tmp_path, capsys):
         validate_checkout(load_config(local).edges.external[0], load_config(dependency), [dependency / 's.md'])
     code, result = run(local, capsys, '--repository', 'shared')
     assert code == 1 and result['status'] == 'unavailable'
+
+
+@pytest.mark.parametrize('changed', ['api.py', 'api.md', 'use_api.py'])
+def test_pin_checks_symbol_contracts_and_consumers(tmp_path, changed):
+    local, dependency, config, entry, _, _, other_config = workspace(tmp_path)
+    other_config['symbols'] = {'coverage': ['api.py']}
+    (dependency / 'ubiq.yaml').write_text(yaml.safe_dump(other_config))
+    (dependency / 'api.py').write_text('def public(): pass\n')
+    (dependency / 'api.md').write_text('---\nsymbols: {}\n---\n')
+    entry['revision'] = commit(dependency)
+    configure(local, config, [entry])
+    edge, = load_config(local).edges.external
+    dependency_config = load_config(dependency)
+    validate_checkout(edge, dependency_config)
+
+    (dependency / changed).write_text('changed after the pin\n')
+    with pytest.raises(InvalidConfig, match=changed):
+        validate_checkout(edge, dependency_config)

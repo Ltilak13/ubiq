@@ -190,7 +190,7 @@ membership. `ubiq check` reports discrepancies without editing the README.
   expressions, delimiter or `references:` settings, conflicting glossary rules, or a setting
   that contradicts a guarantee. The message names the field or rules.
 - `E009` schema conformance failure — selected frontmatter or structured data violates its declared JSON Schema, or a target is missing.
-- `E010` graph integrity failure — declared record coverage, relationships, or source evidence is invalid.
+- `E010` graph integrity failure — declared record coverage, relationships, source evidence, or Python symbol bindings are invalid.
 - `E013` field value — a link into a file with frontmatter whose fragment names no
   anchor of that file, and whose field is absent, null, or not text, or differs
   from the label. The message names the value to use. Also reported when a configured
@@ -759,6 +759,35 @@ different plans never join a loop.
 
 `ubiq sync github` mirrors steps with `sync.records` entries of kind `plan`; see
 [plan behavior](github-sync.md#plan-behavior).
+
+## Python symbol records
+
+`symbols.coverage` selects repository-relative Python module globs. Each covered
+module has a Markdown sidecar with the same stem. Bind the sidecar frontmatter
+to the [symbol schema](../.ubiq/schemas/symbol.json) to check its shape and resolve
+each `feature` in the feature namespace. See the records for
+[`sync.py`](../src/ubiq/sync.md) and [`plan.py`](../src/ubiq/plan.md).
+
+The `symbols` map uses the declaration name as its key, including `Class.method`
+for methods. Each entry carries an ID of the form `symbol:package.module.name`,
+one owning `feature`, a vocabulary `term`, a `form`, and a list of `scenarios`.
+`params`, `result`, and `errors` are Draft 2020-12 JSON Schemas. Their references
+must resolve within the same contract. `params` is an
+object schema with `properties` in signature order and `required` for parameters
+without defaults. Parameter schemas use `x-python-kind`, `x-python-default`,
+and `x-python-type` to capture Python calling conventions, default expressions,
+and type annotations. `result` uses `x-python-type` for a return annotation.
+
+`ubiq check` compares each record with its Python declaration without loading the
+module. It reports missing records for public functions, classes, and methods,
+records whose definitions are gone, and signature differences with both source
+locations. It also checks named imports and attribute references through static
+imports from other Python files, including methods accessed through a class
+name or import alias. A canonical ID registers a declaration even when its
+signature has drifted. A record can make a module assignment or a private
+declaration available to other files. The checker follows straight-line
+bindings. Branch-dependent rebinding, dynamic lookups, instance dispatch, and
+inherited constructor parameters are outside this static check.
 
 ### Decision records
 
