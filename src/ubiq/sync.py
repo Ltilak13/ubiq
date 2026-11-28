@@ -100,6 +100,11 @@ def _goal_body(goal: Mapping[str, Any], ac: str, criterion: Mapping[str, Any], m
             f"this issue.\n\n<!-- {marker} -->\n")
 
 
+def resolve_priority(item: Mapping[str, Any], container: Mapping[str, Any]) -> str:
+    """An item's own `priority` wins; without one it takes its container's (plan or goal)."""
+    return item.get('priority') or container.get('priority') or ''
+
+
 def load_goal(path: Path, root: Path) -> dict[str, Any]:
     """Read a goal file into its name, repository path, criteria, and criterion lines."""
     path = Path(path).resolve()
@@ -108,7 +113,7 @@ def load_goal(path: Path, root: Path) -> dict[str, Any]:
         text = {m.group(1): ' '.join(m.group(0).split())
                 for m in CRITERION_RE.finditer(path.read_text(encoding='utf-8'))}
         return {'name': data['name'], 'path': path.relative_to(Path(root).resolve()).as_posix(),
-                'criteria': data['criteria'], 'text': text}
+                'criteria': data['criteria'], 'text': text, 'priority': data.get('priority', '')}
     except (ValueError, KeyError, OSError) as exc:
         raise SyncError(f"{path}: not a readable goal ({exc})") from exc
 
@@ -137,7 +142,7 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             state='closed' if met else 'open',
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
-            close_comment=comment, priority=criterion.get('priority', ''),
+            close_comment=comment, priority=resolve_priority(criterion, goal),
             label_prefix=label_prefix))
     return items
 
@@ -148,7 +153,8 @@ def load_plan(path: Path, root: Path) -> dict[str, Any]:
     try:
         data = load_data(path, frontmatter=True)
         return {'name': data['name'], 'path': path.relative_to(Path(root).resolve()).as_posix(),
-                'status': data['status'], 'issue': data['issue'], 'steps': data['steps']}
+                'status': data['status'], 'issue': data['issue'], 'steps': data['steps'],
+                'priority': data.get('priority', '')}
     except (ValueError, KeyError, OSError) as exc:
         raise SyncError(f"{path}: not a readable plan ({exc})") from exc
 
@@ -168,6 +174,7 @@ def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LAB
     """One `Desired` per plan step, a sub-issue of the plan's issue that waits on its `requires`.
 
     A `proposed` or `abandoned` plan mirrors nothing, and a `done` plan closes its issues.
+    A step without its own `priority` takes the plan's (`resolve_priority`).
     A step that names a `pr` and no `issue` is tracked by that pull request, so it gets no
     issue. `requires_markers` and `parent_issue` carry the links for the facts that mirror
     them (blocked-by, sub-issue); no fact here performs them yet.
@@ -185,7 +192,7 @@ def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LAB
         state='closed' if done else 'open', listed=(spec['issue'],) if spec.get('issue') else (),
         close_comment=(f"Plan `{plan_record['name']}` is done.\n\n"
                        f"<!-- ubiq-plan-closed: {plan_record['name']} {name} -->") if done else '',
-        label_prefix=label_prefix,
+        label_prefix=label_prefix, priority=resolve_priority(spec, plan_record),
         requires_markers=tuple(marker_of[r] for r in spec.get('requires', []) if r in tracked),
         parent_issue=plan_record['issue']) for name, spec in tracked.items()]
 
