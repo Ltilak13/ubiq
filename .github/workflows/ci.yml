@@ -91,6 +91,7 @@ jobs:
           ubiq coverage --since "$BASE" --markdown | tee -a "$GITHUB_STEP_SUMMARY"
       # Advisory: a met criterion whose cited files changed after its review needs reassessment.
       - name: Review freshness
+        shell: bash
         run: python scripts/review_freshness.py | tee -a "$GITHUB_STEP_SUMMARY"
 
   # Use the pull request head to show pending changes in its own runner.
