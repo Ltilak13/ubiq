@@ -10,7 +10,9 @@ sync:
   label_prefix: "priority: " # the sync owns labels that start with this; never empty
   records:
     - glob: "docs/goals/*-goal.md"
-      kind: goal             # the only kind today
+      kind: goal             # goal or plan
+    - glob: "docs/plans/*.md"
+      kind: plan
 ```
 
 ```bash
@@ -67,6 +69,18 @@ function in `FACTS` plans it, and one `GitHub` handler performs it.
   strip labels that were set by hand. A closed issue, or an issue whose criterion is
   `met`, is not relabelled.
 - A new issue is created with its label.
+
+## Priority inheritance
+
+A plan's `priority`, and a goal's top-level `priority`, is the default for the items it
+contains. A step or criterion without its own `priority` takes its container's; an
+explicit value on the item wins. The resolved value (`resolve_priority` in
+`src/ubiq/sync.py`) goes through the same `fact_priority` as any other priority, so the
+dry run shows each resulting change as a `label` or `create` action.
+
+- Adding `priority` to a plan or goal that already tracks issues relabels every
+  open issue whose item has no own value. Read the dry run before `--apply`.
+- A container with no `priority` changes nothing: items without their own value stay unmanaged.
 
 A criterion's `issue` number, like each number in `issues`, names an issue the sync tracks.
 
@@ -180,21 +194,47 @@ Limits: deleting
 a record leaves its issues open. An issue created with a personal token has no
 bot author, so list its number in `issues:` to track it.
 
+## Plan behavior
+
+A `plan` record (see [plan records](spec.md#plan-records)) syncs each of its steps as one
+item, with the marker `<!-- ubiq-plan: <plan> <step> -->`.
+
+- A step that lists an `issue` tracks that issue. A step with no `issue` and no `pr`, and
+  no issue with its marker, gets a new issue. A step that names a `pr` and no `issue` is
+  tracked by that pull request and gets no issue.
+- A plan with status `proposed` or `abandoned` mirrors nothing. A `done` plan closes the
+  open issues of its steps. An `active` plan never closes or reopens anything: a step's
+  issue closes with its pull request.
+- Each item carries the links the sync will mirror once the link facts land:
+  `Desired.parent_issue` is the plan's `issue` (the sub-issue parent) and
+  `Desired.requires_markers` holds the markers of the steps it waits on (the blocked-by
+  targets). `plan()` resolves a marker to an issue number through the same marker index it
+  uses to find an item's issues. No fact reads these fields yet; the blocked-by and
+  sub-issue facts (#121, #122) each add one function to `FACTS` and one handler.
+- A step's `priority` is optional. A step without one takes the plan's (see
+  [Priority inheritance](#priority-inheritance)).
+
 ## What the sync writes
 
 The sync never writes to git: no commits, no branches, no pull requests. It
 reads records (from the working tree, or from a revision with `--ref`, through a
-read-only `git archive`) and writes only to GitHub issues, and only with
+read-only `git show`) and writes only to GitHub issues, and only with
 `--apply`. Changing a fact means a pull request that edits the record.
 
 ## Drift and pending changes
 
-Drift is GitHub disagreeing with the records on the base branch. On a pull
-request, CI therefore runs `--check --ref origin/<base>` and fails only on that.
-What the pull request itself changes (a criterion set to `met` whose issue is
-still open) is not drift; CI prints the head's plan as "Pending on merge" in the
-step summary, read-only, and never fails on it. Both plans read the current
-state of GitHub pull requests. Opening, editing, retargeting, or closing a pull
+Drift is GitHub disagreeing with the plan produced by the base revision's code
+and records. On a pull request, CI runs the drift check in a separate worktree
+at the event's base commit. If the base uses the older goal-issue script, CI
+checks its dry-run plan for drift. A base revision without an issue mirror
+skips the check.
+
+The preview job uses the pull request's exact head commit and prints its plan
+as "Pending on merge" in the job summary. The preview is read-only and does
+not block the pull request.
+
+The pull request checks use the current state of GitHub when the revision
+supports pull request sync. Opening, editing, retargeting, or closing a pull
 request can change review labels between pushes to `main`. Use the manual
 `github-sync` workflow to apply those changes between pushes.
 

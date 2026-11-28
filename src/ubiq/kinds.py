@@ -120,6 +120,8 @@ POLICIES: Policies = {policy.name: policy for policy in (
     Policy("id", "id", by_id, "E004", _ANYWHERE, Context.COMMENT, links=True),
     Policy("field", "field", first(by_id, by_name), "E006"),
     Policy("catalog", "catalog", first(by_id, by_name), "E006"),
+    # A link whose fragment names a frontmatter field: resolves by destination.
+    Policy("value", "value", by_file, "E013", Context.COMMENT),
     # Severity here is the unlinked-mention warning (W002), off by default.
     Policy("mention", "mention", by_name, "W002", _ANYWHERE, severity=Severity.OFF),
     # Only links to missing files that no record owns become refs, so none resolves.

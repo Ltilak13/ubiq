@@ -32,7 +32,8 @@ def test_every_guarantee_is_quoted_from_the_spec():
 
 def test_no_configuration_scans_fences_frontmatter_or_definitions(tmp_path):
     """Every scannable region, for every kind, still leaves guarded lines alone."""
-    everything = "[[session]] /session `/session` UB-1 session [s](glossary/s.md) [g](gone.md)"
+    everything = ("[[session]] /session `/session` UB-1 session [s](glossary/s.md) [g](gone.md)"
+                  " [x](#uses)")
     doc = (f"---\nuses: [session]\nnote: \"{everything}\"\n---\n"   # lines 1-4
            f"[def]: glossary/s.md \"{everything}\"\n"               # line 5
            f"~~~\n{everything} <!-- [[session]] -->\n~~~\n"          # lines 6-8

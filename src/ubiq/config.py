@@ -47,6 +47,8 @@ DEFAULT_CONFIG: dict = {
     # Frontmatter fields in scanned docs whose values are references that must
     # resolve by record id or name (e.g. solves: [T1]) — E006 otherwise.
     "ref_fields": [],
+    # Frontmatter field declaring README membership (E015).
+    "readme_field": "readme",
     # Regexes for ids that are defined outside records (e.g. requirement ids that
     # live as headings in a research doc); matching field refs are accepted.
     "external_id_patterns": [],
@@ -148,7 +150,7 @@ class CoverageSpec:
     no_regression: bool
 
 
-SYNC_KINDS = ("goal",)
+SYNC_KINDS = ("goal", "plan")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
@@ -186,6 +188,7 @@ class Config:
     candidate_shapes: Shape
     edges: EdgeConfig
     coverage: CoverageSpec | None = None
+    readme_field: str = "readme"
     sync: SyncSpec | None = None
 
     @property
@@ -573,6 +576,7 @@ def load_config(root: Path) -> Config:
         candidate_shapes=shapes,
         edges=_edges(cfg["edges"], tuple(cfg["ref_fields"]), root),
         coverage=_coverage(cfg["coverage"], root),
+        readme_field=_string(cfg["readme_field"], "readme_field"),
         sync=_sync(cfg["sync"], root),
     )
     broken = broken_guarantees(config)

@@ -88,6 +88,11 @@ class Desired:
     # and the pull requests it lists as `pr: <n>`.
     requires: tuple[int, ...] | None = None
     requires_prs: tuple[int, ...] = ()
+    # Links to other issues, for the facts that mirror them (blocked-by, sub-issue).
+    # `requires_markers` holds the `marker` of each item this one waits on; `parent_issue`
+    # is the number of the issue this one belongs under (0 for none). Plan steps set both.
+    requires_markers: tuple[str, ...] = ()
+    parent_issue: int = 0
     # `pr`: the record's implementing pull requests, and for each record it `requires`
     # that has a `pr`, that record's name and pull requests (see `Stack`).
     prs: tuple[int, ...] = ()
@@ -126,6 +131,11 @@ def _goal_body(goal: Mapping[str, Any], ac: str, criterion: Mapping[str, Any], m
             f"this issue.\n\n<!-- {marker} -->\n")
 
 
+def resolve_priority(item: Mapping[str, Any], container: Mapping[str, Any]) -> str:
+    """An item's own `priority` wins; without one it takes its container's (plan or goal)."""
+    return item.get('priority') or container.get('priority') or ''
+
+
 def load_goal(path: Path, root: Path) -> dict[str, Any]:
     """Read a goal file into its name, repository path, criteria, and criterion lines."""
     path = Path(path).resolve()
@@ -134,7 +144,7 @@ def load_goal(path: Path, root: Path) -> dict[str, Any]:
         text = {m.group(1): ' '.join(m.group(0).split())
                 for m in CRITERION_RE.finditer(path.read_text(encoding='utf-8'))}
         return {'name': data['name'], 'path': path.relative_to(Path(root).resolve()).as_posix(),
-                'criteria': data['criteria'], 'text': text}
+                'criteria': data['criteria'], 'text': text, 'priority': data.get('priority', '')}
     except (ValueError, KeyError, OSError) as exc:
         raise SyncError(f"{path}: not a readable goal ({exc})") from exc
 
@@ -167,7 +177,7 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             state='closed' if met else 'open',
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
-            close_comment=comment, priority=criterion.get('priority', ''),
+            close_comment=comment, priority=resolve_priority(criterion, goal),
             label_prefix=label_prefix, prs=tuple(criterion.get('pr', ())),
             required_prs=_required_prs(criterion, pulls or {}),
             **_requires(criterion, numbers or {})))
@@ -221,6 +231,56 @@ def tracked_records(cfg: Config) -> dict[str, Tracked]:
     return found
 
 
+def load_plan(path: Path, root: Path) -> dict[str, Any]:
+    """Read a plan file into its name, repository path, status, issue, and steps."""
+    path = Path(path).resolve()
+    try:
+        data = load_data(path, frontmatter=True)
+        return {'name': data['name'], 'path': path.relative_to(Path(root).resolve()).as_posix(),
+                'status': data['status'], 'issue': data['issue'], 'steps': data['steps'],
+                'priority': data.get('priority', '')}
+    except (ValueError, KeyError, OSError) as exc:
+        raise SyncError(f"{path}: not a readable plan ({exc})") from exc
+
+
+def _step_body(plan_record: Mapping[str, Any], step: str, spec: Mapping[str, Any], marker: str) -> str:
+    rows = [('Plan', f"`{plan_record['path']}` (#{plan_record['issue']})"),
+            ('Requires', ', '.join(f'`{r}`' for r in spec.get('requires', [])) or 'nothing'),
+            ('Branch', f"`{spec['branch']}`" if spec.get('branch') else 'not started'),
+            ('Base', f"`{spec['base']}`" if spec.get('base') else 'not set')]
+    lines = '\n'.join(f'- {k}: {v}' for k, v in rows)
+    return (f"Step `{step}` of plan `{plan_record['name']}`.\n\n{lines}\n\n"
+            "The plan record is the source for these facts; update it in the pull request "
+            f"that changes them.\n\n<!-- {marker} -->\n")
+
+
+def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LABEL_PREFIX) -> list[Desired]:
+    """One `Desired` per plan step, a sub-issue of the plan's issue that waits on its `requires`.
+
+    A `proposed` or `abandoned` plan mirrors nothing, and a `done` plan closes its issues.
+    A step without its own `priority` takes the plan's (`resolve_priority`).
+    A step that names a `pr` and no `issue` is tracked by that pull request, so it gets no
+    issue. `requires_markers` and `parent_issue` carry the links for the facts that mirror
+    them (blocked-by, sub-issue); no fact here performs them yet.
+    """
+    if plan_record['status'] in ('proposed', 'abandoned'):
+        return []
+    steps = plan_record['steps']
+    tracked = {name: spec for name, spec in steps.items() if spec.get('issue') or not spec.get('pr')}
+    marker_of = {name: f"ubiq-plan: {plan_record['name']} {name}" for name in steps}
+    done = plan_record['status'] == 'done'
+    return [Desired(
+        kind='plan-step', ident={'plan': plan_record['name'], 'step': name}, marker=marker_of[name],
+        title=textwrap.shorten(f"{plan_record['name']}: {name}", 200),
+        body=_step_body(plan_record, name, spec, marker_of[name]),
+        state='closed' if done else 'open', listed=(spec['issue'],) if spec.get('issue') else (),
+        close_comment=(f"Plan `{plan_record['name']}` is done.\n\n"
+                       f"<!-- ubiq-plan-closed: {plan_record['name']} {name} -->") if done else '',
+        label_prefix=label_prefix, priority=resolve_priority(spec, plan_record),
+        requires_markers=tuple(marker_of[r] for r in spec.get('requires', []) if r in tracked),
+        parent_issue=plan_record['issue']) for name, spec in tracked.items()]
+
+
 def tracked_issue_numbers(cfg: Config) -> dict[str, int]:
     """Normalized record name -> `issue`, for each schema-bound frontmatter record that has both."""
     return {name: t.issue for name, t in tracked_records(cfg).items() if t.issue is not None}
@@ -246,6 +306,8 @@ def desired_from_config(cfg: Config, sha: str = '',
         for path in sorted(record.glob.walk(cfg.ignore)):
             if record.kind == 'goal':
                 items += goal_desired(load_goal(path, cfg.root), sha, cfg.sync.label_prefix, numbers, pulls)
+            elif record.kind == 'plan':
+                items += plan_desired(load_plan(path, cfg.root), cfg.sync.label_prefix)
     return items
 
 
@@ -717,10 +779,9 @@ def revision_root(root: Path, rev: str) -> Iterator[Path]:
 def cmd_sync(args, transport: Transport = urllib_transport, pause: float = 1.0) -> int:
     """`ubiq sync github`: print the plan (default), `--apply` it, or `--check` for drift.
 
-    `--ref REV` reads the records and `ubiq.yaml` as they are at REV instead of the
-    working tree. A pull request checks drift against its base this way: drift is
-    GitHub disagreeing with the base, and what the pull request itself changes is
-    pending on merge, not drift.
+    `--ref REV` reads the records and `ubiq.yaml` at REV using the running
+    version of ubiq. Pull request CI runs the base revision's version of ubiq
+    from a worktree at that revision.
     """
     root = Path(args.root).resolve()
     ref = getattr(args, 'ref', None)

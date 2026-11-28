@@ -345,15 +345,30 @@ def test_links_into_another_repository_resolve_once_installed(tmp_path, capsys):
 
 def test_installed_fragments_preserve_entity_generated_suffixes(tmp_path, capsys):
     repo(tmp_path, {
-        "skills/a/SKILL.md": skill("a", "[space](../b/SKILL.md#section&#32;)\n"
-                                  "[bracket](../b/SKILL.md#section&gt;)\n"),
-        "skills/b/SKILL.md": skill("b", "# Section\n"),
+        # A file without frontmatter, since E013 checks fragments into the others.
+        "skills/a/SKILL.md": skill("a", "[space](../b/notes.md#section&#32;)\n"
+                                  "[bracket](../b/notes.md#section&gt;)\n"),
+        "skills/b/SKILL.md": skill("b"),
+        "skills/b/notes.md": "# Section\n",
     })
     _, found = check(tmp_path, capsys)
     assert found == [
-        ("W004", "link ../b/SKILL.md#section%20 names no heading in b/SKILL.md"),
-        ("W004", "link ../b/SKILL.md#section%3E names no heading in b/SKILL.md"),
+        ("W004", "link ../b/notes.md#section%20 names no heading in b/notes.md"),
+        ("W004", "link ../b/notes.md#section%3E names no heading in b/notes.md"),
     ]
+
+
+def test_installed_fragments_may_name_frontmatter_fields(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/a/SKILL.md": skill("a", "Run [b](../b/SKILL.md#name), [c](../b/SKILL.md#nmae), "
+                                   "and [sec](../b/SKILL.md#section).\n"),
+        "skills/b/SKILL.md": skill("b", "# Section\n"),
+    })
+    _, out = run(tmp_path, capsys, "check")
+    # E013 reports the misspelled field, so W004 does not report it again.
+    message = "field value [c](../b/SKILL.md#nmae) — no field or heading 'nmae' in ../b/SKILL.md"
+    assert [(d["code"], d["message"]) for d in out["diagnostics"] if d["code"] != "W001"] == [
+        ("E013", message)]
 
 
 def test_an_unreadable_external_repository_leaves_its_links_unchecked(tmp_path, capsys):
