@@ -30,6 +30,15 @@ catalogs:
     items: skills
     term: basename
     cover: ["skills/**/SKILL.md"]
+
+# Mirror goal criteria to GitHub issues (`ubiq sync github`).
+sync:
+  repo: Ltilak13/ubiq
+  label_prefix: "priority: "
+  records:
+    - glob: "docs/goals/*-goal.md"
+      kind: goal
+
 ignore:
   - ".git/**"
   - ".venv/**"

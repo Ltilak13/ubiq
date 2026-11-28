@@ -153,6 +153,10 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "src/ubiq/features/github-sync.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "src/ubiq/features/glossary.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
