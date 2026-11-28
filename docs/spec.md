@@ -505,6 +505,10 @@ reference another file, and a test keeps the copies equal) and point each proper
 | `part_of` | the name of the record this one belongs to |
 | `pr` | numbers of the pull requests that implement the record |
 
+A goal also takes an optional top-level `priority`, and a plan step an optional
+`priority`. An item without its own value inherits its container's (the goal's or the
+plan's); an explicit item value wins.
+
 On a goal, they are optional properties of a criterion (`criteria.AC1.issue`), next to the
 existing `issues:` list, which keeps working; a criterion's `issue` is tracked like each
 number in `issues`. On a feature they are optional properties of the record, and the
@@ -553,9 +557,9 @@ frontmatter is the source for the order, branches, and pull requests of each ste
 | `name` | the plan's name (lowercase words joined by `-`) |
 | `status` | `proposed`, `active`, `done`, or `abandoned` |
 | `issue` | the issue the plan coordinates; each step's issue is a sub-issue of it |
-| `priority` | optional `P1`, `P2`, or `P3` |
+| `priority` | optional `P1`, `P2`, or `P3`; the default for steps without their own |
 | `trunk` | the branch the work lands on |
-| `steps` | a mapping from step name to `requires` (required), `issue`, `branch`, `base`, `pr` |
+| `steps` | a mapping from step name to `requires` (required), `issue`, `priority`, `branch`, `base`, `pr` |
 
 A step's `requires` lists other step names of the same plan. The schema annotates it with
 `x-ubiq-ref` and the `within` member:

@@ -66,6 +66,18 @@ function in `FACTS` plans it, and one `GitHub` handler performs it.
   `met`, is not relabelled.
 - A new issue is created with its label.
 
+## Priority inheritance
+
+A plan's `priority`, and a goal's top-level `priority`, is the default for the items it
+contains. A step or criterion without its own `priority` takes its container's; an
+explicit value on the item wins. The resolved value (`resolve_priority` in
+`src/ubiq/sync.py`) goes through the same `fact_priority` as any other priority, so the
+dry run shows each resulting change as a `label` or `create` action.
+
+- Adding `priority` to a plan or goal that already tracks issues relabels every
+  open issue whose item has no own value. Read the dry run before `--apply`.
+- A container with no `priority` changes nothing: items without their own value stay unmanaged.
+
 A criterion's `issue` number, like each number in `issues`, names an issue the sync tracks.
 
 ## Goal behavior
@@ -99,7 +111,8 @@ item, with the marker `<!-- ubiq-plan: <plan> <step> -->`.
   targets). `plan()` resolves a marker to an issue number through the same marker index it
   uses to find an item's issues. No fact reads these fields yet; the blocked-by and
   sub-issue facts (#121, #122) each add one function to `FACTS` and one handler.
-- A step has no priority, so no label is managed.
+- A step's `priority` is optional. A step without one takes the plan's (see
+  [Priority inheritance](#priority-inheritance)).
 
 ## What the sync writes
 
