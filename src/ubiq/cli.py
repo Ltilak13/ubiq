@@ -466,7 +466,7 @@ def _check_build(result: Build) -> list[Diagnostic]:
                          if not path.resolve().is_relative_to(root))
     diags = result.diagnostics + run_checks(
         glossary, refs, cfg.external_id_patterns,
-        skip_unlinked=skip_mentions, unlinked_except=cfg.unlinked_except)
+        skip_unlinked=skip_mentions, unlinked_except=cfg.unlinked_except, lenient=cfg.lenient)
     if cfg.schemas:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))
