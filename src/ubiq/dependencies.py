@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .config import Config, Dependency, InvalidConfig, load_config
+from .globs import Glob, first_match
 from .review import Baseline, BaselineError, _git, checkout
 
 
@@ -32,6 +33,19 @@ def _input_paths(paths: set[Path]) -> set[Path]:
     return inputs
 
 
+def _is_symbol_input(cfg: Config, path: Path) -> bool:
+    if not cfg.symbol_coverage:
+        return False
+    if path.suffix == ".py":
+        return first_match(cfg.ignore, path) is None
+    if path.suffix != ".md":
+        return False
+    source = path.with_suffix(".py")
+    return (first_match(cfg.symbol_coverage, source) is not None
+            and first_match(cfg.ignore, source) is None
+            and (source.is_file() or first_match(cfg.ignore, path) is None))
+
+
 def validate_checkout(dependency: Dependency, cfg: Config,
                       inputs: Sequence[Path] = ()) -> None:
     if dependency.revision is None:
@@ -52,6 +66,16 @@ def validate_checkout(dependency: Dependency, cfg: Config,
         explicit = {root / "ubiq.yaml", *inputs, *(s.file for s in cfg.catalogs),
                     *(root / s.schema.split("#", 1)[0] for s in cfg.schemas)}
         explicit.update(path for pattern in patterns for path in pattern.walk(cfg.ignore))
+        if cfg.symbol_coverage:
+            # Uncovered Python modules are consumers. Covered modules also read a sibling sidecar.
+            python = Glob.parse("**/*.py", root)
+            markdown = Glob.parse("**/*.md", root)
+            for path in python.walk(cfg.ignore):
+                if _is_symbol_input(cfg, path):
+                    explicit.add(path)
+                    if first_match(cfg.symbol_coverage, path):
+                        explicit.add(path.with_suffix(".md"))
+            explicit.update(path for path in markdown.walk(cfg.ignore) if _is_symbol_input(cfg, path))
         explicit = _input_paths(explicit)
         outside = [str(path) for path in explicit
                    if not path.is_relative_to(root) or not path.resolve().is_relative_to(root)]
@@ -59,7 +83,8 @@ def validate_checkout(dependency: Dependency, cfg: Config,
             raise InvalidConfig(f"dependency {dependency.name!r}: pinned inputs leave checkout: "
                                 + ", ".join(sorted(outside)))
         dirty = sorted({name for name in changed if name and (
-            root / name in explicit or any(g.matches(root / name) for g in patterns))})
+            root / name in explicit or any(g.matches(root / name) for g in patterns)
+            or _is_symbol_input(cfg, root / name))})
         if dirty:
             raise InvalidConfig(f"dependency {dependency.name!r} at {root}: pinned inputs are dirty: "
                                 + ", ".join(dirty))
