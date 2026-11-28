@@ -451,6 +451,33 @@ def tracked_issue_numbers(cfg: Config) -> dict[str, int]:
     return {name: t.issue for name, t in tracked_records(cfg).items() if t.issue is not None}
 
 
+def backed_issue_numbers(cfg: Config) -> set[int]:
+    """Every issue number that a record selected by `sync.records` names as `issue`, `issues`, or `question`.
+
+    This includes plan steps and criteria of any status, whether or not the sync mirrors them.
+    """
+    found: set[int] = set()
+
+    def walk(value: Any, key: str = '') -> None:
+        if isinstance(value, Mapping):
+            for k, v in value.items():
+                walk(v, str(k))
+        elif isinstance(value, list):
+            for v in value:
+                walk(v, key)
+        elif type(value) is int and value > 0 and key in ('issue', 'issues', 'question'):
+            found.add(value)
+
+    assert cfg.sync is not None
+    for record in cfg.sync.records:
+        for path in sorted(record.glob.walk(cfg.ignore)):
+            try:
+                walk(load_data(path, frontmatter=True))
+            except (ValueError, OSError, yaml.YAMLError):
+                continue  # Schema validation reports unreadable records.
+    return found
+
+
 def record_stacks(records: Mapping[str, Tracked]) -> list[Stack]:
     """A `Stack` for each record that lists a `pr`; a record's name is its ident."""
     pulls = {name: t.prs for name, t in records.items()}
@@ -957,8 +984,11 @@ FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action
 
 def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
          pulls: Sequence[Pull] = (), stacks: Iterable[Stack] = (),
-         records: Iterable[Tracked] = ()) -> list[Action]:
+         records: Iterable[Tracked] = (), backed: Iterable[int] | None = None) -> list[Action]:
     """Return create, close, label, stack, noop, and warn actions for every desired item.
+
+    With `backed` (the numbers that records name, `backed_issue_numbers`), each open issue
+    that no record tracks, lists, or marks is an `unbacked` action: information, not drift.
 
     `snapshot` holds dicts with `number`, `state`, `body`, and `user.login`. `pulls`
     holds the open pull requests (`number`, `head`, `base`, `closes`, optional
@@ -1003,6 +1033,11 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
         actions += fact_in_review({}, untracked, by_number, in_review)
     for stack in stacks:
         actions += stack_findings(stack, open_pulls)
+    if backed is not None:
+        known = tracked_issues | set(backed) | {r.issue for r in records if r.issue is not None}
+        actions += [{'action': 'unbacked', 'issue': n, 'title': issue.get('title', ''),
+                     'reason': 'open issue that no record names'}
+                    for n, issue in by_number.items() if issue.get('state') == 'open' and n not in known]
     return actions
 
 
@@ -1017,10 +1052,10 @@ def derived_status(action: Action) -> bool:
 
 
 def drift(actions: Iterable[Action], ignore_derived: bool = False) -> list[Action]:
-    """The actions that differ from GitHub: everything but `noop`. With `ignore_derived`,
+    """The actions that differ from GitHub: everything but `noop` and the informational `unbacked`. With `ignore_derived`,
     also not the derived status labels (`derived_status`) nor a "met at" comment owed to an
     issue that GitHub closed by keyword: both wait only for the next sync of `main`."""
-    return [a for a in actions if a['action'] != 'noop'
+    return [a for a in actions if a['action'] not in ('noop', 'unbacked')
             and not (ignore_derived and (derived_status(a) or a['action'] == 'comment'))]
 
 
@@ -1365,7 +1400,8 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
         markers = github.bot_markers(confirmable(desired, snapshot))
         snapshot = [{**i, 'bot_markers': markers[i['number']]} if i['number'] in markers else i
                     for i in snapshot]
-        actions = plan(desired, snapshot, github.pulls(), record_stacks(records), records.values())
+        actions = plan(desired, snapshot, github.pulls(), record_stacks(records), records.values(),
+                       backed_issue_numbers(cfg))
     except SyncError as exc:
         print(f'error: {exc}', file=sys.stderr)
         return 2
@@ -1377,6 +1413,9 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
         _dump(found)
         if found:
             print(f'drift: {len(found)} difference(s) between the records and {repo}', file=sys.stderr)
+        unbacked = [a['issue'] for a in actions if a['action'] == 'unbacked']
+        if unbacked:
+            print(f"unbacked: no record names open issue(s) {', '.join(f'#{n}' for n in unbacked)}", file=sys.stderr)
         return 1 if found else 0
     if not args.apply:
         _dump(actions)
