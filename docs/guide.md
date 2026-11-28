@@ -418,6 +418,9 @@ defines the contract.
 
 ## Roadmap
 
+Ubiq adopts its own features before it recommends them. [Feature adoption](../.ubiq/knowledge/feature-adoption.md)
+lists which ones this repository uses and why it leaves the rest.
+
 The current focus is deterministic checks: readable Markdown, consistent
 resolution, and errors that explain how to fix a broken reference.
 
@@ -457,3 +460,26 @@ existing]}`; each include then names one after the link, as in ``Follow
 `ubiq graph` shows all four kinds, `ubiq overlap` finds text worth extracting,
 and `check` reports include cycles (E011). The
 [composable knowledge goal](goals/composable-knowledge-goal.md) covers what is still open.
+
+This repository checks its own skills the same way. `apply-ubiq` includes three shared
+procedures, invokes two optional skills, and routes to `maintain-ubiq`:
+
+<!-- ubiq:graph target=apply-ubiq -->
+```mermaid
+flowchart LR
+  domain_review["part:domain review"]
+  schema_change_workflow["part:schema change workflow"]
+  validate_repository_changes["part:validate repository changes"]
+  apply_ubiq["skill:apply ubiq"]
+  domain_modeling["skill:domain modeling"]
+  maintain_ubiq["skill:maintain ubiq"]
+  validate_change["skill:validate change"]
+  validate_repository_changes -->|include| schema_change_workflow
+  apply_ubiq -->|include| domain_review
+  apply_ubiq -->|include| schema_change_workflow
+  apply_ubiq -->|include| validate_repository_changes
+  apply_ubiq -->|invoke| domain_modeling
+  apply_ubiq -->|route| maintain_ubiq
+  apply_ubiq -->|invoke| validate_change
+```
+<!-- /ubiq:graph -->
