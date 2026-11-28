@@ -247,10 +247,24 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
             extra.append(Diagnostic("E005", str(e), spec.file))
 
     if cfg.schemas:
-        from .schemas import xref_refs
+        from .schemas import single_diagnostics, xref_refs
         refs.extend(xref_refs(cfg))
         from .step_refs import within_diagnostics
         extra.extend(within_diagnostics(cfg))
+        extra.extend(single_diagnostics(cfg))
+    if cfg.sync is not None:
+        from .scenarios import diagnostics as scenario_diagnostics
+        from .schemas import load_data as _load
+        goals = []
+        for record in cfg.sync.records:
+            if record.kind != "goal":
+                continue
+            for path in sorted(record.glob.walk(cfg.ignore)):
+                try:
+                    goals.append((path, _load(path, frontmatter=True)))
+                except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, RecursionError):
+                    continue  # E009 reports it
+        extra.extend(scenario_diagnostics(goals))
     result.refs.extend(refs)
     result.diagnostics.extend(extra)
     result.docs.extend(doc_files)
@@ -482,6 +496,8 @@ def _check_build(result: Build) -> list[Diagnostic]:
     if cfg.schemas:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))
+        from .cycles import check_cycles
+        diags.extend(check_cycles(cfg, glossary))
     if cfg.symbol_coverage:
         from .symbols import load_symbols
         diags.extend(load_symbols(cfg).diagnostics)
@@ -1156,8 +1172,15 @@ def main(argv: list[str] | None = None) -> int:
                       help="exit 1 when GitHub differs from the records; skips without GITHUB_TOKEN")
     gh.add_argument("--ref", metavar="REV",
                     help="read the records and ubiq.yaml as they are at REV (a pull request's base)")
+    gh.add_argument("--ignore-derived", action="store_true",
+                    help="with --check, do not count what waits only for the next sync of main: "
+                         "the derived `status: in review`/`status: in progress` labels and "
+                         "\"met at\" comments owed to issues closed by keyword")
     gh.add_argument("--repo", metavar="OWNER/NAME",
                     help="issue repository (default: sync.repo, then $GITHUB_REPOSITORY)")
+    gh.add_argument("--results", metavar="FILE",
+                    help="scenario outcomes from `pytest -p ubiq.pytest_plugin --ubiq-results FILE`; a criterion with "
+                         "`scenario: true` is met when its tagged scenarios passed")
     gh.set_defaults(fn=cmd_sync)
 
     im = sub.add_parser("impact", help="records a change touches and the callers it affects")

@@ -6,5 +6,3 @@ config: []
 docs: docs/schema-validation.md
 summary: Schema-declared record collections with relationships and source evidence.
 ---
-
-Schema-declared record collections with relationships and source evidence.

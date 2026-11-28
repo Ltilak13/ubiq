@@ -40,8 +40,24 @@ symbols:
         codes: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "tuple[str, ...]", "x-python-default": "()"}
         config: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "tuple[str, ...]", "x-python-default": "()"}
         docs: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "''"}
+        status: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "'shipped'"}
+        issue: {"x-python-kind": "positional-or-keyword", "x-python-type": "int | None", "x-python-default": "None"}
       required: ["name", "summary"]
     result: {}
+    errors: false
+  feature_status:
+    id: symbol:ubiq.plan.feature_status
+    feature: feature-planning
+    term: feature status
+    form: bound
+    scenarios: [tests/test_feature_lifecycle.py::test_bad_status_is_a_plan_error]
+    params:
+      type: object
+      additionalProperties: false
+      properties:
+        meta: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Mapping[str, object]"}
+      required: ["meta"]
+    result: {"type": "string", "x-python-type": "str"}
     errors: false
   load_features:
     id: symbol:ubiq.plan.load_features
@@ -54,6 +70,7 @@ symbols:
       additionalProperties: false
       properties:
         directory: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "Path", "x-python-default": "BUNDLED"}
+      required: []
     result: {"type": "array", "x-python-type": "list[Feature]"}
     errors: {"type": "string", "enum": ["PlanError"]}
   order:
@@ -150,3 +167,7 @@ List unused features whose requirements are all in use.
 ## `cmd_plan`
 
 Print adoption order or the next available features.
+
+## `feature_status`
+
+A feature record's status: `planned`, or `shipped` when absent.

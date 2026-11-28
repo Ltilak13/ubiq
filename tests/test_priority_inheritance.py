@@ -49,7 +49,8 @@ def test_plan_without_priority_leaves_steps_unmanaged():
 
 
 def test_dry_run_labels_each_inheriting_step_and_respects_overrides():
-    existing = [step_issue(11, "first", "bug"), step_issue(12, "second", "priority: P2")]
+    existing = [{"number": 10, "sub_issues": [11, 12]},
+                step_issue(11, "first", "bug"), step_issue(12, "second", "priority: P2")]
     actions = plan(plan_desired(plan_record("P1", second="P2")), existing)
     labels = [(a["issue"], a["add"], a["remove"]) for a in actions if a["action"] == "label"]
     assert labels == [(11, ["priority: P1"], [])]
@@ -57,7 +58,8 @@ def test_dry_run_labels_each_inheriting_step_and_respects_overrides():
 
 
 def test_turning_inheritance_on_shows_every_label_change():
-    existing = [step_issue(11, "first", "priority: P3"), step_issue(12, "second")]
+    existing = [{"number": 10, "sub_issues": [11, 12]},
+                step_issue(11, "first", "priority: P3"), step_issue(12, "second")]
     assert {a["action"] for a in plan(plan_desired(plan_record()), existing)} == {"noop"}
     with_p1 = plan(plan_desired(plan_record("P1")), existing)
     assert [(a["issue"], a["add"], a["remove"]) for a in with_p1] == [
@@ -90,11 +92,9 @@ def test_loaders_read_the_container_priority(tmp_path):
     assert load_goal(tmp_path / "goal.md", tmp_path)["priority"] == "P3"
 
 
-def test_goal_schema_has_priority_and_its_tracking_copy_still_matches():
+def test_goal_schema_takes_priority_from_the_tracking_fields():
     schema = json.loads((ROOT / ".ubiq/schemas/goal.json").read_text())
-    fragment = json.loads((ROOT / ".ubiq/schemas/tracking.json").read_text())
-    assert schema["properties"]["priority"] == {"$ref": "#/$defs/tracking/properties/priority"}
-    assert schema["$defs"]["tracking"]["properties"] == fragment["properties"]
+    assert schema["properties"]["priority"] == {"$ref": "tracking.json#/properties/priority"}
 
 
 def test_repository_frontmatter_tracking_steps_would_all_be_labelled_p1():
@@ -107,6 +107,7 @@ def test_invalid_priority_is_a_schema_error(tmp_path, capsys, where, text):
     body = "name: demo\nstatus: active\nissue: 10\ntrunk: main\nsteps:\n  first:\n    requires: []\n"
     body = body.replace("trunk", text + "trunk") if where == "plan" else body + text
     (tmp_path / "schema.json").write_text((ROOT / ".ubiq/schemas/plan.json").read_text())
+    (tmp_path / "tracking.json").write_text((ROOT / ".ubiq/schemas/tracking.json").read_text())
     (tmp_path / "plans").mkdir()
     (tmp_path / "plans/demo.md").write_text(f"---\n{body}---\n")
     (tmp_path / "ubiq.yaml").write_text(

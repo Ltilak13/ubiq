@@ -16,7 +16,10 @@ Errors (fail the build):
   E013 field-value            a link to #field whose field is absent, null, not text, or not
                               its label (in any file with frontmatter, a fragment that names
                               no heading or anchor names a field)
+  E014 edge-cycle             records loop through an `acyclic` x-ubiq-ref edge (cycles.py)
   E015 readme-membership      invalid README target or membership declaration/link mismatch
+  E016 criterion-scenario     a `scenario: true` criterion has no tagged scenario, or a tag
+                              names no such criterion (scenarios.py)
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record

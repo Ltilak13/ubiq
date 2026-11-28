@@ -23,38 +23,18 @@
     },
     "docs": {"type": "string", "pattern": "^docs/[A-Za-z0-9_./-]+\\.md(#[a-z0-9-]+)?$"},
     "summary": {"type": "string", "pattern": "\\S"},
-    "issue": {"$ref": "#/$defs/tracking/properties/issue"},
-    "priority": {"$ref": "#/$defs/tracking/properties/priority"},
+    "status": {
+      "enum": ["planned", "shipped"],
+      "default": "shipped",
+      "description": "planned: work in flight, not yet adoptable; shipped (the default when absent): released. A planned feature's codes need not be documented in the spec until it ships."
+    },
+    "issue": {"$ref": "tracking.json#/properties/issue"},
+    "priority": {"$ref": "tracking.json#/properties/priority"},
     "part_of": {
-      "$ref": "#/$defs/tracking/properties/part_of",
+      "$ref": "tracking.json#/properties/part_of",
       "x-ubiq-ref": {"ns": "feature", "edge": "part_of", "single": true}
     },
-    "pr": {"$ref": "#/$defs/tracking/properties/pr"}
+    "pr": {"$ref": "tracking.json#/properties/pr"}
   },
-  "additionalProperties": false,
-  "$defs": {
-    "tracking": {
-      "description": "Copy of .ubiq/schemas/tracking.json; a test keeps them equal.",
-      "type": "object",
-      "properties": {
-        "issue": {"type": "integer", "minimum": 1},
-        "priority": {"enum": ["P1", "P2", "P3"]},
-        "requires": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"type": "string", "pattern": "\\S"}
-        },
-        "part_of": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"type": "string", "pattern": "\\S"}
-        },
-        "pr": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"type": "integer", "minimum": 1}
-        }
-      }
-    }
-  }
+  "additionalProperties": false
 }

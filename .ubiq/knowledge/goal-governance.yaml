@@ -4,6 +4,11 @@ domains:
   - path: docs/policies/goal-evidence.md
     sha256: dcbc15666643315eeda33f279884256f930214216e563b007cf53c790c887915
     anchor: This policy governs the [domain-schema goal]
+- id: fact-placement
+  evidence:
+  - path: docs/policies/fact-homes.md
+    sha256: 702db487bd1dad4de85b3b99da2057cf3d41376e1aa55fc934304de0285ecc61
+    anchor: This policy governs the [no-code spec goal]
 policies:
 - id: ubiq:goal-evidence-policy
   kind: policy
@@ -15,11 +20,20 @@ policies:
     sha256: dcbc15666643315eeda33f279884256f930214216e563b007cf53c790c887915
     anchor: This policy governs the [domain-schema goal]
   - path: .ubiq/schemas/goal.json
-    sha256: ebc8f68845bf0bd26fdedd80b75b78544ff31d9f8e54be9d5fffb258264ec3b8
+    sha256: a42e9ace1c538ae5f8a0dc2348d3679632cbaf6dfebf783df51a8d2cef23f719
     anchor: '"const": "partial"'
   - path: tests/test_goals.py
-    sha256: f5cf6654803510a0970f35d69358e68b61f6b697f016a39f6d6e65c73c524f31
+    sha256: c5b3aca89a155821199dadbd87935999324d86c3a5dac08f3af2d560d6032944
     anchor: def test_partial_assessment_requires_provisional_evidence(
+- id: ubiq:fact-homes-policy
+  kind: policy
+  domain: fact-placement
+  source: docs/policies/fact-homes.md
+  governs: ubiq:no-code-spec-goal
+  evidence:
+  - path: docs/policies/fact-homes.md
+    sha256: 702db487bd1dad4de85b3b99da2057cf3d41376e1aa55fc934304de0285ecc61
+    anchor: This policy governs the [no-code spec goal]
 goals:
 - id: ubiq:domain-schema-goal
   kind: goal
@@ -27,8 +41,16 @@ goals:
   source: docs/goals/domain-schema-goal.md
   evidence:
   - path: docs/goals/domain-schema-goal.md
-    sha256: a40e2bc3cd396182679e5bbfe3fdf1117e300b8bc01c5b03681afec0a0e1aa8b
+    sha256: 7c8143fab2b68db14a7f42a0d8f9bfb5f0d7067afa3d5c0fbc98a8c165a1f60e
     anchor: '# Goal: explicit domain models'
+- id: ubiq:no-code-spec-goal
+  kind: goal
+  domain: fact-placement
+  source: docs/goals/no-code-spec-goal.md
+  evidence:
+  - path: docs/goals/no-code-spec-goal.md
+    sha256: 6df9eaedae57d71434e838f30231e78f8a21af5c208609d7bfd059431572c1a4
+    anchor: '# Goal: no-code specs'
 relationships:
 - id: goal-evidence-policy--governs--domain-schema-goal
   from: ubiq:goal-evidence-policy
@@ -38,4 +60,12 @@ relationships:
     path: docs/policies/goal-evidence.md
     sha256: dcbc15666643315eeda33f279884256f930214216e563b007cf53c790c887915
     anchor: This policy governs the [domain-schema goal]
+- id: fact-homes-policy--governs--no-code-spec-goal
+  from: ubiq:fact-homes-policy
+  to: ubiq:no-code-spec-goal
+  kind: governs
+  evidence:
+    path: docs/policies/fact-homes.md
+    sha256: 702db487bd1dad4de85b3b99da2057cf3d41376e1aa55fc934304de0285ecc61
+    anchor: This policy governs the [no-code spec goal]
 interactions: []

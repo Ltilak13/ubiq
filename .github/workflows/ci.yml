@@ -89,6 +89,9 @@ jobs:
           # A force-push can leave the previous main commit unreachable.
           git cat-file -e "$BASE^{commit}" 2>/dev/null || BASE=HEAD~1
           ubiq coverage --since "$BASE" --markdown | tee -a "$GITHUB_STEP_SUMMARY"
+      # Advisory: a met criterion whose cited files changed after its review needs reassessment.
+      - name: Review freshness
+        run: python scripts/review_freshness.py | tee -a "$GITHUB_STEP_SUMMARY"
 
   # Use the pull request head to show pending changes in its own runner.
   sync-preview:
@@ -99,6 +102,7 @@ jobs:
     permissions:
       contents: read
       issues: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -130,6 +134,7 @@ jobs:
     permissions:
       contents: read
       issues: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -168,7 +173,13 @@ jobs:
           export PYTHONPATH="$PWD/src"
           if [[ -f src/ubiq/sync.py ]]; then
             # HEAD is the base checkout. It can also have no configured mirror.
-            python -m ubiq.cli sync github --check --ref HEAD
+            # The derived in-review labels follow open pull requests, so this pull
+            # request's own opening can change them before github-sync applies.
+            extra=()
+            if python -m ubiq.cli sync github --help | grep -q -- --ignore-derived; then
+              extra=(--ignore-derived)
+            fi
+            python -m ubiq.cli sync github --check --ref HEAD "${extra[@]}"
           else
             DRIFT=$(python scripts/goal_issues.py --dry-run | jq -e 'map(select(.action != "noop"))')
             printf '%s\n' "$DRIFT"

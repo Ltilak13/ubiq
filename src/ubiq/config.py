@@ -109,7 +109,9 @@ DEFAULT_CONFIG: dict = {
     # reports setup guidance and exits 2.
     # repo: owner/name of the issue tracker (default: $GITHUB_REPOSITORY).
     # label_prefix: prefix of the labels the sync owns (default "priority: ").
-    # records: the record files to mirror, each a `glob` and its `kind` (goal).
+    # records: the record files to mirror, each a `glob` and its `kind` (goal, plan, feature).
+    # create: which open goal criteria get a new issue: `always` (default), or
+    # `prioritized`, only those whose criterion or goal sets a `priority`.
     "sync": None,
 }
 
@@ -152,7 +154,7 @@ class CoverageSpec:
     no_regression: bool
 
 
-SYNC_KINDS = ("goal", "plan")
+SYNC_KINDS = ("goal", "plan", "feature")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
@@ -167,6 +169,10 @@ class SyncSpec:
     records: tuple[SyncRecord, ...]
     repo: str | None = None
     label_prefix: str = "priority: "
+    create: str = "always"
+
+
+SYNC_CREATE = ("always", "prioritized")
 
 
 @dataclass(frozen=True)
@@ -314,7 +320,7 @@ def _sync(raw, root: Path) -> SyncSpec | None:
         return None
     if not isinstance(raw, dict):
         raise InvalidConfig("sync: expected a mapping")
-    _known(raw, "sync", ("repo", "label_prefix", "records"))
+    _known(raw, "sync", ("repo", "label_prefix", "records", "create"))
     repo = raw.get("repo")
     if repo is not None and (not isinstance(repo, str) or not REPO_RE.match(repo)):
         raise InvalidConfig("sync.repo: expected owner/name")
@@ -337,7 +343,10 @@ def _sync(raw, root: Path) -> SyncSpec | None:
         if kind not in SYNC_KINDS:
             raise InvalidConfig(f"{field}.kind: expected one of {', '.join(SYNC_KINDS)}")
         records.append(SyncRecord(Glob.parse(pattern, root), kind))
-    return SyncSpec(tuple(records), repo, prefix)
+    create = raw.get("create", "always")
+    if create not in SYNC_CREATE:
+        raise InvalidConfig(f"sync.create: expected one of {', '.join(SYNC_CREATE)}")
+    return SyncSpec(tuple(records), repo, prefix, create)
 
 
 def _coverage(raw, root: Path) -> CoverageSpec | None:

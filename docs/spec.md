@@ -198,6 +198,10 @@ membership. `ubiq check` reports discrepancies without editing the README.
   a record is missing its field link in a declared README, or a managed field
   link points to a record that does not declare that README. The report points
   to the declaration field or the unexpected link.
+- `E016` criterion scenario — a goal criterion with `scenario: true` has no scenario
+  tagged with its label (`@AC1`) in the feature file beside the goal (`<goal>.feature`),
+  or a scenario there is tagged with a label that names no such criterion. See
+  [criterion scenarios](github-sync.md#criterion-scenarios).
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 - `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,
@@ -220,6 +224,12 @@ membership. `ubiq check` reports discrepancies without editing the README.
 - `E012` part input — an include names no value, or an undeclared value, for an
   input its part declares; or a part's `edges.include.inputs` field is not a
   mapping of input names to lists of values.
+- `E014` edge cycle — records form a loop through an `x-ubiq-ref` edge whose
+  annotation sets `acyclic: true`, for example features that `requires` each other.
+  The message names the loop (`requires cycle: a -> b -> a`) at the first record's
+  field. Only a top-level annotated field of a frontmatter-bound record is a node,
+  because a nested field (a goal criterion's `requires`) has a source that is not a
+  record of the namespace.
 - `W003` blocked invoke — an invoke edge targets a record whose
   `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
 - `W004` install layout — a link that leaves an `edges.install` directory resolves
@@ -593,15 +603,19 @@ plan's); an explicit item value wins.
 
 On a goal, they are optional properties of a criterion (`criteria.AC1.issue`), next to the
 existing `issues:` list, which keeps working; a criterion's `issue` is tracked like each
-number in `issues`. On a feature they are optional properties of the record, and the
+number in `issues`. A goal also takes `issue` at its top level: the issue of the goal
+itself, which its criteria's issues become sub-issues of. On a feature they are optional properties of the record, and the
 feature's own `requires` stays required.
+
+A feature also has a `status`, `planned` or `shipped` (the default), which `ubiq plan` and
+`ubiq sync github` read; see [planned features](features.md#planned-features).
 
 A schema declares a relationship once, by annotating the property that holds the
 names:
 
 ```json
 "requires": {
-  "$ref": "#/$defs/tracking/properties/requires",
+  "$ref": "tracking.json#/properties/requires",
   "x-ubiq-ref": {"ns": "feature", "edge": "requires", "acyclic": true}
 }
 ```
@@ -616,7 +630,7 @@ names:
 
 `x-ubiq-ref` sits on a property whose value is a string or a list of strings, anywhere
 a schema reaches (nested properties, `patternProperties`, `items`, `allOf`, `$ref`
-within the document). `ubiq check` reads each file a frontmatter binding selects, and
+within the document or to another schema file of the repository, which is inlined first). `ubiq check` reads each file a frontmatter binding selects, and
 each value must name a record in `ns` by name or id: otherwise E006, at the line of the
 field. A bad annotation (an unknown member, a missing `ns`, a reserved `edge`) is E008. Each
 value makes an edge from the record that owns the file to its target, and the edge's kind
@@ -624,8 +638,20 @@ is `edge`, so `ubiq graph --kind requires` selects it.
 
 `ref_fields` and `edges.*.fields` keep working unchanged. A top-level field that is in
 `ref_fields` is resolved once, as before (an `invoke` edge, any namespace); annotating
-it only adds the rules. `acyclic` and `single` are parsed and validated but not yet
-enforced: cycle and one-parent checks come with the `requires` and `part_of` work.
+it only adds the rules. `acyclic` is enforced (E014, below).
+
+`single` is enforced. A property that names more than one record is E009, at the
+field's line: `criteria.AC1.part_of: ["a", "b"]` fails, and each property is counted on
+its own, so two criteria may each name one parent. On a goal, a criterion's `part_of`
+names a goal (`ns: goal`), and a goal's own `issue` is the GitHub issue that its
+criteria's issues become sub-issues of (see [GitHub sync](github-sync.md#sub-issues)).
+
+`requires` is a list of record names. An entry `"pr: <n>"` (quote it, or YAML reads a
+mapping) names a pull request, not a record, so it is exempt from E006. `ubiq sync
+github` mirrors `requires` as blocked-by links and the `pr:` entries as a generated line
+(see [GitHub sync](github-sync.md)). A record's `pr` lists its pull requests: the sync
+reports a pull request that is not based on the head ref of a required record's open pull
+request, and derives the `status: in review` label (see [GitHub sync](github-sync.md)).
 
 ### Plan records
 
@@ -637,18 +663,21 @@ frontmatter is the source for the order, branches, and pull requests of each ste
 | Field | Value |
 | --- | --- |
 | `name` | the plan's name (lowercase words joined by `-`) |
-| `status` | `proposed`, `active`, `done`, or `abandoned` |
+| `status` | `proposed`, `active`, `done`, or `abandoned` (the shared lifecycle in `tracking.json`, which goals use too) |
 | `issue` | the issue the plan coordinates; each step's issue is a sub-issue of it |
 | `priority` | optional `P1`, `P2`, or `P3`; the default for steps without their own |
 | `trunk` | the branch the work lands on |
 | `steps` | a mapping from step name to `requires` (required), `issue`, `priority`, `branch`, `base`, `pr` |
 
-A step's `requires` lists other step names of the same plan. The schema annotates it with
+A step's `requires` lists other step names of the same plan, or `<plan>/<step>` for a
+step of another plan, so a step shared by two plans is defined once. A step's `pr` is one
+pull request number or a list. The schema annotates `requires` with
 `x-ubiq-ref` and the `within` member:
 `{"ns": "plan-step", "edge": "requires", "acyclic": true, "within": "steps"}`. Steps are
 keys of a mapping, not records, so `within` makes each value resolve against the keys
-of the file's top-level `steps` mapping instead of the glossary. A name that is no step
-is E006 at the line of the field. These links make no composition edge. `acyclic` is not
+of the file's top-level `steps` mapping instead of the glossary; a qualified name
+resolves against the `steps` of the other file, bound to the same schema, whose `name`
+is `<plan>`. A name that is no step is E006 at the line of the field. These links make no composition edge. `acyclic` is not
 yet enforced here either.
 
 `ubiq sync github` mirrors steps with `sync.records` entries of kind `plan`; see

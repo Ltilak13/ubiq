@@ -27,7 +27,7 @@ def test_dependency_change_requires_regeneration(tmp_path):
 
     plan = tmp_path / files[1]
     text = plan.read_text()
-    plan.write_text(text.replace("requires: [mermaid-drift, cli-spec-slice]", "requires: [cli-spec-slice]"))
+    plan.write_text(text.replace("requires: [frontmatter-tracking/mermaid-blocks, cli-spec-slice]", "requires: [cli-spec-slice]"))
     command = [sys.executable, str(tmp_path / files[0])]
     stale = subprocess.run(command, capture_output=True, text=True, check=False)
     assert stale.returncode == 1, stale.stdout + stale.stderr

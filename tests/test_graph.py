@@ -71,6 +71,27 @@ def test_invoke_and_include_edges_with_callers(tmp_path, capsys):
     assert status == 1 and "no record" in out["error"]
 
 
+def test_registering_parts_needs_only_config_and_a_moved_part_breaks_its_links(tmp_path, capsys):
+    # composable-knowledge-goal AC1: a glossary rule registers the parts, with no code;
+    # each link to a part then resolves to its record, and fails E002 once it moves.
+    repo(tmp_path, {
+        "skills/push/SKILL.md": skill("push", "Follow [checkout](../_shared/checkout.md)."),
+        "skills/ship/SKILL.md": skill("ship", "Then [checkout](../_shared/checkout.md) again."),
+        "skills/_shared/checkout.md": part("checkout", "Check out the branch."),
+    })
+    status, out = run(tmp_path, capsys, "refs", "part:checkout")
+    assert status == 0
+    assert [d["namespace"] for d in out["definitions"]] == ["part"]
+    assert sorted(r["file"] for r in out["references"]) == ["skills/push/SKILL.md", "skills/ship/SKILL.md"]
+    status, out = run(tmp_path, capsys, "check")
+    assert status == 0, out["diagnostics"]
+
+    (tmp_path / "skills/_shared/checkout.md").rename(tmp_path / "skills/_shared/checkout-branch.md")
+    status, out = run(tmp_path, capsys, "check")
+    broken = sorted(d["file"] for d in out["diagnostics"] if d["code"] == "E002")
+    assert status == 1 and broken == ["skills/push/SKILL.md", "skills/ship/SKILL.md"]
+
+
 def check(tmp_path, capsys):
     status, out = run(tmp_path, capsys, "check")
     return status, [(d["code"], d["message"]) for d in out["diagnostics"]

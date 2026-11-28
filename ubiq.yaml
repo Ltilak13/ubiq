@@ -40,11 +40,15 @@ catalogs:
 sync:
   repo: Ltilak13/ubiq
   label_prefix: "priority: "
+  # Open a criterion issue only when the criterion or its goal sets a priority.
+  create: prioritized
   records:
     - glob: "docs/goals/*-goal.md"
       kind: goal
     - glob: "docs/plans/*.md"
       kind: plan
+    - glob: "src/ubiq/features/*.md"
+      kind: feature
 
 ignore:
   - ".git/**"

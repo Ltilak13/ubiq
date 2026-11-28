@@ -10,7 +10,7 @@ criteria:
   AC2:
     assessment: partial
     support:
-    - feature: No-code checks recipe
+    - feature: no-code-checks
       implementation:
         path: docs/no-code-checks.md
         anchor: '## Pre-commit'
@@ -24,9 +24,16 @@ criteria:
     gap: Restated-value warnings (PR #60) and checked field links (PR #61) are open, unmerged pull requests. Prose-first values (#63) and READMEs composed from record fields (#65) depend on #61.
     issues: [63, 65]
   AC4:
-    assessment: unassessed
-    support: []
-    gap: Names inside fenced blocks are not checked (#66), and test results do not verify criteria (#67).
+    assessment: partial
+    support:
+    - feature: criterion-scenarios
+      implementation:
+        path: src/ubiq/scenarios.py
+        anchor: def load_results(
+      check:
+        path: tests/test_criterion_scenarios.py
+        anchor: def test_a_passing_scenario_closes_the_criterion_issue(
+    gap: Goal criteria link to tagged scenarios, and passing results on main meet them (#67). Spec records other than goals have no scenario binding, and names inside fenced blocks are not checked (#66).
     issues: [66, 67]
   AC5:
     assessment: unassessed
@@ -43,6 +50,14 @@ criteria:
     support: []
     gap: No worked example repository exists (#69).
     issues: [69]
+  AC8:
+    assessment: unassessed
+    support: []
+    gap: No check compares a generated file or section with the output of the command that writes it.
+  AC9:
+    assessment: unassessed
+    support: []
+    gap: No check reports a section that should be its own record file.
 ---
 
 # Goal: no-code specs
@@ -51,6 +66,8 @@ This goal defines outcomes and acceptance evidence. It replaces the tracking
 issue #64. It does not claim that Ubiq supports these outcomes today.
 The sequence of work that proves the outcomes, with each step's issue and
 blockers, is in [[plan:no-code-dogfood]] (issue #113).
+
+The [[plan:no-code-spec-views]] plan tracks checked diagrams and tables.
 
 ## Objective
 
@@ -64,6 +81,9 @@ one home.
 | Behavior | Gherkin scenarios in the record (`.feature.md`) | Cucumber, with generic steps |
 | Rationale | Prose | Vale for writing rules, plus Ubiq's own checks |
 | Diagrams | Generated from records, or checked against them | Ubiq (#59) |
+
+The [fact homes policy](../policies/fact-homes.md) states where each fact
+lives, when it gets its own file, and how derived files and diagrams stay current.
 
 Agents help write and maintain records. No check needs an agent to pass.
 
@@ -90,6 +110,8 @@ The goal is achieved when:
 5. AC5: Controlled vocabulary lives in checkable records and exports Vale rules, so prose and step definitions use checked terms.
 6. AC6: Ubiq's own features are records, and the adoption order derives from their declared dependencies.
 7. AC7: A worked example repository applies this pattern, and all of its checks pass in CI.
+8. AC8: Each generated file or section names the command that writes it, and pre-commit and CI fail when it is stale.
+9. AC9: A check reports a section that other files link to by name, or that has checked fields, when it is not its own record file.
 
 <details>
 <summary>AC6 evidence diagram</summary>
