@@ -48,7 +48,7 @@ Exclude generated copies and dependencies after you identify their canonical sou
 
 Read `GLOSSARY-MAP.md` and context glossaries when they exist.
 
-Follow the [domain review procedure](../references/domain-review.md) for changed concepts, relationships, or context boundaries.
+Follow the [domain review procedure](../references/domain-review.md), which uses /domain-modeling when installed, for changed concepts, relationships, or context boundaries.
 
 Use directory candidates to investigate domain boundaries through vocabulary, ownership, and dependencies.
 A technical folder does not establish a business context.
@@ -164,7 +164,7 @@ The report lists each cluster that you kept, with its reason.
 
 ## 7. Re-check and report
 
-Follow the [validation procedure](../references/validate-changes.md).
+Follow the [validation procedure](../references/validate-changes.md), which uses /validate-change when installed.
 
 Run `ubiq check` again. Report what you fixed, linked, excepted, created, and left for a human. Include schema changes, group coverage, composition decisions, and unresolved context candidates.
 

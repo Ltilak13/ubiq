@@ -5,7 +5,8 @@
   "required": ["source"],
   "properties": {
     "source": {"type": "string", "pattern": "\\S"},
-    "uses": {"type": "array", "items": {"type": "string", "pattern": "\\S"}, "uniqueItems": true}
+    "uses": {"type": "array", "items": {"type": "string", "pattern": "\\S"}, "uniqueItems": true},
+    "routes": {"type": "array", "items": {"type": "string", "pattern": "\\S"}, "uniqueItems": true}
   },
   "additionalProperties": false
 }
