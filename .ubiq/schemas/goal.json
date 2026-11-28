@@ -33,10 +33,12 @@
               "const": true
             },
             "assessment": {
+              "description": "`deferred` records that the criterion is deliberately not scheduled; `gap` says why. The sync closes its issues as not planned.",
               "enum": [
                 "unassessed",
                 "partial",
-                "met"
+                "met",
+                "deferred"
               ]
             },
             "support": {

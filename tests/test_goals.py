@@ -80,6 +80,17 @@ def test_met_assessment_requires_support_and_review(fields):
         Draft202012Validator(SCHEMA).validate(_criterion(**fields))
 
 
+DEFERRED = {'assessment': 'deferred', 'support': [], 'gap': 'Not scheduled until #111 is tried.'}
+
+
+def test_a_deferred_criterion_states_why_and_carries_no_review():
+    Draft202012Validator(SCHEMA).validate(_criterion(**DEFERRED, issues=[3]))
+    for bad in ({**DEFERRED, 'gap': ' '}, {**DEFERRED, 'review': REVIEW},
+                {key: value for key, value in DEFERRED.items() if key != 'gap'}):
+        with pytest.raises(ValidationError):
+            Draft202012Validator(SCHEMA).validate(_criterion(**bad))
+
+
 ASSESSED_IN = {'assessment': 'unassessed', 'support': [], 'gap': 'Owned elsewhere.',
                'assessed_in': {'goal': 'other-goal', 'criterion': 'AC2'}}
 

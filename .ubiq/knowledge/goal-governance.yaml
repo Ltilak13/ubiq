@@ -20,10 +20,10 @@ policies:
     sha256: dcbc15666643315eeda33f279884256f930214216e563b007cf53c790c887915
     anchor: This policy governs the [domain-schema goal]
   - path: .ubiq/schemas/goal.json
-    sha256: a42e9ace1c538ae5f8a0dc2348d3679632cbaf6dfebf783df51a8d2cef23f719
+    sha256: 751afc738091c984888835b9e81ac3ec586acd5681f489acfe560bbd17043b2c
     anchor: '"const": "partial"'
   - path: tests/test_goals.py
-    sha256: c5b3aca89a155821199dadbd87935999324d86c3a5dac08f3af2d560d6032944
+    sha256: 36c6b7c3e8a2d332a3cb8e995c8c1eee827378d13ee19b7522755b7692999062
     anchor: def test_partial_assessment_requires_provisional_evidence(
 - id: ubiq:fact-homes-policy
   kind: policy
