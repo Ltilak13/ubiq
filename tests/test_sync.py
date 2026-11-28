@@ -524,3 +524,35 @@ def test_sync_create_setting_is_validated(tmp_path):
     (tmp_path / 'ubiq.yaml').write_text(f'sync:\n  repo: o/r\n  create: sometimes\n  records:\n{RECORDS}')
     with pytest.raises(InvalidConfig, match='sync.create'):
         load_config(tmp_path)
+
+
+def test_ignore_derived_drops_only_the_derived_status_labels():
+    from ubiq.sync import drift
+    review = {'action': 'label', 'issue': 1, 'add': ['status: in review'], 'remove': ['status: in progress']}
+    unreview = {'action': 'label', 'issue': 2, 'add': [], 'remove': ['Status: In Review']}
+    priority = {'action': 'label', 'issue': 3, 'add': ['priority: P1'], 'remove': []}
+    mixed = {'action': 'label', 'issue': 4, 'add': ['status: in review', 'priority: P2'], 'remove': []}
+    create = {'action': 'create', 'title': 't'}
+    noop = {'action': 'noop'}
+    actions = [review, unreview, priority, mixed, create, noop]
+    assert drift(actions) == [review, unreview, priority, mixed, create]
+    assert drift(actions, ignore_derived=True) == [priority, mixed, create]
+
+
+def test_check_ignore_derived_passes_when_only_in_review_labels_lag(tmp_path, monkeypatch, capsys):
+    root = write_repo(tmp_path, issues='    issues: [7]\n')
+    snapshot = [{'number': 7, 'state': 'open', 'body': '', 'labels': [], 'user': {'login': 'x'}}]
+    pulls = [{'number': 9, 'head': {'ref': 'h', 'repo': {'full_name': 'o/r'}},
+              'base': {'ref': 'main', 'repo': {'default_branch': 'main'}}, 'body': 'Closes #7'}]
+
+    def transport(method, url, token, payload=None):
+        if '/pulls' in url:
+            return pulls if 'page=1' in url else []
+        if '/issues?' in url:
+            return snapshot if 'page=1' in url else []
+        return {}
+    monkeypatch.setenv('GITHUB_TOKEN', 't')
+    from ubiq.sync import cmd_sync
+    assert cmd_sync(flags(root, check=True), transport, pause=0) == 1
+    capsys.readouterr()
+    assert cmd_sync(flags(root, check=True, ignore_derived=True), transport, pause=0) == 0

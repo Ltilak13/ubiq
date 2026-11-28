@@ -24,6 +24,7 @@ ubiq sync github --apply     # perform the plan; needs GITHUB_TOKEN with issues:
 ubiq sync github --check     # exit 1 when GitHub differs from the records
 ubiq sync github --repo o/n  # override sync.repo
 ubiq sync github --check --ref origin/main  # read the records as they are at a revision
+ubiq sync github --check --ignore-derived   # do not count the derived status labels
 ```
 
 A dry run needs only read access. It reads public repositories without a token.
@@ -188,6 +189,12 @@ implementing pull request disappears. It derives the label on every sync.
 - It applies to all issues in the repository. A draft pull request counts. A hand-added or hand-removed label is drift that `--apply` restores.
 - The label name is fixed (`STATUS_PREFIX` in `src/ubiq/sync.py`) and is independent of
   `sync.label_prefix`.
+- The `github-sync` workflow also runs when a pull request opens, reopens, is edited,
+  or closes (`pull_request_target`, always with the default branch checked out), so the
+  label follows pull requests without waiting for a push to `main`.
+- Pull request CI runs `--check --ignore-derived`: the label is the one fact that a
+  pull request's own opening changes, so it can lag that check by a few seconds.
+  The scheduled drift job still counts it.
 
 ## Requires
 

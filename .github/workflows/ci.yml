@@ -173,7 +173,13 @@ jobs:
           export PYTHONPATH="$PWD/src"
           if [[ -f src/ubiq/sync.py ]]; then
             # HEAD is the base checkout. It can also have no configured mirror.
-            python -m ubiq.cli sync github --check --ref HEAD
+            # The derived in-review labels follow open pull requests, so this pull
+            # request's own opening can change them before github-sync applies.
+            extra=()
+            if python -m ubiq.cli sync github --help | grep -q -- --ignore-derived; then
+              extra=(--ignore-derived)
+            fi
+            python -m ubiq.cli sync github --check --ref HEAD "${extra[@]}"
           else
             DRIFT=$(python scripts/goal_issues.py --dry-run | jq -e 'map(select(.action != "noop"))')
             printf '%s\n' "$DRIFT"
