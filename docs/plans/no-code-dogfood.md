@@ -32,6 +32,9 @@ steps:
   readme-generation:
     issue: 173
     requires: [readme-membership]
+  relationship-navigation:
+    issue: 174
+    requires: [feature-records]
   cli-spec-slice:
     requires: [readme-membership]
   no-code-authoring-proof:
@@ -70,6 +73,9 @@ to create issues for the steps that have none (`cli-spec-slice`,
   proceed independently.
 - `readme-generation`: generate the managed feature list from checked frontmatter after
   the membership checks ship (#173).
+- `relationship-navigation`: use fixture feature and release records to check both ways
+  through one declared relationship. Check lookup behavior separately from diagram or list
+  drift. This follow-up supports AC10 of the [composable knowledge goal](../goals/composable-knowledge-goal.md#acceptance-evidence) (#174).
 - `cli-spec-slice`: convert one real CLI behavior and its acceptance scenarios into a
   Markdown spec, with the README membership check as the first slice. Reuse a test
   binding that builds a small repository, runs `ubiq check`, and asserts the diagnostic
@@ -116,23 +122,26 @@ flowchart LR
   click step_6 "https://github.com/Ltilak13/ubiq/issues/173"
   step_7["readme-membership (#35;65)"]
   click step_7 "https://github.com/Ltilak13/ubiq/issues/65"
-  step_8["release-adoption-smoke-test (#35;163)"]
-  click step_8 "https://github.com/Ltilak13/ubiq/issues/163"
-  step_9["reusable-issue-sync (#35;112)"]
-  click step_9 "https://github.com/Ltilak13/ubiq/issues/112"
-  step_10["starter (#35;111)"]
-  click step_10 "https://github.com/Ltilak13/ubiq/issues/111"
-  step_11["tracking-proof"]
+  step_8["relationship-navigation (#35;174)"]
+  click step_8 "https://github.com/Ltilak13/ubiq/issues/174"
+  step_9["release-adoption-smoke-test (#35;163)"]
+  click step_9 "https://github.com/Ltilak13/ubiq/issues/163"
+  step_10["reusable-issue-sync (#35;112)"]
+  click step_10 "https://github.com/Ltilak13/ubiq/issues/112"
+  step_11["starter (#35;111)"]
+  click step_11 "https://github.com/Ltilak13/ubiq/issues/111"
+  step_12["tracking-proof"]
   step_7 --> step_1
   step_2 --> step_3
   step_1 --> step_4
   step_7 --> step_6
   step_2 --> step_7
   step_2 --> step_8
-  step_11 --> step_9
-  step_11 --> step_10
-  step_1 --> step_11
-  step_3 --> step_11
+  step_2 --> step_9
+  step_12 --> step_10
+  step_12 --> step_11
+  step_1 --> step_12
+  step_3 --> step_12
 ```
 <!-- /ubiq:dogfood-diagram -->
 
