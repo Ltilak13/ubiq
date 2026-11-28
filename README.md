@@ -14,7 +14,7 @@ request, so people and agents can catch mistakes before they spread.
 Write down a rule. Connect it to your files. Check it when things change.
 
 ```mermaid
-flowchart LR
+flowchart TB
     accTitle: Define, connect, check
     accDescr: Define vocabulary or record rules, connect your files, then check changes with ubiq.
     A["1. Define"] --> B["2. Connect"] --> C["3. Check"]
