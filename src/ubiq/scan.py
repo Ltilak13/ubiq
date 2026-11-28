@@ -234,8 +234,10 @@ class Ref:
     section: int = 0  # ATX headings seen at or before this line (0 = before the first)
     heading: bool = False  # the reference sits on a heading line
     linked: bool = False  # mention inside a non-vocabulary link label (author linked it)
-    field: str = ""  # value refs: the frontmatter field that was named
+    edge: str = ""  # edge name from an `x-ubiq-ref` schema annotation; empty for other refs
+    field: str = ""  # value refs: the frontmatter field the fragment or fence pattern names
     fenced: bool = False  # a configured fence use, independent of prose checks
+    readme_entry: bool = False  # value refs inside a managed README section
 
     @property
     def kind(self) -> str:
@@ -499,6 +501,27 @@ def _interpret_markdown(text: str, languages: Container[str] = (),
     return _Markdown(prose, delimiters, links, addresses, comments)
 
 
+def _readme_sections(text: str, comments: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Pairs of standalone README markers, outside frontmatter, code, and other comments."""
+    sections: list[tuple[int, int]] = []
+    opened: int | None = None
+    for start, end in comments:
+        marker = text[start:end]
+        if marker not in ("<!-- ubiq:readme:start -->", "<!-- ubiq:readme:end -->"):
+            continue
+        before = text[text.rfind("\n", 0, start) + 1:start]
+        line_end = text.find("\n", end)
+        after = text[end:line_end if line_end != -1 else len(text)]
+        if before.strip() or after.strip() or len(before) > 3 or "\t" in before:
+            continue
+        if marker == "<!-- ubiq:readme:start -->":
+            opened = end
+        elif opened is not None:
+            sections.append((opened, start))
+            opened = None
+    return sections
+
+
 # `<a id="x">` and `<a name="x">` anchors, which a fragment may name like a heading.
 HTML_ANCHOR_RE = re.compile(r"<[A-Za-z][^>]*?\s(?:id|name)\s*=\s*[\"']?([^\"'\s>]+)")
 SETEXT_RE = re.compile(r" {0,3}(?:=+|-+)[ \t]*$")
@@ -650,6 +673,8 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
     _, link_admits = view(link, [])
     value = policies["value"]
     _, value_admits = view(value, [])
+    readme_entry = _covers(_readme_sections(text, document.comments))
+    in_comment = _covers(document.comments)
     link_spans: list[tuple[int, int]] = []
     for start, end, spec in document.links:
         try:
@@ -666,7 +691,8 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
                 found = MD_LINK_RE.match(document.delimiters, start)
                 label = label_text(found["label"]) if found else ""
                 refs.append(Ref(value, text[start:end], "", None, path, line_of(start),
-                                target=label, field=fragment, destination=file.resolve()))
+                                target=label, field=fragment, destination=file.resolve(),
+                                readme_entry=readme_entry(start) and not in_comment(start)))
         destination = _doc_link_path(path, spec, cfg.root)
         if destination is not None and (
                 destination.resolve() in glossary.by_file

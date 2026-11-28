@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Plan frontmatter",
+  "type": "object",
+  "required": ["name", "status", "issue", "trunk", "steps"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "status": {"$ref": "tracking.json#/properties/status"},
+    "issue": {"$ref": "tracking.json#/properties/issue"},
+    "priority": {"$ref": "tracking.json#/properties/priority"},
+    "trunk": {"type": "string", "pattern": "\\S"},
+    "steps": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z0-9]+(-[a-z0-9]+)*$": {
+          "type": "object",
+          "required": ["requires"],
+          "additionalProperties": false,
+          "properties": {
+            "issue": {"$ref": "tracking.json#/properties/issue"},
+            "priority": {"$ref": "tracking.json#/properties/priority"},
+            "requires": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^([a-z0-9]+(-[a-z0-9]+)*/)?[a-z0-9]+(-[a-z0-9]+)*$"},
+              "x-ubiq-ref": {"ns": "plan-step", "edge": "requires", "acyclic": true, "within": "steps"}
+            },
+            "branch": {"type": "string", "pattern": "\\S"},
+            "base": {"type": "string", "pattern": "\\S"},
+            "pr": {"$ref": "tracking.json#/properties/pr"}
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,6 +1,6 @@
 ---
 name: domain-schema-goal
-status: in-progress
+status: active
 criteria:
   AC1:
     assessment: unassessed
@@ -9,7 +9,7 @@ criteria:
   AC2:
     assessment: partial
     support:
-    - feature: Native schema validation
+    - feature: frontmatter-schemas
       implementation:
         path: src/ubiq/schemas.py
         anchor: def assess_schemas(
@@ -28,7 +28,7 @@ criteria:
   AC5:
     assessment: partial
     support:
-    - feature: Graph integrity
+    - feature: record-graphs
       implementation:
         path: src/ubiq/integrity.py
         anchor: def assess_integrity(
