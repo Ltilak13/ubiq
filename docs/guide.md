@@ -303,7 +303,8 @@ The [no-code checks recipe](no-code-checks.md) combines `ubiq check` with `cue v
 `coverage` measures typed metadata over the files a `coverage:` section
 selects. List the asset families you own, give every exclusion a reason, and
 add `min_typed_percent` or `no_regression` to gate CI. A file counts as typed
-when a schema binding selects it or an `x-ubiq` record names it as source;
+when a schema binding selects it or a [`x-ubiq` record](../glossary/x-ubiq.md)
+names it as source;
 registering it as vocabulary is not enough. When the report shows a gap, add a
 schema rather than an exclusion. Run it in CI with full history
 (`fetch-depth: 0`) and `--since` the pull request base, next to `ubiq check`,

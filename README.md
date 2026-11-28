@@ -57,7 +57,9 @@ skill root, keeping their names and subdirectories. For example:
     references/
       schema-validation.md
   references/
+    domain-review.md
     schema-workflow.md
+    validate-changes.md
   maintain-ubiq/
     SKILL.md
   upgrade-ubiq/
@@ -88,7 +90,7 @@ You need Python 3.10 or later and Git. Run these commands in a terminal.
 ### 1. Install ubiq
 
 ```bash
-python -m pip install 'git+https://github.com/Ltilak13/ubiq.git@v0.7.0'
+python -m pip install 'git+https://github.com/Ltilak13/ubiq.git@v0.14.0'
 ```
 
 ### 2. Open your project and start

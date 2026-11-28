@@ -22,14 +22,7 @@ It preserves source paths and does not edit files.
 Read existing `GLOSSARY-MAP.md` and context glossaries before you interpret directory candidates.
 Inspect representative files in each group, including files with different metadata fields.
 
-1. If meanings, relationships, or context boundaries need clarification, use /domain-modeling when installed.
-2. Read that skill before you continue the domain review.
-3. Supply the repository, source evidence, disputed meanings, and permitted edit scope.
-4. If the skill is unavailable, inspect the glossary and relevant code directly.
-5. Test proposed meanings and relationships with concrete scenarios.
-6. Ask the owner to resolve competing meanings that the evidence cannot settle.
-7. Record agreed definitions and unresolved questions within the permitted edit scope.
-8. Reuse established definitions when this review finds no conflict.
+Follow the [domain review procedure](../references/domain-review.md) for the discovered vocabulary and context candidates.
 
 Design each group's schema from those files:
 
@@ -135,15 +128,7 @@ Overlay key is `source:` (not `on:` — YAML 1.1 loads `on:` as boolean `True`).
 
 ## 4. Check, then CI
 
-1. Use /validate-change when installed after changes to configuration, records, overlays, schemas, or migrations.
-2. Read that skill before you select checks.
-3. Supply the repository, changed paths, acceptance criteria, and current check evidence.
-4. If the skill is unavailable, inspect repository instructions and run the relevant checks directly.
-5. Always run `ubiq check`, including for a read-only inspection.
-6. For schema or migration changes, also test affected records and invalid cases through the schema change workflow.
-7. Repair failures within the authorized scope before you report success.
-8. Report unavailable checks as validation gaps.
-9. The companion skill does not authorize commits or publication.
+Follow the [validation procedure](../references/validate-changes.md). Always run `ubiq check`, including for a read-only inspection.
 
 ```bash
 python3 -m ubiq.cli check
