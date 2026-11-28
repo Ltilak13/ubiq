@@ -1158,6 +1158,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="read the records and ubiq.yaml as they are at REV (a pull request's base)")
     gh.add_argument("--repo", metavar="OWNER/NAME",
                     help="issue repository (default: sync.repo, then $GITHUB_REPOSITORY)")
+    gh.add_argument("--ignore-derived", action="store_true",
+                    help="with --check, do not count the derived `status: in review` and "
+                         "`status: in progress` labels, which follow open pull requests")
     gh.set_defaults(fn=cmd_sync)
 
     im = sub.add_parser("impact", help="records a change touches and the callers it affects")

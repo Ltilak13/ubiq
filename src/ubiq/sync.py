@@ -734,9 +734,20 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
     return actions
 
 
-def drift(actions: Iterable[Action]) -> list[Action]:
-    """The actions that differ from GitHub: everything but `noop`."""
-    return [a for a in actions if a['action'] != 'noop']
+def derived_status(action: Action) -> bool:
+    """A `label` action that only adds or removes the derived `status: in review`/`in progress`.
+
+    Those labels follow the open pull requests, not the records, so they can lag a pull
+    request that has just opened or closed until the sync applies.
+    """
+    changed = [x.casefold() for x in (*action.get('add', ()), *action.get('remove', ()))]
+    return action['action'] == 'label' and bool(changed) and all(x in (IN_REVIEW, IN_PROGRESS) for x in changed)
+
+
+def drift(actions: Iterable[Action], ignore_derived: bool = False) -> list[Action]:
+    """The actions that differ from GitHub: everything but `noop`, and with
+    `ignore_derived`, also not the derived status labels (`derived_status`)."""
+    return [a for a in actions if a['action'] != 'noop' and not (ignore_derived and derived_status(a))]
 
 
 # -- GitHub REST adapter -----------------------------------------------------------
@@ -1016,7 +1027,7 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
         print(f'error: cannot read the records or the issues of {repo}: {exc}', file=sys.stderr)
         return 2
     if args.check:
-        found = drift(actions)
+        found = drift(actions, getattr(args, 'ignore_derived', False))
         _dump(found)
         if found:
             print(f'drift: {len(found)} difference(s) between the records and {repo}', file=sys.stderr)
