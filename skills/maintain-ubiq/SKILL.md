@@ -48,14 +48,7 @@ Exclude generated copies and dependencies after you identify their canonical sou
 
 Read `GLOSSARY-MAP.md` and context glossaries when they exist.
 
-1. If changed concepts, relationships, or context boundaries need clarification, use /domain-modeling when installed.
-2. Read that skill before you continue the domain review.
-3. Supply the repository, changed concepts, source evidence, and permitted edit scope.
-4. If the skill is unavailable, inspect the glossary and relevant code directly.
-5. Test proposed meanings and relationships with concrete scenarios.
-6. Ask the owner to resolve competing meanings that the evidence cannot settle.
-7. Record agreed definitions and unresolved questions within the permitted edit scope.
-8. Reuse established definitions for routine reference repairs that do not change meaning.
+Follow the [domain review procedure](../references/domain-review.md) for changed concepts, relationships, or context boundaries.
 
 Use directory candidates to investigate domain boundaries through vocabulary, ownership, and dependencies.
 A technical folder does not establish a business context.
@@ -146,9 +139,10 @@ Report overlap and drift in each pass. Change skill text only when the owner ask
      - The text is one line, and an include costs one more file read.
      - No directory that all callers install can hold the part.
      - The author wants the repetition.
-4. Put each new part in `parts/` inside the skill directory that owns its subject.
-   Installers copy or link only skill directories.
-   A top-level `_shared/` folder resolves only in the source tree (W004).
+4. Put each new part where every caller can reach it after installation.
+   Use an installed shared directory when the repository has one. Otherwise put
+   it in `parts/` inside the skill directory that owns its subject.
+   A top-level `_shared/` folder omitted from installation resolves only in the source tree (W004).
 5. Give the part a naming field. If callers use the part in different modes, list the modes in `inputs`.
    Register its path with a glossary rule in a namespace from `edges.include.ns` (default: `part`).
    Use the repository's schema workflow if registration needs a schema change.
@@ -170,14 +164,7 @@ The report lists each cluster that you kept, with its reason.
 
 ## 7. Re-check and report
 
-1. Use /validate-change when installed after changes to configuration, records, overlays, schemas, or migrations.
-2. Read that skill before you select checks.
-3. Supply the repository, changed paths, acceptance criteria, and current check evidence.
-4. If the skill is unavailable, inspect repository instructions and run the relevant checks directly.
-5. For schema or migration changes, also test affected records and invalid cases through the schema change workflow.
-6. Repair failures within the authorized scope before you report success.
-7. Report unavailable checks as validation gaps.
-8. The companion skill does not authorize commits or publication.
+Follow the [validation procedure](../references/validate-changes.md).
 
 Run `ubiq check` again. Report what you fixed, linked, excepted, created, and left for a human. Include schema changes, group coverage, composition decisions, and unresolved context candidates.
 
