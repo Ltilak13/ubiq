@@ -25,6 +25,8 @@ docs:
   - "skills/**/*.md"
   - ".ubiq/**/*.md"
   - "src/ubiq/features/*.md"
+  - "src/ubiq/sync.md"
+  - "src/ubiq/plan.md"
 overlays:
   - ".ubiq/overlays/*.md"
 ref_fields: [uses, requires]
@@ -57,6 +59,9 @@ edges:
   install: ["skills/*/SKILL.md", "skills/references/*.md"]
 
 # Typed contracts for each owned asset family.
+symbols:
+  coverage: ["src/ubiq/sync.py", "src/ubiq/plan.py"]
+
 schemas:
   - schema: ".ubiq/schemas/goal-governance.json"
     files: [".ubiq/knowledge/goal-governance.yaml"]
@@ -71,6 +76,9 @@ schemas:
     format: frontmatter
   - schema: ".ubiq/schemas/plan.json"
     files: ["docs/plans/*.md"]
+    format: frontmatter
+  - schema: ".ubiq/schemas/symbol.json"
+    files: ["src/ubiq/sync.md", "src/ubiq/plan.md"]
     format: frontmatter
   - schema: ".ubiq/schemas/skill.json"
     files: ["skills/*/SKILL.md"]
@@ -104,6 +112,8 @@ coverage:
     - "skills/*/agents/*.yaml"
     - "glossary/*.md"
     - "src/ubiq/features/*.md"
+    - "src/ubiq/sync.md"
+    - "src/ubiq/plan.md"
     - "docs/plans/*.md"
     - ".ubiq/glossary/*.md"
     - ".ubiq/overlays/*.md"

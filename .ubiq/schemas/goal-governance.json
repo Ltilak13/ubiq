@@ -219,6 +219,14 @@
         {
           "source": "src/ubiq/features/plan-records.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/feature-planning.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/symbol-records.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         }
       ]
     },

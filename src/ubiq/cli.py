@@ -482,6 +482,9 @@ def _check_build(result: Build) -> list[Diagnostic]:
     if cfg.schemas:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))
+    if cfg.symbol_coverage:
+        from .symbols import load_symbols
+        diags.extend(load_symbols(cfg).diagnostics)
     live = [path for path in result.docs if path not in result.historical]
     diags.extend(check_edges(glossary, refs, cfg.edges, root, live, layout))
     return diags
