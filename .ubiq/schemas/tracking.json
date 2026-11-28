@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tracking fields",
+  "description": "The one home of the tracking fields. Goal, feature, and plan schemas reference these properties with \"$ref\": \"tracking.json#/properties/<field>\".",
+  "type": "object",
+  "properties": {
+    "issue": {"type": "integer", "minimum": 1},
+    "priority": {"enum": ["P1", "P2", "P3"]},
+    "status": {
+      "description": "The lifecycle of goals and plans. A feature's status (planned or shipped) is a different fact and has its own enum.",
+      "enum": ["proposed", "active", "done", "abandoned"]
+    },
+    "requires": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "part_of": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "pr": {
+      "description": "The implementing pull request, or a list of them.",
+      "oneOf": [
+        {"type": "integer", "minimum": 1},
+        {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1}
+        }
+      ]
+    }
+  }
+}

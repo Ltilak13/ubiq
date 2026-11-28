@@ -262,6 +262,7 @@ ubiq candidates --json --min-files 3
 ubiq graph skill:ship                  # invoke, include, and route edges from a record
 ubiq graph part:checkout --callers     # who reuses a shared part
 ubiq overlap --unit line               # prose that several records repeat
+ubiq plan --next                       # ubiq features to adopt next (docs/features.md)
 ubiq impact --since main              # changed records and the callers they affect
 ubiq compare --since main --markdown  # new and resolved findings for a PR comment
 ubiq coverage                          # how many selected files have typed metadata
@@ -302,8 +303,9 @@ The [no-code checks recipe](no-code-checks.md) combines `ubiq check` with `cue v
 `coverage` measures typed metadata over the files a `coverage:` section
 selects. List the asset families you own, give every exclusion a reason, and
 add `min_typed_percent` or `no_regression` to gate CI. A file counts as typed
-when a schema binding selects it or an `x-ubiq` record names it as source;
-registering it as vocabulary is not enough. When the report shows a gap, add a
+when a schema binding selects it or a record checked through
+[`x-ubiq`](../glossary/x-ubiq.md) names it as source. A vocabulary entry alone
+does not provide typed coverage. When the report shows a gap, add a
 schema rather than an exclusion. Run it in CI with full history
 (`fetch-depth: 0`) and `--since` the pull request base, next to `ubiq check`,
 which stays the validation gate. This repository's `ubiq.yaml` and CI workflow
@@ -333,6 +335,12 @@ CI also runs actionlint 1.7.12 on the workflows, tests Python 3.10 through 3.14
 on Linux and Python 3.14 on macOS, builds and validates the source archive and
 wheel, tests a clean wheel installation, and exercises the bundled GitHub Action.
 For local workflow validation, install actionlint 1.7.12 and run `actionlint`.
+
+Pull request titles must follow [Conventional Commits](https://www.conventionalcommits.org/):
+`type(optional-scope)!: description`, for example `feat(sync): add retries`. The
+allowed types are feat, fix, docs, test, ci, chore, refactor, perf, build, style,
+and revert. The required `pr-title` check enforces this; run
+`python scripts/check_pr_title.py "<title>"` to check a title locally.
 
 The required checks for `main` are recorded in
 [branch-protection.json](../.github/branch-protection.json). They require successful
