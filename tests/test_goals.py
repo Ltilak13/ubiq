@@ -25,7 +25,7 @@ def test_goal_evidence_locations_and_criteria(name):
     assert len(labels) == len(set(labels)), f'{goal}: duplicate acceptance label'
     assert set(labels) == set(data['criteria']), f'{goal}: criteria drift'
     for criterion in data['criteria'].values():
-        for support in criterion['support']:
+        for support in criterion.get('support', []):
             for kind in ('implementation', 'check'):
                 evidence = support[kind]
                 path = (ROOT / evidence['path']).resolve()

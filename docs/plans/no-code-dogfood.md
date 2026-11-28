@@ -5,6 +5,14 @@ issue: 113
 priority: P2
 trunk: main
 steps:
+  criterion-scenarios:
+    issue: 67
+    requires: [frontmatter-tracking/feature-records]
+    branch: claude/amazing-knuth-c905vh-scenarios
+    base: claude/amazing-knuth-c905vh
+  restate-criteria:
+    issue: 186
+    requires: [criterion-scenarios]
   release-adoption-smoke-test:
     issue: 163
     requires: [frontmatter-tracking/feature-records]
@@ -51,6 +59,10 @@ qualified names: `frontmatter-tracking/plan-records` added this plan (#124),
 `frontmatter-tracking/feature-records` modeled the features (#70), and
 `frontmatter-tracking/mermaid-blocks` is the generated Mermaid drift check (#59).
 
+- `criterion-scenarios`: goal criteria accepted by tagged Gherkin scenarios and met only
+  when those scenarios pass on `main`; the composable knowledge goal is the pilot (#67).
+- `restate-criteria`: restate the other goals' criteria as scenarios, keeping judged
+  criteria only where no scenario can accept them (#186).
 - `release-adoption-smoke-test`: install the built wheel and verify that `ubiq plan --next`
   advances after one adoption step (#163).
 - `readme-membership`: the README membership check (#65). It needs the feature
@@ -100,31 +112,37 @@ flowchart LR
   ext_1["frontmatter-tracking/feature-records"]
   ext_2["frontmatter-tracking/mermaid-blocks"]
   step_1["cli-spec-slice"]
-  step_2["no-code-authoring-proof"]
-  step_3["readme-generation (#35;173)"]
-  click step_3 "https://github.com/Ltilak13/ubiq/issues/173"
-  step_4["readme-membership (#35;65)"]
-  click step_4 "https://github.com/Ltilak13/ubiq/issues/65"
-  step_5["relationship-navigation (#35;174)"]
-  click step_5 "https://github.com/Ltilak13/ubiq/issues/174"
-  step_6["release-adoption-smoke-test (#35;163)"]
-  click step_6 "https://github.com/Ltilak13/ubiq/issues/163"
-  step_7["reusable-issue-sync (#35;112)"]
-  click step_7 "https://github.com/Ltilak13/ubiq/issues/112"
-  step_8["starter (#35;111)"]
-  click step_8 "https://github.com/Ltilak13/ubiq/issues/111"
-  step_9["tracking-proof"]
-  step_4 --> step_1
-  step_1 --> step_2
-  step_4 --> step_3
-  ext_1 --> step_4
+  step_2["criterion-scenarios (#35;67)"]
+  click step_2 "https://github.com/Ltilak13/ubiq/issues/67"
+  step_3["no-code-authoring-proof"]
+  step_4["readme-generation (#35;173)"]
+  click step_4 "https://github.com/Ltilak13/ubiq/issues/173"
+  step_5["readme-membership (#35;65)"]
+  click step_5 "https://github.com/Ltilak13/ubiq/issues/65"
+  step_6["relationship-navigation (#35;174)"]
+  click step_6 "https://github.com/Ltilak13/ubiq/issues/174"
+  step_7["release-adoption-smoke-test (#35;163)"]
+  click step_7 "https://github.com/Ltilak13/ubiq/issues/163"
+  step_8["restate-criteria (#35;186)"]
+  click step_8 "https://github.com/Ltilak13/ubiq/issues/186"
+  step_9["reusable-issue-sync (#35;112)"]
+  click step_9 "https://github.com/Ltilak13/ubiq/issues/112"
+  step_10["starter (#35;111)"]
+  click step_10 "https://github.com/Ltilak13/ubiq/issues/111"
+  step_11["tracking-proof"]
+  step_5 --> step_1
+  ext_1 --> step_2
+  step_1 --> step_3
+  step_5 --> step_4
   ext_1 --> step_5
   ext_1 --> step_6
-  step_8 --> step_7
-  step_9 --> step_7
-  step_6 --> step_8
-  step_1 --> step_9
-  ext_2 --> step_9
+  ext_1 --> step_7
+  step_2 --> step_8
+  step_10 --> step_9
+  step_11 --> step_9
+  step_7 --> step_10
+  step_1 --> step_11
+  ext_2 --> step_11
 ```
 <!-- /ubiq:dogfood-diagram -->
 

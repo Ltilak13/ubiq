@@ -198,6 +198,10 @@ membership. `ubiq check` reports discrepancies without editing the README.
   a record is missing its field link in a declared README, or a managed field
   link points to a record that does not declare that README. The report points
   to the declaration field or the unexpected link.
+- `E016` criterion scenario — a goal criterion with `scenario: true` has no scenario
+  tagged with its label (`@AC1`) in the feature file beside the goal (`<goal>.feature`),
+  or a scenario there is tagged with a label that names no such criterion. See
+  [criterion scenarios](github-sync.md#criterion-scenarios).
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 - `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,
