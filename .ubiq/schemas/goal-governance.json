@@ -73,6 +73,10 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "docs/goals/work-tracking-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "glossary/contract.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
@@ -250,6 +254,14 @@
         },
         {
           "source": "src/ubiq/features/restated-values.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/step-pr-drift.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/met-at-backfill.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {

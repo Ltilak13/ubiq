@@ -93,8 +93,9 @@ steps:
   backfill:
     issue: 127
     requires: [feature-lifecycle, plan-records, pr-stacks, part-of-sub-issues]
-    branch: claude/ecstatic-mendel-nkgz6t-backfill
-    base: claude/ecstatic-mendel-nkgz6t-pr-stacks
+    branch: claude/loving-planck-3uzfaq-backed-issues
+    base: claude/loving-planck-3uzfaq-criteria-backfill
+    pr: 196
 ---
 
 # Plan: frontmatter tracking

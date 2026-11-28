@@ -252,6 +252,20 @@ symbols:
       required: ["cfg"]
     result: {"type": "object", "x-python-type": "dict[str, int]"}
     errors: false
+  backed_issue_numbers:
+    id: symbol:ubiq.sync.backed_issue_numbers
+    feature: github-sync
+    term: backed issue numbers
+    form: bound
+    scenarios: [tests/test_sync.py::test_every_issue_number_a_record_names_is_backed]
+    params:
+      type: object
+      additionalProperties: false
+      properties:
+        cfg: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Config"}
+      required: ["cfg"]
+    result: {"type": "array", "x-python-type": "set[int]"}
+    errors: false
   record_stacks:
     id: symbol:ubiq.sync.record_stacks
     feature: tracking-fields
@@ -665,6 +679,7 @@ symbols:
         pulls: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Sequence[Pull]", "x-python-default": "()"}
         stacks: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Iterable[Stack]", "x-python-default": "()"}
         records: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Iterable[Tracked]", "x-python-default": "()"}
+        backed: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Iterable[int] | None", "x-python-default": "None"}
       required: ["desired", "snapshot"]
     result: {"type": "array", "x-python-type": "list[Action]"}
     errors: false
@@ -953,6 +968,10 @@ Each schema-bound frontmatter record with its issue, pull requests, and requires
 ## `tracked_issue_numbers`
 
 Normalized record name to issue, for each tracked record that has one.
+
+## `backed_issue_numbers`
+
+Collect every issue number that a synced record names.
 
 ## `record_stacks`
 

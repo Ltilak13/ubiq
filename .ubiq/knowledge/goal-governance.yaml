@@ -23,7 +23,7 @@ policies:
     sha256: 751afc738091c984888835b9e81ac3ec586acd5681f489acfe560bbd17043b2c
     anchor: '"const": "partial"'
   - path: tests/test_goals.py
-    sha256: 36c6b7c3e8a2d332a3cb8e995c8c1eee827378d13ee19b7522755b7692999062
+    sha256: f502d378c39339f13c29641c5e1a3869806c20d7153715075602cd91c934a6c7
     anchor: def test_partial_assessment_requires_provisional_evidence(
 - id: ubiq:fact-homes-policy
   kind: policy

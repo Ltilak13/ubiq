@@ -187,6 +187,26 @@ def test_issue_closed_not_planned_while_its_criterion_is_not_deferred_is_drift()
     assert drift(run([goal(AC1=unmet(issues=[5]))], [issue(5)])) == []
 
 
+def test_open_issues_that_no_record_names_are_listed_as_unbacked_and_are_not_drift():
+    existing = [issue(5), issue(6), issue(7, marker='AC1'), issue(8, 'closed'), issue(9)]
+    items = goal_desired(goal(AC1=unmet(), AC2=unmet(issues=[5])))
+    actions = plan(items, existing, backed={9})
+    assert [(a['action'], a['issue']) for a in actions if a['action'] == 'unbacked'] == [('unbacked', 6)]
+    assert drift(actions) == []
+    # Without the set of backed numbers the planner does not judge: the older callers see no change.
+    assert not [a for a in plan(items, existing) if a['action'] == 'unbacked']
+
+
+def test_every_issue_number_a_record_names_is_backed(tmp_path):
+    from ubiq.sync import backed_issue_numbers
+    (tmp_path / 'ubiq.yaml').write_text('sync:\n  repo: o/r\n  records:\n    - {glob: "r/*.md", kind: plan}\n')
+    (tmp_path / 'r').mkdir()
+    (tmp_path / 'r/a.md').write_text(
+        '---\nname: a\nstatus: proposed\nissue: 10\ntrunk: main\nsteps:\n  s:\n    issue: 11\n    requires: []\n'
+        '  t:\n    requires: []\n    pr: 12\ncriteria:\n  AC1:\n    issues: [13, 14]\nquestion: 15\n---\n')
+    assert backed_issue_numbers(load_config(tmp_path)) == {10, 11, 13, 14, 15}
+
+
 def test_wrapped_criterion_is_read_whole(tmp_path):
     path = tmp_path / 'demo-goal.md'
     path.write_text('---\nname: demo-goal\nstatus: proposed\ncriteria:\n  AC1:\n'

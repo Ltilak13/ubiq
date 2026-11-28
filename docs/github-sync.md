@@ -251,6 +251,9 @@ only be an issue"), so it becomes text.
   a criterion lists in `issues:` are work items, and their pull requests may close them.
 - Only markers in issues opened by `github-actions[bot]` count, because anyone
   can write a marker into an issue. Listed issues are trusted.
+- An open issue that no record names (not as `issue`, `issues`, or `question`, and with no marker
+  from the bot) is an `unbacked` action in the plan. It is information, not drift: `--check` still
+  passes and prints the numbers on stderr, so file a record for the work or close the issue.
 - The sync never reopens an issue, edits a title, or touches other issues.
 
 Limits: deleting
