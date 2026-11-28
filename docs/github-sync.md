@@ -120,7 +120,9 @@ comment on the issue its `question` names, and closes that issue.
   with a personal token has no bot author, so run `--apply` from the workflow.
 - A `superseded` decision's comment says `superseded by <name>` with the replacement's
   question and date, taken from the record whose `supersedes` names it.
-- An `accepted` or `superseded` decision closes its question issue if it is open. The sync
+- An `accepted` or `superseded` decision closes its question issue if it is open, unless the
+  record sets `closes: false` (default `true`), for a `question` that is a tracking issue with
+  other work under it; the comment is still posted. The sync
   never reopens an issue, and a `proposed` decision mirrors nothing.
 - A `question` that is not an issue (a pull request, a typo) is a `warn`, so
   `--check` fails.

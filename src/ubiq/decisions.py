@@ -56,7 +56,7 @@ def load_decisions(cfg) -> list[dict[str, Any]]:
             found.append({"name": data["name"], "question": data["question"], "status": data["status"],
                           "decided": str(data["decided"]), "by": data["by"],
                           "options": list(data["options"]), "outcome": list(data["outcome"]),
-                          "supersedes": data.get("supersedes", ""),
+                          "supersedes": data.get("supersedes", ""), "closes": data.get("closes", True),
                           "path": path.relative_to(cfg.root).as_posix(), "file": path})
         except LOAD_ERRORS:
             continue

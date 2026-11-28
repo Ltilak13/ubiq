@@ -223,3 +223,23 @@ def test_sync_check_fails_for_a_question_with_no_issue(tmp_path, capsys, monkeyp
     args = SimpleNamespace(root=str(tmp_path), ref=None, repo=None, apply=False, check=True, dry_run=False)
     assert cmd_sync(args, transport, 0) == 1
     assert "listed number is not an issue" in capsys.readouterr().out
+
+
+def test_closes_false_posts_the_comment_but_leaves_the_question_open():
+    [item] = decision_desired([rec(closes=False)])
+    assert item.state == "open"
+    found = plan([item], [with_comments(5, [])])
+    assert [a["action"] for a in found] == ["comment"]
+    [default] = decision_desired([rec()])
+    assert default.state == "closed"
+
+
+def test_closes_must_be_a_boolean(tmp_path, capsys):
+    repo(tmp_path, {"0001-alpha.md": text("alpha", extra="closes: no way\n")})
+    status, found = check(tmp_path, capsys)
+    assert status == 1 and any(d["code"] == "E009" for d in found)
+
+
+def test_decision_0004_does_not_close_its_tracking_issue():
+    by_name = {d.ident["decision"]: d for d in desired_from_config(load_config(ROOT)) if d.kind == "decision"}
+    assert by_name["feature-interactions"].state == "open" and by_name["rule-language"].state == "closed"

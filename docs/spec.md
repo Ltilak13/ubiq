@@ -582,6 +582,7 @@ frontmatter holds the facts and the body the rationale. The fields are listed in
 | `status` | `proposed`, `accepted`, or `superseded` |
 | `decided`, `by` | the date (`YYYY-MM-DD`) and who decided |
 | `options`, `outcome` | the options considered; what was decided |
+| `closes` | optional boolean, default `true`; `false` keeps the question issue open (a tracking issue) while its comment is still posted |
 | `supersedes` | optional name of the decision this one replaces; `x-ubiq-ref` (`ns: decision`, edge `supersedes`), so an unknown name is E006 |
 
 Beyond the schema, `ubiq check` reports E009 when a decision with `status: superseded` is

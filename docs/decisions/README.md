@@ -42,3 +42,4 @@ work.
 | `options` | The options considered |
 | `outcome` | What was decided, as short statements |
 | `supersedes` | The decision this one replaces, if any |
+| `closes` | Optional, default `true`. Set `false` when `question` is a tracking issue that must stay open: the sync still posts the comment but does not close the issue |

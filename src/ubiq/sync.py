@@ -215,7 +215,7 @@ def decision_desired(decisions: Sequence[Mapping[str, Any]],
     """One `Desired` per decision, tracking the issue its `question` names.
 
     An `accepted` or `superseded` decision is `closed` (so its question issue closes, never
-    reopens) and carries a generated comment; a `proposed` decision mirrors nothing. A
+    reopens) unless the record sets `closes: false`, and carries a generated comment; a `proposed` decision mirrors nothing. A
     superseded decision's comment names the decision that replaced it.
     """
     replaced_by = {d['supersedes']: d for d in decisions if d.get('supersedes')}
@@ -225,7 +225,7 @@ def decision_desired(decisions: Sequence[Mapping[str, Any]],
         comment = decision_comment(d, replaced_by.get(d['name'])) if done else ''
         items.append(Desired(
             kind='decision', ident={'decision': d['name']}, marker='', title=d['name'], body='',
-            state='closed' if done else 'open', listed=(d['question'],), label_prefix=label_prefix,
+            state='closed' if done and d.get('closes', True) else 'open', listed=(d['question'],), label_prefix=label_prefix,
             comment=comment, comment_marker=f"<!-- ubiq-decision: {d['name']} -->" if done else ''))
     return items
 
