@@ -98,6 +98,27 @@ def test_valid_registry_has_a_stable_id_owner_and_scenario(repository, capsys):
     assert record.line == 3
 
 
+def test_dotted_import_checks_names_on_parent_package(repository, capsys):
+    package = repository / "src/demo"
+    (package / "__init__.py").write_text("def _internal(): pass\n")
+    (package / "__init__.md").write_text("---\nsymbols: {}\n---\n")
+    (repository / "consumer.py").write_text(
+        'import demo.api\ndemo.api.command(".")\ndemo._internal()\n'
+    )
+    status, findings = run_check(repository, capsys)
+    assert status == 1
+    [finding] = findings
+    assert "Unregistered symbol demo._internal" in finding["message"]
+    assert finding["line"] == 3
+
+
+def test_wildcard_and_intrinsic_module_metadata_are_not_named_symbols(repository, capsys):
+    (repository / "consumer.py").write_text(
+        'from demo.api import *\nimport demo.api as api\ncommand(".")\napi.__name__\n'
+    )
+    assert run_check(repository, capsys) == (0, [])
+
+
 @pytest.mark.parametrize("old,new", [
     ("root: str", "directory: str"),
     ("root: str, /", "root: str"),

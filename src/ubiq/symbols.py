@@ -19,6 +19,11 @@ from .globs import Glob, GlobError, first_match
 from .records import FRONTMATTER_RE
 from .schemas import load_data, validate_schema
 
+_MODULE_METADATA = frozenset({
+    "__annotations__", "__builtins__", "__cached__", "__class__", "__dict__", "__doc__",
+    "__file__", "__loader__", "__name__", "__package__", "__path__", "__spec__",
+})
+
 
 @dataclass(frozen=True)
 class Symbol:
@@ -381,6 +386,8 @@ def _qualified_use(node: ast.Attribute, aliases: _Aliases,
         return None  # This attribute is itself an imported module.
     if bound := aliases.get(access):
         module, name = bound
+        if module not in tables:
+            return None
         if not name:
             return module, node.attr
         member = f"{name}.{node.attr}"
@@ -389,7 +396,7 @@ def _qualified_use(node: ast.Attribute, aliases: _Aliases,
     if bound := aliases.get(prefix):
         module, parent = bound
         member = f"{name}.{node.attr}"
-        definition = tables[module].get(name)
+        definition = tables.get(module, {}).get(name)
         if not parent and definition is not None and definition.is_class and member in tables[module]:
             return module, member
     return None
@@ -409,11 +416,18 @@ def _uses(path: Path, own: str, scope: ast.AST, tables: _Tables,
                 root = item.asname or item.name.partition(".")[0]
                 if item.asname or (root in aliases and aliases[root] != (root, "")):
                     _clear(aliases, root)
-                if item.name in tables and item.name != own:
-                    aliases[item.asname or item.name] = item.name, ""
+                if item.asname:
+                    aliases[item.asname] = item.name, ""
+                    continue
+                module = item.name
+                while module:
+                    aliases[module] = module, ""
+                    module = module.rpartition(".")[0]
         elif isinstance(node, ast.ImportFrom):
             target = _absolute_from(node, own, path.name == "__init__.py")
             for item in node.names:
+                if item.name == "*":
+                    continue
                 full = f"{target}.{item.name}" if target else item.name
                 alias = item.asname or item.name
                 _clear(aliases, alias)
@@ -516,6 +530,8 @@ def load_symbols(cfg: Config) -> SymbolRegistry:
                                               path))
             continue
         for target, name, line in sorted(uses, key=lambda item: (item[2], item)):
+            if target == own or (name in _MODULE_METADATA and name not in tables[target]):
+                continue
             if name not in names[target]:
                 diagnostics.append(Diagnostic("E010", f"Unregistered symbol {target}.{name} used from {own}",
                                               path, line))
