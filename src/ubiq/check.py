@@ -16,6 +16,7 @@ Errors (fail the build):
   E013 field-value            a link to #field whose field is absent, null, not text, or not
                               its label (in any file with frontmatter, a fragment that names
                               no heading or anchor names a field)
+  E015 readme-membership      invalid README target or membership declaration/link mismatch
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record

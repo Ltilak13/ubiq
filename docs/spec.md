@@ -129,6 +129,39 @@ blocks are never scanned, frontmatter is never scanned as prose, definition line
 produce no references, a plain-prose mention can never fail the build, and an
 include link that resolves nowhere always fails it (see Composition edges).
 
+## README composition
+
+A registered record can declare which READMEs list it with a frontmatter string
+or list of strings. The field is `readme` by default. Set `readme_field` in
+`ubiq.yaml` to use a different key. A non-null declaration in an overlay takes
+precedence over the record's own field. An empty list declares no memberships.
+
+| Value | README |
+|---|---|
+| `root` | The repository's top-level `README.md` |
+| `parent` | The nearest `README.md` above the record's containing folder, looking up to the repository root |
+| A path | An existing Markdown file at that repository-relative path, such as `skills/README.md` |
+
+Declared targets are scanned even when the `docs` globs do not select them.
+Paths that are missing, ignored, or outside the repository report E015.
+
+In each README, mark the entries that ubiq should check for membership with
+standalone comments. Authors choose which field each link displays.
+
+```markdown
+<!-- ubiq:readme:start -->
+- [Runs the close-out audit.](skills/closeout/SKILL.md#summary)
+<!-- ubiq:readme:end -->
+```
+
+Every declared membership in a live README needs a field link in a managed section.
+Historical READMEs are exempt from membership checks. A field
+link to a registered record inside a managed section must have a corresponding
+declaration. Reverse checks apply wherever scanned Markdown contains the
+explicit markers. Links in examples and other prose outside
+the markers still get normal field-value checks (E013). They do not count toward
+membership. `ubiq check` reports discrepancies without editing the README.
+
 ## Diagnostics
 
 - `E001` duplicate definition — one name (canonical or alias) claimed by two records in the
@@ -160,6 +193,10 @@ include link that resolves nowhere always fails it (see Composition edges).
 - `E013` field value — a link into a file with frontmatter whose fragment names no
   anchor of that file, and whose field is absent, null, or not text, or differs
   from the label. The message names the value to use.
+- `E015` README membership — a declaration is invalid or names an unavailable README,
+  a record is missing its field link in a declared README, or a managed field
+  link points to a record that does not declare that README. The report points
+  to the declaration field or the unexpected link.
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 - `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,
