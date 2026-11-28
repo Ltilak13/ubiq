@@ -12,16 +12,7 @@ Install: `pip install ubiq` (or `pip install -e <path-to-ubiq>`). Run `python3 -
 
 ## Schema changes
 
-Read [the schema change workflow](references/schema-workflow.md) when the task adds or changes type/domain schemas.
-Inspect `.ubiq/staging/` for existing candidates before creating a new one.
-Stage useful schema changes with their record migrations, evidence, and tests.
-Test affected existing records and invalid cases. Repair or reject unsupported candidates.
-Register promoted contracts with `schemas:` bindings in `ubiq.yaml`.
-Use the [native schema contract](references/schema-validation.md) for file selection, type validation, and graph integrity.
-Verify that local hooks and CI use the validator revision that supports those bindings.
-Promote only within the authorized scope after the normal checker can enforce the schema and the migration passes.
-If enforcement or migration is unavailable, keep the candidate staged and report the promotion blocker.
-Do not describe a passing sample check as an active schema change.
+When adoption requires a new or revised type or domain schema, follow the [schema change workflow](../references/schema-workflow.md).
 
 ## 1. Discover the vocabulary
 
@@ -31,14 +22,7 @@ It preserves source paths and does not edit files.
 Read existing `GLOSSARY-MAP.md` and context glossaries before you interpret directory candidates.
 Inspect representative files in each group, including files with different metadata fields.
 
-1. If meanings, relationships, or context boundaries need clarification, use /domain-modeling when installed.
-2. Read that skill before you continue the domain review.
-3. Supply the repository, source evidence, disputed meanings, and permitted edit scope.
-4. If the skill is unavailable, inspect the glossary and relevant code directly.
-5. Test proposed meanings and relationships with concrete scenarios.
-6. Ask the owner to resolve competing meanings that the evidence cannot settle.
-7. Record agreed definitions and unresolved questions within the permitted edit scope.
-8. Reuse established definitions when this review finds no conflict.
+Follow the [domain review procedure](../references/domain-review.md) for the discovered vocabulary and context candidates.
 
 Design each group's schema from those files:
 
@@ -122,7 +106,7 @@ catalogs:
 
 - **`[[term]]`** — wiki-link; always explicit; typos fail. File-shaped targets (`[[GLOSSARY.md]]`, `[[dir/x]]`, `[[./x]]`) are not terms unless that name is a defined term (`[[SKILL.md]]` still counts if you named it). If the file exists in-repo, ubiq **follows** it into the scan — `docs:` are roots, not a closed list. A missing file (a teaching-workspace `[[MISSION.md]]`) is not an error. Relative markdown links (`[x](./a.md)`) are followed the same way. Do not rewrite `ubiq.yaml` to list every reachable file; widen `docs:` only for scan *roots* that nothing already links to.
 - **`/` delimiter** — slash-commands, including inside backticks. Default is strict (every `/slug` is a ref). `only_known: true` is quieter; `except` is only for tokens that *are* glossary names but must not count (`/plugin` vs a term named `plugin`).
-- **`historical`** — mentions and resolved refs still count; E002/E003/E004/E006 on unresolved refs do not.
+- **`historical`** — mentions and resolved refs still count; E002/E003/E004/E006/E013 on unresolved or stale refs do not.
 - **`candidate_shapes`** — markup that `ubiq candidates` reads as possible vocabulary. The default is `[code]`. Set `[code, bold]` only when the docs bold their terms (`**tracer bullet**`). Most bold text is emphasis.
 - **`catalogs`** — an inventory is not a glossary. Do not glob `plugin.json` as records (duplicate definition vs the real file). Missing entry → E006; a `cover` record not listed → E007. Coverage applies to registered records only. Compare discovery results with the inventory to find files without records.
 
@@ -144,15 +128,7 @@ Overlay key is `source:` (not `on:` — YAML 1.1 loads `on:` as boolean `True`).
 
 ## 4. Check, then CI
 
-1. Use /validate-change when installed after changes to configuration, records, overlays, schemas, or migrations.
-2. Read that skill before you select checks.
-3. Supply the repository, changed paths, acceptance criteria, and current check evidence.
-4. If the skill is unavailable, inspect repository instructions and run the relevant checks directly.
-5. Always run `ubiq check`, including for a read-only inspection.
-6. For schema or migration changes, also test affected records and invalid cases through the schema change workflow.
-7. Repair failures within the authorized scope before you report success.
-8. Report unavailable checks as validation gaps.
-9. The companion skill does not authorize commits or publication.
+Follow the [validation procedure](../references/validate-changes.md). Always run `ubiq check`, including for a read-only inspection.
 
 ```bash
 python3 -m ubiq.cli check
