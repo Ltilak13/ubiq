@@ -201,7 +201,7 @@ class Hub:
         return next(i for i in self.issues.values() if i["id"] == ident)
 
     def __call__(self, method, url, token, payload=None):
-        if method == "GET" and "/pulls?state=open" in url:
+        if method == "GET" and ("/pulls?state=open" in url or "/branches?" in url):
             return []
         tail = url.split("/issues", 1)[-1]
         if method == "GET" and tail.startswith("?state=all"):

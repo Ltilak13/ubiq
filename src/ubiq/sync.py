@@ -121,6 +121,9 @@ class Desired:
     comment: str = ''
     comment_marker: str = ''
 
+    # The branch a plan step works on. The issue is `status: in progress` while it exists.
+    branch: str = ''
+
 
 @dataclass(frozen=True)
 class Stack:
@@ -399,7 +402,18 @@ def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LAB
         requires_markers=tuple(_step_marker(r, tracked, marker_of)
                                for r in spec.get('requires', [])
                                if r in tracked or '/' in r),
-        parent=plan_record['name'], parent_issue=plan_record['issue']) for name, spec in tracked.items()]
+        parent=plan_record['name'], parent_issue=plan_record['issue'],
+        branch=spec.get('branch', '')) for name, spec in tracked.items()]
+
+
+def plan_issue_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LABEL_PREFIX) -> list[Desired]:
+    """The plan's own `issue`, of which only the priority is mirrored. It never creates or closes
+    anything, so it holds for a `proposed` plan too."""
+    if plan_record['status'] == 'abandoned':
+        return []
+    return [Desired(kind='plan', ident={'plan': plan_record['name']}, marker=f"ubiq-plan-issue: {plan_record['name']}",
+                    title='', body='', state='open', listed=(plan_record['issue'],),
+                    label_prefix=label_prefix, priority=plan_record.get('priority', ''), creates=False)]
 
 
 def decision_comment(decision: Mapping[str, Any], replacement: Mapping[str, Any] | None) -> str:
@@ -554,7 +568,9 @@ def desired_from_config(cfg: Config, sha: str = '',
     for record in cfg.sync.records:
         for path in sorted(record.glob.walk(cfg.ignore)):
             if record.kind == 'plan':
-                items += plan_desired(load_plan(path, cfg.root), cfg.sync.label_prefix)
+                plan_record = load_plan(path, cfg.root)
+                items += plan_issue_desired(plan_record, cfg.sync.label_prefix)
+                items += plan_desired(plan_record, cfg.sync.label_prefix)
             elif record.kind == 'feature':
                 items += feature_desired(load_feature(path, cfg.root), sha, cfg.sync.label_prefix)
     return items + _part_of_records(cfg)
@@ -851,27 +867,30 @@ def stack_findings(stack: Stack, pulls: Mapping[int, Pull]) -> list[Action]:
 
 
 def fact_in_review(ident: Mapping[str, str], tracked: Sequence[int], issues: Mapping[int, Issue],
-                   in_review: set[int]) -> list[Action]:
-    """An open issue carries `status: in review` while an implementing pull request is open.
+                   in_review: set[int], started: set[int]) -> list[Action]:
+    """An open issue carries one derived status label: `status: in review` while an
+    implementing pull request is open, else `status: in progress` while a branch for it exists.
 
-    The label is derived, so it is stored nowhere in the record. Adding it removes
-    `status: in progress`; every other `status: ` label is left alone. A closed issue
-    only loses the label. It is independent of `sync.label_prefix`.
+    The labels are derived, so they are stored nowhere in the record. A closed issue, or an
+    open one with neither a pull request nor a branch, carries neither. Every other
+    `status: ` label is left alone. They are independent of `sync.label_prefix`.
     """
     actions: list[Action] = []
     for n in tracked:
         issue = issues.get(n)
         if issue is None:
             continue
-        names = _label_names(issue)
-        has = any(x.casefold() == IN_REVIEW for x in names)
-        reviewing = issue.get('state') == 'open' and n in in_review
-        if reviewing and not has:
-            remove = [x for x in names if x.casefold() == IN_PROGRESS]
-            actions.append({'action': 'label', **ident, 'issue': n, 'add': [IN_REVIEW], 'remove': remove})
-        elif has and not reviewing:
-            remove = [x for x in names if x.casefold() == IN_REVIEW]
-            actions.append({'action': 'label', **ident, 'issue': n, 'add': [], 'remove': remove})
+        names, add, remove = _label_names(issue), [], []
+        is_open = issue.get('state') == 'open'
+        for label, wanted in ((IN_REVIEW, is_open and n in in_review),
+                              (IN_PROGRESS, is_open and n not in in_review and n in started)):
+            have = [x for x in names if x.casefold() == label]
+            if wanted and not have:
+                add.append(label)
+            elif have and not wanted:
+                remove += have
+        if add or remove:
+            actions.append({'action': 'label', **ident, 'issue': n, 'add': add, 'remove': remove})
     return actions
 
 
@@ -984,7 +1003,8 @@ FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action
 
 def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
          pulls: Sequence[Pull] = (), stacks: Iterable[Stack] = (),
-         records: Iterable[Tracked] = (), backed: Iterable[int] | None = None) -> list[Action]:
+         records: Iterable[Tracked] = (), backed: Iterable[int] | None = None,
+         branches: Iterable[str] = ()) -> list[Action]:
     """Return create, close, label, stack, noop, and warn actions for every desired item.
 
     With `backed` (the numbers that records name, `backed_issue_numbers`), each open issue
@@ -993,7 +1013,9 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
     `snapshot` holds dicts with `number`, `state`, `body`, and `user.login`. `pulls`
     holds the open pull requests (`number`, `head`, `base`, `closes`, optional
     `closing_intent` for stacked pull requests). `stacks` are further records whose
-    pull requests are checked. `records` supplies explicit issue/PR pairings.
+    pull requests are checked. `records` supplies explicit issue/PR pairings. `branches`
+    are the repository's branch names: an open issue is in progress while a plan step's
+    `branch`, or a branch named `issue-<n>`, is among them.
     Markers count only in issues opened by `BOT`. Issues that are neither listed
     by a record nor marked by `BOT` only receive derived status updates. A listed number that is not an
     existing issue (a pull request, a typo) gets a `warn`. Applying the result
@@ -1006,6 +1028,8 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
                  for source in ('closes', 'closing_intent', 'refs') for n in pull.get(source, ())}
     in_review.update(record.issue for record in records
                      if record.issue is not None and any(pr in open_pulls for pr in record.prs))
+    branches = set(branches)
+    started = {n for b in branches for n in branch_numbers(b)}
     items = []
     for item in desired:
         marked = [i['number'] for i in by_marker.get(item.marker, [])]
@@ -1013,6 +1037,8 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
         items.append((item, tracked))
         if any(pr in open_pulls for pr in item.prs):
             in_review.update(tracked)
+        if item.branch in branches:
+            started.update(tracked)
     actions: list[Action] = []
     tracked_issues: set[int] = set()
     for item, tracked in items:
@@ -1020,7 +1046,7 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
         actions += [{'action': 'warn', **item.ident, 'issue': n, 'reason': 'listed number is not an issue'}
                     for n in item.listed if n not in by_number]
         found = [a for fact in FACTS for a in fact(item, tracked, by_number)]
-        found += fact_in_review(item.ident, tracked, by_number, in_review)
+        found += fact_in_review(item.ident, tracked, by_number, in_review, started)
         found += [a for pr_fact in PR_FACTS for a in pr_fact(item, tracked, by_number, open_pulls)]
         actions += found
         if not found:
@@ -1030,7 +1056,7 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
     actions += unexpected_sub_issues(items, by_number)
     untracked = [n for n in by_number if n not in tracked_issues]
     if untracked:
-        actions += fact_in_review({}, untracked, by_number, in_review)
+        actions += fact_in_review({}, untracked, by_number, in_review, started)
     for stack in stacks:
         actions += stack_findings(stack, open_pulls)
     if backed is not None:
@@ -1120,6 +1146,17 @@ class GitHub:
         # One parent per issue: replace_parent moves an issue that has another parent.
         self._call('POST', f'{self.base}/{parent}/sub_issues',
                    {'sub_issue_id': sub_issue_id, 'replace_parent': True})
+
+    def branches(self) -> list[str]:
+        """The names of every branch in the repository."""
+        found: list[str] = []
+        page = 1
+        while True:
+            batch = self._call('GET', f'https://api.github.com/repos/{self.repo}/branches?per_page=100&page={page}')
+            found += [b['name'] for b in batch]
+            if len(batch) < 100:
+                return found
+            page += 1
 
     def pulls(self) -> list[Pull]:
         """Every open pull request, with separate closing and stacked-review references."""
@@ -1401,7 +1438,7 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
         snapshot = [{**i, 'bot_markers': markers[i['number']]} if i['number'] in markers else i
                     for i in snapshot]
         actions = plan(desired, snapshot, github.pulls(), record_stacks(records), records.values(),
-                       backed_issue_numbers(cfg))
+                       backed_issue_numbers(cfg), github.branches())
     except SyncError as exc:
         print(f'error: {exc}', file=sys.stderr)
         return 2

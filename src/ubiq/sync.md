@@ -46,6 +46,7 @@ symbols:
         required_prs: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "tuple[tuple[str, tuple[int, ...]], ...]", "x-python-default": "()"}
         comment: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "''"}
         comment_marker: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "''"}
+        branch: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "''"}
       required: ["kind", "ident", "marker", "title", "body", "state"]
     result: {}
     errors: false
@@ -199,6 +200,21 @@ symbols:
     term: plan desired
     form: bound
     scenarios: [tests/test_plan_records.py::test_each_step_is_an_item_with_its_links]
+    params:
+      type: object
+      additionalProperties: false
+      properties:
+        plan_record: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Mapping[str, Any]"}
+        label_prefix: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "DEFAULT_LABEL_PREFIX"}
+      required: ["plan_record"]
+    result: {"type": "array", "x-python-type": "list[Desired]"}
+    errors: false
+  plan_issue_desired:
+    id: symbol:ubiq.sync.plan_issue_desired
+    feature: plan-records
+    term: plan issue desired
+    form: bound
+    scenarios: [tests/test_status_labels.py::test_a_plans_own_issue_follows_the_plans_priority_even_when_proposed]
     params:
       type: object
       additionalProperties: false
@@ -581,7 +597,8 @@ symbols:
         tracked: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Sequence[int]"}
         issues: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Mapping[int, Issue]"}
         in_review: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "set[int]"}
-      required: ["ident", "tracked", "issues", "in_review"]
+        started: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "set[int]"}
+      required: ["ident", "tracked", "issues", "in_review", "started"]
     result: {"type": "array", "x-python-type": "list[Action]"}
     errors: false
   fact_stack:
@@ -680,6 +697,7 @@ symbols:
         stacks: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Iterable[Stack]", "x-python-default": "()"}
         records: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Iterable[Tracked]", "x-python-default": "()"}
         backed: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Iterable[int] | None", "x-python-default": "None"}
+        branches: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Iterable[str]", "x-python-default": "()"}
       required: ["desired", "snapshot"]
     result: {"type": "array", "x-python-type": "list[Action]"}
     errors: false
@@ -772,6 +790,18 @@ symbols:
       properties: {}
     result: {"type": "array", "x-python-type": "list[Pull]"}
     errors: false
+  GitHub.branches:
+    id: symbol:ubiq.sync.GitHub.branches
+    feature: github-sync
+    term: GitHub branches
+    form: bound
+    scenarios: [tests/test_status_labels.py::test_branches_pages]
+    params:
+      type: object
+      additionalProperties: false
+      properties: {}
+    result: {"type": "array", "x-python-type": "list[str]"}
+    errors: {"type": "string", "enum": ["OSError"]}
   GitHub.bot_markers:
     id: symbol:ubiq.sync.GitHub.bot_markers
     feature: github-sync
@@ -892,6 +922,10 @@ Read the metadata and steps of a plan record.
 ## `plan_desired`
 
 Derive the desired GitHub issue state for tracked plan steps.
+
+## `plan_issue_desired`
+
+Derive the desired priority label of a plan's own issue, which holds for a proposed plan.
 
 ## `desired_from_config`
 
@@ -1035,7 +1069,7 @@ Report a pull request based elsewhere than on a required record's pull request.
 
 ## `fact_in_review`
 
-Keep the derived `status: in review` label while a pull request is open.
+Keep the derived `status: in review` label while a pull request is open, and `status: in progress` while only a branch exists.
 
 ## `fact_stack`
 
@@ -1060,6 +1094,10 @@ Whether a label action changes only the derived status labels.
 ## `GitHub.pulls`
 
 The open pull requests, with their bases, heads, and closing intent.
+
+## `GitHub.branches`
+
+The names of the repository's branches, which mark an issue `status: in progress`.
 
 ## `GitHub.bot_markers`
 

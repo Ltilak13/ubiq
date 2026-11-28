@@ -339,7 +339,7 @@ def test_repository_comes_from_the_flag_then_config_then_environment(tmp_path, m
     urls = []
 
     def spy(method, url, token, payload=None):
-        urls.append(url.split('/issues')[0].split('/pulls')[0].rsplit('repos/', 1)[-1])
+        urls.append(url.split('/issues')[0].split('/pulls')[0].split('/branches')[0].rsplit('repos/', 1)[-1])
         return []
     (tmp_path / 'a').mkdir()
     (tmp_path / 'b').mkdir()
@@ -348,7 +348,7 @@ def test_repository_comes_from_the_flag_then_config_then_environment(tmp_path, m
     cmd_sync(flags(configured), spy, 0)
     cmd_sync(flags(configured, repo='flag/repo'), spy, 0)
     cmd_sync(flags(bare), spy, 0)
-    assert urls == ['o/r', 'o/r', 'flag/repo', 'flag/repo', 'env/repo', 'env/repo']  # issues, pulls
+    assert urls == ['o/r'] * 3 + ['flag/repo'] * 3 + ['env/repo'] * 3  # issues, pulls, branches
     capsys.readouterr()
     monkeypatch.delenv('GITHUB_REPOSITORY')
     assert cmd_sync(flags(bare), spy, 0) == 2
@@ -480,7 +480,7 @@ import urllib.request
 
 def snapshot(request, timeout):
     assert request.get_method() == 'GET'
-    if '/pulls?' in request.full_url:
+    if '/pulls?' in request.full_url or '/branches?' in request.full_url:
         return io.BytesIO(b'[]')
     assert '/issues?' in request.full_url
     return io.BytesIO(os.environ['ISSUE_SNAPSHOT'].encode())

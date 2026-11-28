@@ -97,9 +97,10 @@ def test_goal_schema_takes_priority_from_the_tracking_fields():
     assert schema["properties"]["priority"] == {"$ref": "tracking.json#/properties/priority"}
 
 
-def test_repository_frontmatter_tracking_steps_would_all_be_labelled_p1():
-    items = [d for d in desired_from_config(load_config(ROOT)) if d.kind == "plan-step"]
-    assert items and {d.priority for d in items} == {"P1"}
+def test_repository_frontmatter_tracking_steps_inherit_p1_unless_they_set_their_own():
+    items = {d.ident["step"]: d.priority for d in desired_from_config(load_config(ROOT)) if d.kind == "plan-step"}
+    assert items["feature-records"] == "P1"
+    assert (items["backfill"], items["schema-edge-diagrams"], items["view-sync"]) == ("P1", "P2", "P3")
 
 
 @pytest.mark.parametrize("where, text", [("plan", "priority: P9\n"), ("step", "    priority: P9\n")])
