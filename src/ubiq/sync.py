@@ -37,7 +37,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import xref
 from .config import Config, load_config
+from .records import normalize
 from .schemas import load_data
 
 # A criterion line and its indented continuation lines.
@@ -77,6 +79,11 @@ class Desired:
     close_comment: str = ''
     priority: str = ''
     label_prefix: str = DEFAULT_LABEL_PREFIX
+    # `requires`, split: issue numbers of the tracked records it names (None when the
+    # record sets no `requires`, which leaves links and the generated line unmanaged)
+    # and the pull requests it lists as `pr: <n>`.
+    requires: tuple[int, ...] | None = None
+    requires_prs: tuple[int, ...] = ()
     # Links to other issues, for the facts that mirror them (blocked-by, sub-issue).
     # `requires_markers` holds the `marker` of each item this one waits on; `parent_issue`
     # is the number of the issue this one belongs under (0 for none). Plan steps set both.
@@ -119,10 +126,12 @@ def load_goal(path: Path, root: Path) -> dict[str, Any]:
 
 
 def goal_desired(goal: Mapping[str, Any], sha: str = '',
-                 label_prefix: str = DEFAULT_LABEL_PREFIX) -> list[Desired]:
+                 label_prefix: str = DEFAULT_LABEL_PREFIX,
+                 numbers: Mapping[str, int] | None = None) -> list[Desired]:
     """One `Desired` per criterion: open until the criterion is `met`, then closed.
 
-    A criterion's `issue` is tracked like each number in its `issues` list.
+    A criterion's `issue` is tracked like each number in its `issues` list. `numbers`
+    maps a normalized record name to its issue, to resolve the criterion's `requires`.
     """
     items = []
     for ac, criterion in goal['criteria'].items():
@@ -143,8 +152,44 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
             close_comment=comment, priority=resolve_priority(criterion, goal),
-            label_prefix=label_prefix))
+            label_prefix=label_prefix, **_requires(criterion, numbers or {})))
     return items
+
+
+def _requires(criterion: Mapping[str, Any], numbers: Mapping[str, int]) -> dict[str, Any]:
+    """Split `requires` into blocker issue numbers and `pr: <n>` entries.
+
+    A name that resolves to no tracked record (one without an `issue`) makes no link.
+    """
+    if 'requires' not in criterion:
+        return {}
+    prs: list[int] = []
+    blockers: list[int] = []
+    for value in criterion['requires']:
+        pr = xref.pr_entry(value)
+        if pr is not None:
+            prs.append(pr)
+        elif normalize(value) in numbers:
+            blockers.append(numbers[normalize(value)])
+    return {'requires': tuple(dict.fromkeys(blockers)), 'requires_prs': tuple(dict.fromkeys(prs))}
+
+
+def tracked_issue_numbers(cfg: Config) -> dict[str, int]:
+    """Normalized record name -> `issue`, for each schema-bound frontmatter record that has both."""
+    numbers: dict[str, int] = {}
+    for spec in cfg.schemas:
+        if spec.format != 'frontmatter':
+            continue
+        for pattern in spec.files:
+            for path in sorted(pattern.walk(cfg.ignore)):
+                try:
+                    data = load_data(path, frontmatter=True)
+                except (ValueError, OSError):
+                    continue
+                name, number = (data.get('name'), data.get('issue')) if isinstance(data, dict) else (None, None)
+                if isinstance(name, str) and isinstance(number, int) and not isinstance(number, bool):
+                    numbers.setdefault(normalize(name), number)
+    return numbers
 
 
 def load_plan(path: Path, root: Path) -> dict[str, Any]:
@@ -201,10 +246,11 @@ def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
     """Desired state for every record file that `sync.records` selects."""
     assert cfg.sync is not None
     items: list[Desired] = []
+    numbers = tracked_issue_numbers(cfg)
     for record in cfg.sync.records:
         for path in sorted(record.glob.walk(cfg.ignore)):
             if record.kind == 'goal':
-                items += goal_desired(load_goal(path, cfg.root), sha, cfg.sync.label_prefix)
+                items += goal_desired(load_goal(path, cfg.root), sha, cfg.sync.label_prefix, numbers)
             elif record.kind == 'plan':
                 items += plan_desired(load_plan(path, cfg.root), cfg.sync.label_prefix)
     return items
@@ -227,7 +273,8 @@ def fact_exists(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issu
     if tracked or item.state != 'open':
         return []
     labels = [item.label_prefix + item.priority] if _mirrors_priority(item) else []
-    return [{'action': 'create', **item.ident, 'title': item.title, 'body': item.body,
+    body = set_blocked_by(item.body, item.requires_prs)
+    return [{'action': 'create', **item.ident, 'title': item.title, 'body': body,
              **({'labels': labels} if labels else {})}]
 
 
@@ -273,9 +320,77 @@ def fact_priority(item: Desired, tracked: Sequence[int], issues: Mapping[int, Is
     return actions
 
 
+# -- requires: blocked-by links and the generated "Blocked by" line ----------------
+
+BLOCKED_BEGIN = '<!-- ubiq-blocked-by:begin -->'
+BLOCKED_END = '<!-- ubiq-blocked-by:end -->'
+BLOCKED_SPAN_RE = re.compile(f'{re.escape(BLOCKED_BEGIN)}.*?{re.escape(BLOCKED_END)}', re.DOTALL)
+
+
+def set_blocked_by(body: str, prs: Sequence[int]) -> str:
+    """`body` with the generated section naming `prs`; text outside the markers is untouched.
+
+    GitHub rejects a pull request as a blocker, so a `pr: <n>` entry is only text. An
+    existing section is replaced in place, or removed when `prs` is empty; a missing
+    one is appended after the body.
+    """
+    if not prs:
+        return BLOCKED_SPAN_RE.sub('', body, count=1)
+    section = (f"{BLOCKED_BEGIN}\nBlocked by: {', '.join(f'#{n}' for n in prs)} "
+               f"(pull requests, generated from `requires`)\n{BLOCKED_END}")
+    if BLOCKED_SPAN_RE.search(body):
+        return BLOCKED_SPAN_RE.sub(lambda _: section, body, count=1)
+    return (body if body.endswith('\n') else body + '\n') + '\n' + section + '\n'
+
+
+def fact_requires(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
+    """An open issue is blocked by exactly the issues its record `requires`.
+
+    Missing links are `link` actions and extra links are `unlink` actions (drift). A
+    record that sets no `requires` leaves links alone. A required record whose issue is
+    not in the snapshot is a `warn`.
+    """
+    if item.requires is None or item.state != 'open':
+        return []
+    actions: list[Action] = []
+    for n in tracked:
+        issue = issues.get(n)
+        if issue is None or issue.get('state') != 'open':
+            continue
+        have = {b['number']: b for b in issue.get('blocked_by') or []}
+        want = [b for b in item.requires if b != n]
+        for b in want:
+            blocker = issues.get(b)
+            if blocker is None or 'id' not in blocker:
+                actions.append({'action': 'warn', **item.ident, 'issue': b,
+                                'reason': 'required record has no issue'})
+            elif b not in have:
+                actions.append({'action': 'link', **item.ident, 'issue': n, 'blocked_by': b,
+                                'issue_id': blocker['id']})
+        actions += [{'action': 'unlink', **item.ident, 'issue': n, 'blocked_by': b, 'issue_id': link.get('id')}
+                    for b, link in have.items() if b not in want]
+    return actions
+
+
+def fact_blocked_line(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
+    """An open issue's body holds the generated "Blocked by" section for the `pr:` entries."""
+    if item.state != 'open':
+        return []
+    actions: list[Action] = []
+    for n in tracked:
+        issue = issues.get(n)
+        if issue is None or issue.get('state') != 'open':
+            continue
+        body = issue.get('body') or ''
+        new = set_blocked_by(body, item.requires_prs)
+        if new != body:
+            actions.append({'action': 'body', **item.ident, 'issue': n, 'body': new})
+    return actions
+
+
 # Each mirrored fact: (item, tracked issue numbers, issues by number) -> actions.
 FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action]], ...] = (
-    fact_exists, fact_state, fact_priority)
+    fact_exists, fact_state, fact_priority, fact_requires, fact_blocked_line)
 
 
 def plan(desired: Iterable[Desired], snapshot: Sequence[Issue]) -> list[Action]:
@@ -331,7 +446,8 @@ class GitHub:
         self.repo, self.token, self.transport, self.pause = repo, token, transport, pause
         self.base = f'https://api.github.com/repos/{repo}/issues'
         self.handlers: dict[str, Callable[[Action], None]] = {
-            'create': self._create, 'close': self._close, 'label': self._label}
+            'create': self._create, 'close': self._close, 'label': self._label,
+            'link': self._link, 'unlink': self._unlink, 'body': self._body}
 
     def _call(self, method: str, url: str, payload: dict | None = None) -> Any:
         return self.transport(method, url, self.token, payload)
@@ -342,10 +458,38 @@ class GitHub:
         page = 1
         while True:
             batch = self._call('GET', f'{self.base}?state=all&per_page=100&page={page}')
-            issues += [i for i in batch if 'pull_request' not in i]
+            issues += [self._with_links(i) for i in batch if 'pull_request' not in i]
             if len(batch) < 100:
                 return issues
             page += 1
+
+    def _with_links(self, issue: dict) -> dict:
+        """`issue` plus `blocked_by`: the issues that block it, read only when it has any."""
+        if not (issue.get('issue_dependencies_summary') or {}).get('blocked_by'):
+            return issue
+        links: list[Issue] = []
+        page = 1
+        while True:
+            batch = self._call('GET', f"{self.base}/{issue['number']}/dependencies/blocked_by"
+                                      f'?per_page=100&page={page}')
+            links += batch
+            if len(batch) < 100:
+                return {**issue, 'blocked_by': [{'number': b['number'], 'id': b.get('id')} for b in links]}
+            page += 1
+
+    def _link(self, action: Action) -> None:
+        self._call('POST', f"{self.base}/{action['issue']}/dependencies/blocked_by",
+                   {'issue_id': action['issue_id']})
+
+    def _unlink(self, action: Action) -> None:
+        try:
+            self._call('DELETE', f"{self.base}/{action['issue']}/dependencies/blocked_by/{action['issue_id']}")
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:  # already gone is the state we want
+                raise
+
+    def _body(self, action: Action) -> None:
+        self._call('PATCH', f"{self.base}/{action['issue']}", {'body': action['body']})
 
     def _create(self, action: Action) -> None:
         payload = {'title': action['title'], 'body': action['body']}
@@ -414,7 +558,7 @@ def _git(root: Path, rev: str, *cmd: str) -> bytes:
 
 @contextlib.contextmanager
 def revision_root(root: Path, rev: str) -> Iterator[Path]:
-    """A temporary directory holding `ubiq.yaml` and the sync's record files as they are at `rev`.
+    """A temporary directory holding `ubiq.yaml` and the records used by sync as they are at `rev`.
 
     Only those files are read, with `git show`, and only regular files are written
     (symlinks are skipped), so nothing in the revision can point outside the
@@ -433,10 +577,13 @@ def revision_root(root: Path, rev: str) -> Iterator[Path]:
             fetch('ubiq.yaml')
         cfg = load_config(tmp)
         if cfg.sync is not None:
+            patterns = [record.glob for record in cfg.sync.records]
+            patterns.extend(pattern for spec in cfg.schemas if spec.format == 'frontmatter'
+                            for pattern in spec.files)
             listing = _git(root, rev, 'ls-tree', '-r', '-z', rev).decode().split('\0')
             for entry in filter(None, listing):
                 meta, path = entry.split('\t', 1)
-                if meta.startswith('100') and any(r.glob.matches(tmp / path) for r in cfg.sync.records):
+                if meta.startswith('100') and any(pattern.matches(tmp / path) for pattern in patterns):
                     fetch(path)
         yield tmp
 

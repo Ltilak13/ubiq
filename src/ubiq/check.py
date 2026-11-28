@@ -16,6 +16,7 @@ Errors (fail the build):
   E013 field-value            a link to #field whose field is absent, null, not text, or not
                               its label (in any file with frontmatter, a fragment that names
                               no heading or anchor names a field)
+  E014 edge-cycle             records loop through an `acyclic` x-ubiq-ref edge (cycles.py)
   E015 readme-membership      invalid README target or membership declaration/link mismatch
 
 Warnings (reported, exit 0):
