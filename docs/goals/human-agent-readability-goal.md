@@ -3,33 +3,41 @@ name: human-agent-readability-goal
 status: proposed
 criteria:
   AC1:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs a recorded review against its acceptance text.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #98 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [98]
   AC2:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs a recorded review against its acceptance text.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #99 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [99]
   AC3:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs a recorded review against its acceptance text.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #100 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [100]
   AC4:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs a recorded review against its acceptance text.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #101 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [101]
   AC5:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs a recorded review against its acceptance text.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #102 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [102]
   AC6:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs a recorded review against its acceptance text.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #103 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [103]
   AC7:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs a recorded review against its acceptance text.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #104 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [104]
+
 ---
 
 # Goal: human and agent usability

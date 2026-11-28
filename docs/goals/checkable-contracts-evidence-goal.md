@@ -3,19 +3,22 @@ name: checkable-contracts-evidence-goal
 status: proposed
 criteria:
   AC1:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #73 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [73]
   AC2:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #74 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [74]
   AC3:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #75 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [75]
   AC4:
-    assessment: partial
+    assessment: deferred
     support:
     - feature: criterion-scenarios
       implementation:
@@ -24,13 +27,15 @@ criteria:
       check:
         path: tests/test_criterion_scenarios.py
         anchor: def test_a_failing_scenario_after_its_issue_closed_opens_a_regression(
-    gap: Scenario criteria are reassessed on every run of main, and a failure opens a regression issue. Judged criteria rely on the advisory review freshness report, and conflicting evidence is not modeled.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #76 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence. Evidence so far: Scenario criteria are reassessed on every run of main, and a failure opens a regression issue. Judged criteria rely on the advisory review freshness report, and conflicting evidence is not modeled."
+    issues: [76]
   AC5:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #77 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [77]
   AC6:
-    assessment: partial
+    assessment: deferred
     support:
     - feature: criterion-scenarios
       implementation:
@@ -39,7 +44,9 @@ criteria:
       check:
         path: tests/test_criterion_scenarios.py
         anchor: def test_the_goal_issue_closes_when_every_criterion_holds(
-    gap: A goal issue closes only when every criterion holds, including assessed_in criteria. Subgoal decomposition through part_of is not aggregated yet.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #78 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence. Evidence so far: A goal issue closes only when every criterion holds, including assessed_in criteria. Subgoal decomposition through part_of is not aggregated yet."
+    issues: [78]
+
 ---
 
 # Goal: checkable contracts and evidence

@@ -14,9 +14,10 @@ criteria:
       goal: domain-schema-goal
       criterion: AC8
   AC3:
-    assessment: unassessed
+    assessment: deferred
     support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    gap: "Deferred under the work-in-progress limit in `docs/goals/README.md`: this goal is `proposed`, so no work on it is scheduled. Issue #107 is closed as not planned. To schedule it, reopen the issue, set a `priority`, and replace this gap with the specific missing evidence."
+    issues: [107]
   AC4:
     assessment: unassessed
     support: []
