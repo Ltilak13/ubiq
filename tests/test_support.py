@@ -322,7 +322,7 @@ def test_ubiq_check_reports_drift_as_e013(tmp_path, capsys):
     root = repo(tmp_path)
     (root / "pyproject.toml").write_text(PYPROJECT.replace(">=3.10", ">=3.11"))
     assert cli.main(["check", "--root", str(root)]) == 1
-    assert "E015" in capsys.readouterr().out
+    assert "E017" in capsys.readouterr().out
 
 
 # --- feature declarations ---------------------------------------------------

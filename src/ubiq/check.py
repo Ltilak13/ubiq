@@ -13,6 +13,13 @@ Errors (fail the build):
   E008 invalid-configuration  invalid settings or conflicting glossary selection rules
   E011 include-cycle          a shared part includes itself through other parts (graph.py)
   E012 part-input             an include names no value, or an undeclared one, for a part input
+  E013 field-value            a link to #field whose field is absent, null, not text, or not
+                              its label (in any file with frontmatter, a fragment that names
+                              no heading or anchor names a field)
+  E014 edge-cycle             records loop through an `acyclic` x-ubiq-ref edge (cycles.py)
+  E015 readme-membership      invalid README target or membership declaration/link mismatch
+  E016 criterion-scenario     a `scenario: true` criterion has no tagged scenario, or a tag
+                              names no such criterion (scenarios.py)
 
 Warnings (reported, exit 0):
   W001 orphan-term            defined but never referenced or mentioned outside its own record
@@ -39,7 +46,7 @@ from pathlib import Path
 
 from .kinds import Policy, Severity
 from .records import Glossary, normalize
-from .scan import Ref
+from .scan import Ref, value_of
 
 
 @dataclass
@@ -146,7 +153,8 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
 def run_checks(glossary: Glossary, refs: list[Ref],
                external_id_patterns=(), *,
                skip_unlinked: set[Path] | None = None,
-               unlinked_except: Sequence[str] | None = None) -> list[Diagnostic]:
+               unlinked_except: Sequence[str] | None = None,
+               lenient: bool = False) -> list[Diagnostic]:
     diags: list[Diagnostic] = []
     external = [re.compile(p) for p in external_id_patterns]
 
@@ -173,9 +181,19 @@ def run_checks(glossary: Glossary, refs: list[Ref],
             diags.append(Diagnostic(
                 "E001", f"id '{id_}' claimed by {len(terms)} records ({files})", terms[0].file))
 
-    # E002/E003/E004/E006 — reference resolution, at each kind's severity
+    # E002/E003/E004/E006/E013 — reference resolution, at each kind's severity
     for r in refs:
         if r.kind == "mention":
+            continue
+        if r.kind == "value":
+            try:
+                value = "" if r.historical else " ".join(value_of(glossary, r, lenient).split())
+                if not r.historical and r.target != value:
+                    raise LookupError(f"label '{r.target}' ≠ {r.field} '{value}' — "
+                                      "update the label")
+            except LookupError as exc:
+                diags += reported(r.policy, r.policy.code,
+                                  f"field value {r.raw} — {exc}", r.file, r.line)
             continue
         matches = r.resolve(glossary)
         if matches:
@@ -219,7 +237,8 @@ def _unresolved(glossary: Glossary, r: Ref) -> str:
         return f"unresolved id '{r.name}' — no record carries id: {r.name}"
     if r.kind in ("field", "catalog"):
         label = "catalog entry" if r.kind == "catalog" else "field ref"
-        return f"unresolved {label} '{r.raw}' — no record with that id or name"
+        scope = f" in namespace '{r.ns}'" if r.ns else ""
+        return f"unresolved {label} '{r.raw}' — no record with that id or name{scope}"
     scope = f" in namespace '{r.ns}'" if r.ns else ""
     hint = ""
     if r.kind == "explicit":

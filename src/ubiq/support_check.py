@@ -4,7 +4,7 @@ Records under `support.records` (one per runtime version) are the single source.
 `requires-python`, the CI test matrix, and the support table are views, and
 `ubiq check` reports every disagreement:
 
-  E015 support-drift   a view disagrees with the records, or a record or feature
+  E017 support-drift   a view disagrees with the records, or a record or feature
                        declaration is inconsistent
   W010 support-eol     a record says `supported` after its end-of-life date
 
@@ -67,7 +67,7 @@ def load_entries(cfg: Config, spec: SupportSpec) -> tuple[list[Entry], list[Diag
             continue  # the schema binding reports the malformed field
         entries.append(Entry(path, *(data[f] for f in fields)))
     if not entries and not diags:
-        diags.append(_diag("E015", f"no support records match {spec.records.pattern}",
+        diags.append(_diag("E017", f"no support records match {spec.records.pattern}",
                            cfg.root / "ubiq.yaml"))
     return sorted(entries, key=lambda e: (e.runtime, e.key)), diags
 
@@ -108,7 +108,7 @@ def _read(path: Path, label: str, diags: list[Diagnostic], cfg: Config) -> str |
     try:
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
-        diags.append(_diag("E015", f"cannot read {label}: {exc}", cfg.root / "ubiq.yaml"))
+        diags.append(_diag("E017", f"cannot read {label}: {exc}", cfg.root / "ubiq.yaml"))
         return None
 
 
@@ -117,10 +117,10 @@ def _check_records(entries: list[Entry]) -> list[Diagnostic]:
     seen: dict[tuple[str, str], Entry] = {}
     for e in entries:
         if e.name != f"{e.runtime}-{e.version}":
-            diags.append(_diag("E015", f"support record name '{e.name}' should be "
+            diags.append(_diag("E017", f"support record name '{e.name}' should be "
                                f"'{e.runtime}-{e.version}'", e.path))
         if (e.runtime, e.version) in seen:
-            diags.append(_diag("E015", f"{e.runtime} {e.version} has two support records "
+            diags.append(_diag("E017", f"{e.runtime} {e.version} has two support records "
                                f"({seen[(e.runtime, e.version)].path.name}, {e.path.name})", e.path))
         seen.setdefault((e.runtime, e.version), e)
     return diags
@@ -135,27 +135,27 @@ def _check_requires(cfg: Config, spec: SupportSpec, python: list[Entry]) -> list
     declared = requires_python(text)
     live = [e for e in python if e.status in LIVE]
     if declared is None:
-        return [*diags, _diag("E015", "pyproject.toml has no [project] requires-python", path)]
+        return [*diags, _diag("E017", "pyproject.toml has no [project] requires-python", path)]
     try:
         clauses = parse_specifier(declared)
     except ValueError as exc:
-        return [*diags, _diag("E015", f"requires-python: {exc}", path)]
+        return [*diags, _diag("E017", f"requires-python: {exc}", path)]
     if not live:
-        return [*diags, _diag("E015", "no supported or deprecated Python record", path)]
+        return [*diags, _diag("E017", "no supported or deprecated Python record", path)]
     floor = min(e.key for e in live)
     lower = [v for op, v in clauses if op == ">="]
     if not lower or tuple(lower[0][:2]) != floor:
         want = ".".join(map(str, floor))
-        diags.append(_diag("E015", f'requires-python "{declared}" does not start at the lowest '
+        diags.append(_diag("E017", f'requires-python "{declared}" does not start at the lowest '
                            f'supported version; the support records say ">={want}"', path))
     for e in live:
         if not satisfies(e.key, declared):
-            diags.append(_diag("E015", f'requires-python "{declared}" excludes {e.status} '
+            diags.append(_diag("E017", f'requires-python "{declared}" excludes {e.status} '
                                f"Python {e.version}", path))
     top = max(e.key for e in live)
     for e in python:
         if e.status == "unsupported" and floor < e.key < top:
-            diags.append(_diag("E015", f"Python {e.version} is unsupported but sits between "
+            diags.append(_diag("E017", f"Python {e.version} is unsupported but sits between "
                                "supported versions; mark it supported or deprecated", e.path))
     return diags
 
@@ -187,26 +187,26 @@ def _check_workflow(cfg: Config, spec: SupportSpec, python: list[Entry]) -> list
     try:
         workflow = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        return [*diags, _diag("E015", f"cannot parse {spec.workflow}: {exc}", path)]
+        return [*diags, _diag("E017", f"cannot parse {spec.workflow}: {exc}", path)]
     if not isinstance(workflow, dict):
-        return [*diags, _diag("E015", f"{spec.workflow}: expected a mapping", path)]
+        return [*diags, _diag("E017", f"{spec.workflow}: expected a mapping", path)]
     versions, problem = _matrix_versions(workflow, spec)
     if problem:
-        return [*diags, _diag("E015", f"{spec.workflow}: {problem}", path)]
+        return [*diags, _diag("E017", f"{spec.workflow}: {problem}", path)]
     by_version = {e.version: e for e in python}
     for e in python:
         if e.status in LIVE and e.version not in versions:
-            diags.append(_diag("E015", f"{e.status} Python {e.version} is missing from the "
+            diags.append(_diag("E017", f"{e.status} Python {e.version} is missing from the "
                                f"{spec.job} matrix in {spec.workflow}", path))
     for version in sorted(versions):
         entry = by_version.get(version)
         if entry is None:
             hint = " (quote versions such as \"3.10\" so YAML keeps them as text)" \
                 if re.fullmatch(r"3\.[0-9]", version) else ""
-            diags.append(_diag("E015", f"Python {version} in the {spec.job} matrix has no "
+            diags.append(_diag("E017", f"Python {version} in the {spec.job} matrix has no "
                                f"support record{hint}", path))
         elif entry.status == "unsupported":
-            diags.append(_diag("E015", f"unsupported Python {version} is in the {spec.job} "
+            diags.append(_diag("E017", f"unsupported Python {version} is in the {spec.job} "
                                "matrix", path))
     for name, job in (workflow.get("jobs") or {}).items():
         for step in (job or {}).get("steps") or []:
@@ -216,7 +216,7 @@ def _check_workflow(cfg: Config, spec: SupportSpec, python: list[Entry]) -> list
                 entry = by_version.get(version)
                 if entry is None or entry.status == "unsupported":
                     why = "is unsupported" if entry else "has no support record"
-                    diags.append(_diag("E015", f"job '{name}' pins Python {version}, which {why}",
+                    diags.append(_diag("E017", f"job '{name}' pins Python {version}, which {why}",
                                        path))
     return diags
 
@@ -243,10 +243,10 @@ def _check_features(cfg: Config, spec: SupportSpec) -> list[Diagnostic]:
                         raise TypeError("runtime must be a mapping with a python specifier")
                     parse_specifier(python)
                 except (TypeError, ValueError) as exc:
-                    diags.append(_diag("E015", f"runtime: {exc}", path))
+                    diags.append(_diag("E017", f"runtime: {exc}", path))
             extra = data.get("extra")
             if extra is not None and extra not in known:
-                diags.append(_diag("E015", f"extra '{extra}' is not declared in "
+                diags.append(_diag("E017", f"extra '{extra}' is not declared in "
                                    f"[project.optional-dependencies] of {spec.pyproject}", path))
     return diags
 
@@ -288,10 +288,10 @@ def _check_table(cfg: Config, spec: SupportSpec, entries: list[Entry]) -> list[D
         return diags
     match = _block(text)
     if match is None:
-        return [_diag("E015", f"{spec.table} has no support table block; add {BEGIN} and {END} "
+        return [_diag("E017", f"{spec.table} has no support table block; add {BEGIN} and {END} "
                       "and run `ubiq support --write`", path)]
     if match.group(0) != render_table(entries):
-        return [_diag("E015", "support table is out of date with the support records; "
+        return [_diag("E017", "support table is out of date with the support records; "
                       "run `ubiq support --write`", path)]
     return []
 
@@ -322,5 +322,5 @@ def check_support(cfg: Config, today: datetime.date | None = None) -> list[Diagn
         diags += _check_workflow(cfg, spec, python)
     diags += _check_table(cfg, spec, entries)
     diags += _check_features(cfg, spec)
-    diags += _eol(entries, today or datetime.date.today())
+    diags += _eol(entries, today or datetime.datetime.now(datetime.timezone.utc).date())
     return diags

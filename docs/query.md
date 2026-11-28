@@ -20,7 +20,9 @@ The command does not require those particular kinds, domains, or IDs.
 The registered [goal evidence policy](policies/goal-evidence.md) governs the
 [domain-schema goal](goals/domain-schema-goal.md). The accepted
 [model](../.ubiq/knowledge/goal-governance.yaml) contains two records in the
-`goal-assessment` domain and one `governs` relationship. It uses the existing
+`goal-assessment` domain and one `governs` relationship between them. Its
+`fact-placement` domain registers the [fact homes policy](policies/fact-homes.md)
+governing the [no-code spec goal](goals/no-code-spec-goal.md) the same way. It uses the existing
 [schema and integrity checks](schema-validation.md).
 
 Run these commands from the repository root with this checkout's CLI:

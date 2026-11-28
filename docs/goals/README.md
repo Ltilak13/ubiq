@@ -10,6 +10,20 @@ Ubiq helps repositories make their knowledge explicit, connected, and checkable.
 | [Human and agent usability](human-agent-readability-goal.md) | Finding, understanding, navigating, and correctly using information |
 | [Safe adoption and evolution](safe-adoption-evolution-goal.md) | Setup, migration, maintenance, and recovery |
 | [No-code specs](no-code-spec-goal.md) | Records that are the spec, docs, and tests, checked with no agent |
+| [Code as records](code-records-goal.md) | One rule defined as data (AC4) and change impact derived from records (AC9) |
+
+## Adding goals and limiting work in progress
+
+New goals are paused until at least one criterion is met by its scenarios passing on `main`,
+and the goal or feature starter (#111) has been tried outside this repository. Until then:
+
+- Add a criterion to an existing goal instead of a new goal, and write it as a
+  scenario when it can be one.
+- Keep at most one plan `active` per goal, and at most five open implementation pull
+  requests at a time. Close or merge a pull request that has had no activity for two
+  days, with a comment that says which.
+- Move a speculative outcome to the goal's Exploration section and the wayfinder map,
+  not to its criteria.
 
 ## Organization and dependencies
 
@@ -53,16 +67,31 @@ connects acceptance criteria to supporting features and evidence. The body
 explains the objective and defines each criterion with a stable `AC` label.
 Preserve those labels when reordering criteria.
 
-Frontmatter owns the current assessment. `unassessed` means no criterion review
+A criterion that sets `scenario: true` is accepted by the scenarios tagged with
+its label in the goal's feature file (`<goal>.feature`). Its frontmatter stores no
+assessment: the [sync](../github-sync.md#criterion-scenarios) treats it as met exactly
+when those scenarios pass on `main`, and closes the goal's issue when every criterion
+holds. Reviewers approve the scenario text in the pull request that adds or changes it.
+Prefer this form. A criterion that cannot be written as a scenario is a sign it needs
+restating; the forms below remain for criteria that need human judgment.
+
+For the other criteria, frontmatter owns the current assessment. `unassessed` means no criterion review
 is recorded. `partial` means supporting evidence is identified but a gap remains.
 Neither value asserts that the criterion passed. `met` records that a reviewer
 checked the cited evidence against the acceptance text and found that it holds.
 A `met` criterion needs at least one supporting feature and a `review` record
-with a non-empty `by` (who reviewed) and `note` (what they checked). Only a `met`
-criterion can carry `review`.
+with a non-empty `by` (who reviewed), `note` (what they checked), `at` (the full
+commit SHA they checked), and `date`. Only a `met` criterion can carry `review`.
+`python scripts/review_freshness.py` reports a review as stale when a file its
+criterion cites changed after `at`; CI prints the report on every run.
 
-For each supporting feature, `implementation` identifies its source and `check`
-identifies a test. Each location uses a repository-relative `path` and an exact
+A criterion that restates another goal's criterion sets `assessed_in` to it
+(`goal` and `criterion`). It keeps its label, stays `unassessed` with no support,
+and the sync opens no issue for it.
+
+For each supporting feature, `feature` names a [feature record](../features.md)
+(`ubiq check` fails with E006 when it names none), `implementation` identifies its
+source, and `check` identifies a test. Each location uses a repository-relative `path` and an exact
 text `anchor`. The `gap` states what those locations do not establish. Existing
 narrative evidence remains useful context, including past acceptance claims.
 
@@ -80,16 +109,24 @@ source integrity from observed preview access.
 ## Criterion issues
 
 Each criterion can list the GitHub issues that track it in `issues:`, as issue
-numbers. When a change to a goal file reaches `main`, the `goal-issues` workflow
-runs `scripts/goal_issues.py --apply` on the changed goals:
+numbers. When a change reaches `main`, the `github-sync` workflow
+runs `ubiq sync github --apply` on every goal ([GitHub sync](../github-sync.md)):
 
-- A criterion that is not `met`, lists no `issues`, and has no issue with the
-  marker `<!-- ubiq-goal: <name> <AC> -->` gets a new issue. Its body quotes the
+- A criterion that is not `met`, lists no `issues`, has no issue with the
+  marker `<!-- ubiq-goal: <name> <AC> -->`, and has a `priority` (its own or its
+  goal's) gets a new issue. This repository sets `sync.create: prioritized`, so a
+  criterion without a priority waits until someone decides to schedule it. Its body quotes the
   criterion, its `gap`, and its cited checks, and gives the commands to verify it.
 - A criterion that is `met` closes its listed and marked issues that are still
   open, with a comment that names the review and the commit.
+- A listed number that is not an issue, such as a pull request or a typo, is
+  reported as a warning, and the workflow run fails after the other actions.
 
-The script never reopens an issue, edits a title, or touches other issues. On a
-pull request, the workflow prints the same plan read-only. Run
-`python3 scripts/goal_issues.py --dry-run --repo <owner>/<name> [goal files]` to
-see it locally. A manual run of the workflow syncs every goal.
+Only markers in issues opened by `github-actions[bot]` count, because anyone can
+write a marker into an issue. The sync never reopens an issue, edits a title,
+or touches other issues. On a pull request, CI prints the same plan
+read-only. Run `ubiq sync github --dry-run`
+to see it locally.
+
+Limits: deleting a goal file leaves its issues open. If someone closes a marked
+issue while its criterion is not `met`, the sync does not open a replacement.

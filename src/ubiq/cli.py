@@ -30,7 +30,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, coverage, query, review
+from . import __version__, coverage, query, readmes, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, at, run_checks
@@ -52,6 +52,7 @@ from .graph import (
 )
 from .kinds import KINDS
 from .overlap import find_overlap
+from .plan import cmd_plan
 from .records import (
     ConflictingGlossary,
     Glossary,
@@ -61,6 +62,7 @@ from .records import (
 )
 from .scan import Ref, file_link_targets, scan_docs
 from .schemas import assess_schemas
+from .sync import cmd_sync
 
 
 def _display_path(path: Path, root: Path) -> str:
@@ -207,7 +209,12 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
         for source, overlay in glossary.overlay_sources.items():
             trace.record(source, "overlay-source", source=overlay)
 
+    memberships, extra = readmes.declarations(cfg, glossary)
     doc_files = _expand(cfg.docs, cfg.ignore, trace, "docs")
+    for membership in memberships:
+        doc_files.append(membership.readme)
+        if trace is not None:
+            trace.record(membership.readme, "readme", source=membership.source)
     hist_files = _expand(cfg.historical, cfg.ignore, trace, "historical")
     hist_set = {p.resolve() for p in hist_files}
     # Sidecars are docs too, so their ref_fields (uses: [...]) participate.
@@ -220,7 +227,7 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
             trace.files[_display_path(path, root)]["scanned"] = True
     refs = scan_docs(doc_files, glossary, cfg, historical=hist_set, invalid=glossary.invalid)
 
-    extra: list[Diagnostic] = []
+    extra.extend(readmes.check_membership(cfg, glossary, memberships, refs, hist_set))
     catalog = cfg.policies["catalog"]
     for spec in cfg.catalogs:
         if trace is not None:
@@ -239,6 +246,25 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
         except CatalogError as e:
             extra.append(Diagnostic("E005", str(e), spec.file))
 
+    if cfg.schemas:
+        from .schemas import single_diagnostics, xref_refs
+        refs.extend(xref_refs(cfg))
+        from .step_refs import within_diagnostics
+        extra.extend(within_diagnostics(cfg))
+        extra.extend(single_diagnostics(cfg))
+    if cfg.sync is not None:
+        from .scenarios import diagnostics as scenario_diagnostics
+        from .schemas import load_data as _load
+        goals = []
+        for record in cfg.sync.records:
+            if record.kind != "goal":
+                continue
+            for path in sorted(record.glob.walk(cfg.ignore)):
+                try:
+                    goals.append((path, _load(path, frontmatter=True)))
+                except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, RecursionError):
+                    continue  # E009 reports it
+        extra.extend(scenario_diagnostics(goals))
     result.refs.extend(refs)
     result.diagnostics.extend(extra)
     result.docs.extend(doc_files)
@@ -466,10 +492,12 @@ def _check_build(result: Build) -> list[Diagnostic]:
                          if not path.resolve().is_relative_to(root))
     diags = result.diagnostics + run_checks(
         glossary, refs, cfg.external_id_patterns,
-        skip_unlinked=skip_mentions, unlinked_except=cfg.unlinked_except)
+        skip_unlinked=skip_mentions, unlinked_except=cfg.unlinked_except, lenient=cfg.lenient)
     if cfg.schemas:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))
+        from .cycles import check_cycles
+        diags.extend(check_cycles(cfg, glossary))
     if cfg.support:
         from .support_check import check_support
         diags.extend(check_support(cfg))
@@ -505,10 +533,12 @@ def _layout(cfg: Config, load: Callable[[Config, str], Glossary] | None = None,
                 raise InvalidConfig(f"dependency {dependency.name!r}: {glossary.invalid}")
             files = _installed(other)
             if dependency.revision:
-                docs = _close_docs(other.root, _expand(other.docs, other.ignore, None, "docs"),
-                                   other.ignore, None)
+                memberships, _ = readmes.declarations(other, glossary)
+                readme_files = [membership.readme for membership in memberships]
+                docs = _close_docs(other.root, [*_expand(other.docs, other.ignore), *readme_files],
+                                   other.ignore)
                 validate_checkout(dependency, other,
-                                  [*docs, *files, *(t.file for t in glossary.terms),
+                                  [*docs, *readme_files, *files, *(t.file for t in glossary.terms),
                                    *glossary.overlay_sources, *glossary.overlay_sources.values()])
         except GlobError as exc:
             if dependency.name is not None:
@@ -586,7 +616,17 @@ def cmd_graph(args) -> int:
     layout = built.layout
     edges = _composition_edges(built)
     if args.kind:
-        edges = [e for e in edges if e.kind in args.kind]
+        from .schemas import edge_names
+        known = {*GRAPH_KINDS, *built.config.ref_fields, *edge_names(built.config),
+                 *(e.kind for e in edges), *(e.name for e in edges if e.name)}
+        unknown = sorted(set(args.kind) - known)
+        if unknown:
+            print(f"error: unknown edge kind {', '.join(unknown)}; expected one of "
+                  f"{', '.join(sorted(known))}", file=sys.stderr)
+            return 2
+        # A kind selects its edges, and a field name selects the edges that field declares.
+        edges = [e for e in edges if e.kind in args.kind
+                 or (e.name in args.kind and e.name not in GRAPH_KINDS)]
     try:
         start = (_resolve_one(built.glossary, args.target, layout.repositories)
                  if args.target else None)
@@ -1136,11 +1176,44 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--root", default=".")
     g.add_argument("--json", action="store_true")
     g.add_argument("--callers", action="store_true", help="follow incoming edges")
-    g.add_argument("--kind", action="append", choices=GRAPH_KINDS,
-                   help="include this edge kind (repeat to select several)")
+    g.add_argument("--kind", action="append", metavar="KIND",
+                   help="include this edge kind, a ref_fields field, or an x-ubiq-ref edge name "
+                        "(repeat to select several)")
     g.add_argument("--depth", type=_positive, default=None,
                    help="stop after this many hops from the target (default: no limit)")
     g.set_defaults(fn=cmd_graph)
+
+    pl = sub.add_parser("plan", help="list ubiq's features in adoption order, or the next ones to adopt")
+    pl.add_argument("--root", default=".")
+    pl.add_argument("--json", action="store_true")
+    pl.add_argument("--next", action="store_true",
+                    help="only features not yet used whose requirements are met")
+    pl.add_argument("--used", action="append", metavar="FEATURE",
+                    help="count this feature as used (repeat); ubiq.yaml is read as well")
+    pl.add_argument("--features", metavar="DIR", help="feature records (default: ubiq's own)")
+    pl.set_defaults(fn=cmd_plan)
+
+    sy = sub.add_parser("sync", help="mirror records to a tracker")
+    targets = sy.add_subparsers(dest="target", required=True)
+    gh = targets.add_parser("github", help="mirror records to GitHub issues, or check that they match")
+    gh.add_argument("--root", default=".")
+    mode = gh.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="print the plan as JSON (default)")
+    mode.add_argument("--apply", action="store_true", help="perform the plan (needs GITHUB_TOKEN)")
+    mode.add_argument("--check", action="store_true",
+                      help="exit 1 when GitHub differs from the records; skips without GITHUB_TOKEN")
+    gh.add_argument("--ref", metavar="REV",
+                    help="read the records and ubiq.yaml as they are at REV (a pull request's base)")
+    gh.add_argument("--ignore-derived", action="store_true",
+                    help="with --check, do not count what waits only for the next sync of main: "
+                         "the derived `status: in review`/`status: in progress` labels and "
+                         "\"met at\" comments owed to issues closed by keyword")
+    gh.add_argument("--repo", metavar="OWNER/NAME",
+                    help="issue repository (default: sync.repo, then $GITHUB_REPOSITORY)")
+    gh.add_argument("--results", metavar="FILE",
+                    help="scenario outcomes from `pytest -p ubiq.pytest_plugin --ubiq-results FILE`; a criterion with "
+                         "`scenario: true` is met when its tagged scenarios passed")
+    gh.set_defaults(fn=cmd_sync)
 
     im = sub.add_parser("impact", help="records a change touches and the callers it affects")
     im.add_argument("--since", required=True, metavar="REV",

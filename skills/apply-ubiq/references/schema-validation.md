@@ -19,11 +19,13 @@ schemas:
 Frontmatter mode requires a YAML mapping between opening and closing `---` markers.
 All bindings that select a file apply to it.
 
-Schemas can share definitions through same-document fragment references.
+Schemas can share definitions through fragment references, in the same document or in
+another schema file of the repository, named relative to the referencing file
+(`"$ref": "tracking.json#/properties/pr"`). Ubiq copies each referenced file into the
+schema's `$defs` before validating, so every reference is checked as same-document.
 Fragments must select declared schema locations, such as `$defs`, `properties`, or `items`.
 Annotation data in `examples`, `default`, or `const` cannot be a schema target.
-External references, including remote URLs and other schema files, are unsupported and never fetched.
-Bundle shared definitions into one schema file. An omitted `$schema` selects Draft 2020-12.
+A file outside the repository and a remote URL are unsupported and never fetched. An omitted `$schema` selects Draft 2020-12.
 Other explicit dialects fail validation.
 
 The schema parser preserves JSON value types. YAML `true` and `false` are booleans,
@@ -91,6 +93,18 @@ Exclusions must identify registered sources. Stale exclusions and sources that
 are both represented and excluded fail. Upstream symlinks can be excluded without
 copying their records into the owned corpus. Coverage concerns registered sources;
 it does not discover every unregistered file in a repository.
+
+## Relationships declared in the schema
+
+A property that holds record names can say what they name. The annotation
+`"x-ubiq-ref": {"ns": "feature", "edge": "requires"}` (optional `acyclic` and
+`single`, booleans) on a string or string-list property makes each value resolve to a
+record in `ns` (E006 otherwise, at the field's line) and makes an edge named `edge`
+that `ubiq graph --kind requires` selects. An invalid annotation is E008. It applies
+to files bound with `format: frontmatter`. `ref_fields` keeps working; a top-level
+field that `ref_fields` already names is resolved once, by `ref_fields`.
+With `"within": "steps"` the values are instead keys of the file's top-level `steps`
+mapping (plan step `requires`); no edge is made.
 
 ## Errors and maintenance
 
