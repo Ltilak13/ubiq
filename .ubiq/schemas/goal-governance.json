@@ -45,6 +45,10 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "docs/policies/fact-homes.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "docs/goals/checkable-contracts-evidence-goal.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },

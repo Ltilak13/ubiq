@@ -63,6 +63,9 @@ one home.
 | Rationale | Prose | Vale for writing rules, plus Ubiq's own checks |
 | Diagrams | Generated from records, or checked against them | Ubiq (#59) |
 
+The [fact homes policy](../policies/fact-homes.md) states where each fact
+lives, when it gets its own file, and how derived files and diagrams stay current.
+
 Agents help write and maintain records. No check needs an agent to pass.
 
 ## Scope
