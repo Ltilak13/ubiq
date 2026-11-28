@@ -49,7 +49,7 @@ goals:
   source: docs/goals/no-code-spec-goal.md
   evidence:
   - path: docs/goals/no-code-spec-goal.md
-    sha256: 6df9eaedae57d71434e838f30231e78f8a21af5c208609d7bfd059431572c1a4
+    sha256: a4eeb56aca75ba4f691801588ea298d871e69ef5115f6c95433d9e0d1927ac97
     anchor: '# Goal: no-code specs'
 relationships:
 - id: goal-evidence-policy--governs--domain-schema-goal
