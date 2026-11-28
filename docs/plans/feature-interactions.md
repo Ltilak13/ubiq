@@ -12,10 +12,10 @@ steps:
     requires: [derive-interactions]
   detect-pr-collisions:
     issue: 159
-    requires: [report-change-impact]
+    requires: [report-change-impact, frontmatter-tracking/pr-stacks]
   map-breaking-changes:
     issue: 160
-    requires: [report-change-impact]
+    requires: [report-change-impact, no-code-dogfood/criterion-scenarios]
   declare-feature-conflicts:
     issue: 161
     requires: []
