@@ -234,7 +234,8 @@ def _unresolved(glossary: Glossary, r: Ref) -> str:
         return f"unresolved id '{r.name}' — no record carries id: {r.name}"
     if r.kind in ("field", "catalog"):
         label = "catalog entry" if r.kind == "catalog" else "field ref"
-        return f"unresolved {label} '{r.raw}' — no record with that id or name"
+        scope = f" in namespace '{r.ns}'" if r.ns else ""
+        return f"unresolved {label} '{r.raw}' — no record with that id or name{scope}"
     scope = f" in namespace '{r.ns}'" if r.ns else ""
     hint = ""
     if r.kind == "explicit":

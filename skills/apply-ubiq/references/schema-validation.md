@@ -92,6 +92,16 @@ are both represented and excluded fail. Upstream symlinks can be excluded withou
 copying their records into the owned corpus. Coverage concerns registered sources;
 it does not discover every unregistered file in a repository.
 
+## Relationships declared in the schema
+
+A property that holds record names can say what they name. The annotation
+`"x-ubiq-ref": {"ns": "feature", "edge": "requires"}` (optional `acyclic` and
+`single`, booleans) on a string or string-list property makes each value resolve to a
+record in `ns` (E006 otherwise, at the field's line) and makes an edge named `edge`
+that `ubiq graph --kind requires` selects. An invalid annotation is E008. It applies
+to files bound with `format: frontmatter`. `ref_fields` keeps working; a top-level
+field that `ref_fields` already names is resolved once, by `ref_fields`.
+
 ## Errors and maintenance
 
 | Code | Meaning |

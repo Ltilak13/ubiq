@@ -7,6 +7,9 @@ Edge kinds:
              depending on it ("not for X; use Y"). Walks show it but stop there.
   reference — a configured field names an informational example or comparison.
               Walks show it but stop there.
+  <edge>   — a schema property annotated `x-ubiq-ref` names a record in a namespace;
+             the edge kind is the annotation's `edge` name (xref.py). Shown in walks,
+             not followed.
   include  — a Markdown link to a record in a shared-part namespace, or one that
              lands, once installed, on another repository's record. Derived from
              the link, so authors don't declare the dependency twice.
@@ -47,6 +50,7 @@ class Edge:
     target: Term
     file: Path  # where the edge is declared or linked
     line: int
+    name: str = ""  # the frontmatter field that declares it, when one does
 
 
 def owners(glossary: Glossary, root: Path,
@@ -84,6 +88,8 @@ def owners(glossary: Glossary, root: Path,
 
 
 def _kind(r: Ref, edges: EdgeConfig) -> str | None:
+    if r.edge:
+        return r.edge
     if r.kind == "field":
         name = r.raw.split(":", 1)[0]
         if name in edges.invoke_fields:
@@ -115,8 +121,9 @@ def build_edges(glossary: Glossary, refs: list[Ref], edges: EdgeConfig, root: Pa
         source = owner(r.file)
         if source is None or (source is target and kind != "include"):
             continue
-        key = (kind, id(source), id(target), r.file, r.line)
-        found.setdefault(key, Edge(kind, source, target, r.file, r.line))
+        name = r.raw.split(":", 1)[0] if r.kind == "field" else ""
+        key = (kind, id(source), id(target), r.file, r.line, name)
+        found.setdefault(key, Edge(kind, source, target, r.file, r.line, name))
     return list(found.values())
 
 

@@ -9,8 +9,9 @@ transport.
 
 Each mirrored fact is one function in `FACTS`: given a desired item and the
 issues that track it, return the actions that make GitHub match. A later fact
-(priority label, blocked-by link, sub-issue) adds one function there and one
-handler in `GitHub.handlers`; the matching, drift, and CLI code do not change.
+(blocked-by link, sub-issue) adds one function there and one handler in
+`GitHub.handlers`; the matching, drift, and CLI code do not change. `fact_priority`
+is the model: it mirrors `priority` as one `<sync.label_prefix>Pn` label.
 
 Current behavior, from the goal-issue script this generalizes: the sync creates
 issues and closes issues that a criterion lists in `issues:` or that carry its
@@ -28,6 +29,8 @@ import sys
 import tempfile
 import textwrap
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -44,6 +47,8 @@ BOT = 'github-actions[bot]'
 MARKER_RE = re.compile(r'<!-- (ubiq-[a-z]+: [^>]+?) -->')
 CLOSED_MARKER = '<!-- ubiq-goal-closed: {name} {ac} -->'
 
+DEFAULT_LABEL_PREFIX = 'priority: '
+
 Action = dict[str, Any]
 Issue = Mapping[str, Any]
 
@@ -58,8 +63,9 @@ class Desired:
 
     `ident` is copied into every action about the item. `marker` is the text
     inside the generated body marker that finds the issue again. `state` is
-    `closed` when the record is done, else `open`. Later tickets add fields here
-    (priority, requires, part_of) and one fact function each.
+    `closed` when the record is done, else `open`. `priority` (`P1`, `P2`, `P3`, or
+    empty when the record sets none) is mirrored as the label `label_prefix + priority`.
+    Later tickets add fields here (requires, part_of) and one fact function each.
     """
     kind: str
     ident: Mapping[str, str]
@@ -69,6 +75,8 @@ class Desired:
     state: str
     listed: tuple[int, ...] = ()
     close_comment: str = ''
+    priority: str = ''
+    label_prefix: str = DEFAULT_LABEL_PREFIX
 
 
 # -- desired state: records -> Desired ---------------------------------------------
@@ -100,8 +108,12 @@ def load_goal(path: Path, root: Path) -> dict[str, Any]:
         raise SyncError(f"{path}: not a readable goal ({exc})") from exc
 
 
-def goal_desired(goal: Mapping[str, Any], sha: str = '') -> list[Desired]:
-    """One `Desired` per criterion: open until the criterion is `met`, then closed."""
+def goal_desired(goal: Mapping[str, Any], sha: str = '',
+                 label_prefix: str = DEFAULT_LABEL_PREFIX) -> list[Desired]:
+    """One `Desired` per criterion: open until the criterion is `met`, then closed.
+
+    A criterion's `issue` is tracked like each number in its `issues` list.
+    """
     items = []
     for ac, criterion in goal['criteria'].items():
         marker = f"ubiq-goal: {goal['name']} {ac}"
@@ -118,7 +130,10 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '') -> list[Desired]:
             title=textwrap.shorten(f"{goal['name']} {ac}: {title}", 200),
             body=_goal_body(goal, ac, criterion, marker),
             state='closed' if met else 'open',
-            listed=tuple(criterion.get('issues', [])), close_comment=comment))
+            listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
+                                                                       if 'issue' in criterion else [])])),
+            close_comment=comment, priority=criterion.get('priority', ''),
+            label_prefix=label_prefix))
     return items
 
 
@@ -129,7 +144,7 @@ def desired_from_config(cfg: Config, sha: str = '') -> list[Desired]:
     for record in cfg.sync.records:
         for path in sorted(record.glob.walk(cfg.ignore)):
             if record.kind == 'goal':
-                items += goal_desired(load_goal(path, cfg.root), sha)
+                items += goal_desired(load_goal(path, cfg.root), sha, cfg.sync.label_prefix)
     return items
 
 
@@ -149,7 +164,9 @@ def fact_exists(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issu
     """An open record needs an issue; create one when none tracks it."""
     if tracked or item.state != 'open':
         return []
-    return [{'action': 'create', **item.ident, 'title': item.title, 'body': item.body}]
+    labels = [item.label_prefix + item.priority] if _mirrors_priority(item) else []
+    return [{'action': 'create', **item.ident, 'title': item.title, 'body': item.body,
+             **({'labels': labels} if labels else {})}]
 
 
 def fact_state(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
@@ -160,9 +177,43 @@ def fact_state(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue
             for n in tracked if issues.get(n, {}).get('state') == 'open']
 
 
+def _mirrors_priority(item: Desired) -> bool:
+    # An empty prefix would own every label, so it owns none.
+    return bool(item.priority and item.label_prefix.strip())
+
+
+def _label_names(issue: Issue) -> list[str]:
+    return [label['name'] if isinstance(label, Mapping) else str(label)
+            for label in issue.get('labels') or []]
+
+
+def fact_priority(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
+    """An open issue carries exactly one label with the prefix: `label_prefix + priority`.
+
+    Only labels that start with the prefix are added or removed; every other label is
+    left alone, and so is the issue when the record sets no `priority`. A label that
+    someone changed on GitHub is a `label` action, which is drift. Names compare
+    without regard to case, as GitHub does.
+    """
+    if not _mirrors_priority(item) or item.state != 'open':
+        return []
+    prefix, want = item.label_prefix.casefold(), (item.label_prefix + item.priority)
+    actions: list[Action] = []
+    for n in tracked:
+        issue = issues.get(n)
+        if issue is None or issue.get('state') != 'open':
+            continue
+        names = _label_names(issue)
+        remove = [x for x in names if x.casefold().startswith(prefix) and x.casefold() != want.casefold()]
+        add = [] if any(x.casefold() == want.casefold() for x in names) else [want]
+        if add or remove:
+            actions.append({'action': 'label', **item.ident, 'issue': n, 'add': add, 'remove': remove})
+    return actions
+
+
 # Each mirrored fact: (item, tracked issue numbers, issues by number) -> actions.
 FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action]], ...] = (
-    fact_exists, fact_state)
+    fact_exists, fact_state, fact_priority)
 
 
 def plan(desired: Iterable[Desired], snapshot: Sequence[Issue]) -> list[Action]:
@@ -218,7 +269,7 @@ class GitHub:
         self.repo, self.token, self.transport, self.pause = repo, token, transport, pause
         self.base = f'https://api.github.com/repos/{repo}/issues'
         self.handlers: dict[str, Callable[[Action], None]] = {
-            'create': self._create, 'close': self._close}
+            'create': self._create, 'close': self._close, 'label': self._label}
 
     def _call(self, method: str, url: str, payload: dict | None = None) -> Any:
         return self.transport(method, url, self.token, payload)
@@ -235,8 +286,22 @@ class GitHub:
             page += 1
 
     def _create(self, action: Action) -> None:
-        issue = self._call('POST', self.base, {'title': action['title'], 'body': action['body']})
+        payload = {'title': action['title'], 'body': action['body']}
+        if action.get('labels'):
+            payload['labels'] = action['labels']
+        issue = self._call('POST', self.base, payload)
         action['issue'] = issue['number']
+
+    def _label(self, action: Action) -> None:
+        url = f"{self.base}/{action['issue']}/labels"
+        for name in action['remove']:
+            try:
+                self._call('DELETE', f"{url}/{urllib.parse.quote(name, safe='')}")
+            except urllib.error.HTTPError as exc:
+                if exc.code != 404:  # already gone is the state we want
+                    raise
+        if action['add']:
+            self._call('POST', url, {'labels': action['add']})
 
     def _close(self, action: Action) -> None:
         url = f"{self.base}/{action['issue']}"
