@@ -3,12 +3,19 @@ name: no-code-spec-goal
 status: proposed
 criteria:
   AC1:
-    assessment: unassessed
-    support: []
-    gap: No implementation is merged. Diagrams have no checked home yet (#59).
+    assessment: partial
+    support:
+    - feature: graph-blocks
+      implementation:
+        path: src/ubiq/mermaid.py
+        anchor: def check(
+      check:
+        path: tests/test_mermaid.py
+        anchor: def test_matching_block_is_clean_and_stale_block_warns_with_line(
+    gap: Diagrams (#59), values and contracts (schema bindings), and relationships have a home and a named check. Behavior has no `.feature.md` home inside a record yet (goal scenarios sit in a `<goal>.feature` file beside the goal), and the rationale check (Vale) runs only on the sample repository, not on Ubiq's own prose. No review has judged the whole criterion.
     issues: [59]
   AC2:
-    assessment: partial
+    assessment: met
     support:
     - feature: no-code-checks
       implementation:
@@ -17,14 +24,41 @@ criteria:
       check:
         path: tests/test_no_code_checks.py
         anchor: def test_sample_passes_ubiq_check(
-    gap: The test runs only ubiq check. The no-code-checks workflow runs cue vet, vale, and cucumber on the sample in CI. The pre-commit config is not executed in CI. A reviewer must confirm the workflow run passes and the recipe matches the sample.
+    - feature: no-code-checks
+      implementation:
+        path: examples/no-code-checks/.pre-commit-config.yaml
+        anchor: 'id: cue-vet'
+      check:
+        path: .github/workflows/no-code-checks.yml
+        anchor: npm run cucumber
+    gap: None remaining.
+    review:
+      by: Claude Code agent (automated review; no human has confirmed it)
+      note: "Read docs/no-code-checks.md against examples/no-code-checks: the sample's .pre-commit-config.yaml is the recipe's, and the workflow runs ubiq check, cue vet, vale, npm run cucumber, then pre-commit run --all-files on the sample as a standalone repository, with no agent. The latest run of that workflow on main (160f1bf, the last commit to touch those files) succeeded at every step."
+      at: 188779d886f4ce55829d05e17e1e764b48c9c7f6
+      date: '2026-11-28'
+    issues: [72]
   AC3:
-    assessment: unassessed
-    support: []
-    gap: Restated-value warnings (PR #60) and checked field links (PR #61) are open, unmerged pull requests. Prose-first values (#63) and READMEs composed from record fields (#65) depend on #61.
+    assessment: partial
+    support:
+    - feature: restated-values
+      implementation:
+        path: src/ubiq/overlap.py
+        anchor: def find_overlap(
+      check:
+        path: tests/test_restated.py
+        anchor: def test_reports_each_restated_field_once_outside_code_and_links(
+    - feature: field-links
+      implementation:
+        path: src/ubiq/kinds.py
+        anchor: 'Policy("value", "value", by_file, "E013", Context.COMMENT)'
+      check:
+        path: tests/test_field_values.py
+        anchor: def test_stale_null_and_non_text_fields_fail(
+    gap: Restated-value warnings (PR #60) and checked field links that fail when stale (PR #61) are merged. A field link cannot yet declare its own field (#63 is open), which the criterion requires.
     issues: [63, 65]
   AC4:
-    assessment: partial
+    assessment: met
     support:
     - feature: criterion-scenarios
       implementation:
@@ -33,7 +67,19 @@ criteria:
       check:
         path: tests/test_criterion_scenarios.py
         anchor: def test_a_passing_scenario_closes_the_criterion_issue(
-    gap: Goal criteria link to tagged scenarios, and passing results on main meet them (#67). Spec records other than goals have no scenario binding, and names inside fenced blocks are not checked (#66).
+    - feature: field-links
+      implementation:
+        path: src/ubiq/scan.py
+        anchor: def _blank_fences(
+      check:
+        path: tests/test_fences.py
+        anchor: def test_configured_fences_check_field_names_and_count_term_uses(
+    gap: None remaining.
+    review:
+      by: Claude Code agent (automated review; no human has confirmed it)
+      note: "Goal criteria bind to tagged Gherkin scenarios and a missing or unknown tag is E016 (tests/test_criterion_scenarios.py); the sync meets a criterion only from passing scenario results on main (#67). Configured fences check field names (E013) and count term uses, and unconfigured fences stay unscanned (tests/test_fences.py, #66). Spec records other than goals have no scenario binding, which the criterion does not ask for."
+      at: 188779d886f4ce55829d05e17e1e764b48c9c7f6
+      date: '2026-11-28'
     issues: [66, 67]
   AC5:
     assessment: unassessed
@@ -41,9 +87,28 @@ criteria:
     gap: No controlled vocabulary record type or Vale rule export exists (#68).
     issues: [68]
   AC6:
-    assessment: unassessed
-    support: []
-    gap: Ubiq's features are not records, and no adoption order is derived from their dependencies (#70).
+    assessment: met
+    support:
+    - feature: feature-planning
+      implementation:
+        path: src/ubiq/plan.py
+        anchor: def order(
+      check:
+        path: tests/test_plan.py
+        anchor: def test_shipped_features_form_a_valid_order(
+    - feature: feature-planning
+      implementation:
+        path: src/ubiq/plan.py
+        anchor: def next_steps(
+      check:
+        path: tests/test_plan.py
+        anchor: def test_plan_next_for_a_repo_using_some_features(
+    gap: None remaining.
+    review:
+      by: Claude Code agent (automated review; no human has confirmed it)
+      note: "Every Ubiq feature is a record in src/ubiq/features (name, requires, codes, docs, summary), checked by a schema; `ubiq plan` orders them by requires and `--next` lists the ones whose requirements a repository already meets (tests/test_plan.py). The shipped records form a valid order, a missing requirement or cycle fails, and each record's codes and docs match the spec."
+      at: 188779d886f4ce55829d05e17e1e764b48c9c7f6
+      date: '2026-11-28'
     issues: [70]
   AC7:
     assessment: unassessed
@@ -123,13 +188,19 @@ link tracks the work. The criterion's assessment records whether it holds.
 ```mermaid
 flowchart TD
   goal["no-code-spec-goal"]
-  ac6["AC6 (unassessed)"]
+  ac6["AC6 (met)"]
   goal -->|criterion| ac6
   issue_70["Tracking issue #35;70"]
   ac6 -->|tracked by| issue_70
   click issue_70 "https://github.com/Ltilak13/ubiq/issues/70"
-  evidence["No evidence recorded"]
-  ac6 -.-> evidence
+  feature_1["feature-planning"]
+  check_1["tests/test_plan.py#35;def test_shipped_features_form_a_valid_order("]
+  ac6 -->|supported by| feature_1
+  feature_1 -->|cites| check_1
+  feature_2["feature-planning"]
+  check_2["tests/test_plan.py#35;def test_plan_next_for_a_repo_using_some_features("]
+  ac6 -->|supported by| feature_2
+  feature_2 -->|cites| check_2
 ```
 <!-- /ubiq:dogfood-diagram -->
 
