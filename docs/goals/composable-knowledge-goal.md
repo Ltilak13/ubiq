@@ -3,7 +3,7 @@ name: composable-knowledge-goal
 status: active
 criteria:
   AC1:
-    assessment: partial
+    assessment: met
     support:
     - feature: composition-edges
       implementation:
@@ -12,8 +12,23 @@ criteria:
       check:
         path: tests/test_graph.py
         anchor: def test_invoke_and_include_edges_with_callers(
-    gap: Existing tests support this criterion. This migration does not re-audit the complete
-      goal.
+    - feature: composition-edges
+      implementation:
+        path: ubiq.yaml
+        anchor: 'ns: part'
+      check:
+        path: tests/test_graph.py
+        anchor: def test_registering_parts_needs_only_config_and_a_moved_part_breaks_its_links(
+    gap: None for the acceptance text. Paths written in code spans are not links, so they are
+      not checked references (see Open).
+    review:
+      by: Claude (agent review requested by Ltilak13)
+      note: Ran both cited tests at the recorded commit. A glossary rule with ns part registers
+        the parts with no code change; ubiq refs lists every linking skill; moving the part
+        turns each link into E002; graph shows each link as an include edge. This repository
+        registers skills/references/*.md the same way and passes ubiq check.
+      at: f46df0cb822ae0fcf8ffa854c825dded25f28b2f
+      date: '2026-11-28'
   AC2:
     assessment: partial
     support:
