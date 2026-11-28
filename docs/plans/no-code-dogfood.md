@@ -93,3 +93,47 @@ to create issues for the steps that have none (`cli-spec-slice`,
 implements the step, once it is open. Workflow status is not stored here: an open pull
 request means the step is in review, and a merged one means it is done. Record the current
 blocker, next action, and evidence for a step in the pull request that changes them.
+
+<details>
+<summary>Dependency diagram</summary>
+
+Arrows point from prerequisites to the steps they unlock. Ticketed steps link
+to their GitHub issues. Refresh this view with
+`python scripts/dogfood_diagrams.py --write`.
+
+<!-- ubiq:dogfood-diagram -->
+```mermaid
+flowchart LR
+  step_1["cli-spec-slice"]
+  step_2["feature-records (#35;70)"]
+  click step_2 "https://github.com/Ltilak13/ubiq/issues/70"
+  step_3["mermaid-drift (#35;59)"]
+  click step_3 "https://github.com/Ltilak13/ubiq/issues/59"
+  step_4["no-code-authoring-proof"]
+  step_5["plan-record (#35;124)"]
+  click step_5 "https://github.com/Ltilak13/ubiq/issues/124"
+  step_6["readme-generation (#35;173)"]
+  click step_6 "https://github.com/Ltilak13/ubiq/issues/173"
+  step_7["readme-membership (#35;65)"]
+  click step_7 "https://github.com/Ltilak13/ubiq/issues/65"
+  step_8["release-adoption-smoke-test (#35;163)"]
+  click step_8 "https://github.com/Ltilak13/ubiq/issues/163"
+  step_9["reusable-issue-sync (#35;112)"]
+  click step_9 "https://github.com/Ltilak13/ubiq/issues/112"
+  step_10["starter (#35;111)"]
+  click step_10 "https://github.com/Ltilak13/ubiq/issues/111"
+  step_11["tracking-proof"]
+  step_7 --> step_1
+  step_2 --> step_3
+  step_1 --> step_4
+  step_7 --> step_6
+  step_2 --> step_7
+  step_2 --> step_8
+  step_11 --> step_9
+  step_11 --> step_10
+  step_1 --> step_11
+  step_3 --> step_11
+```
+<!-- /ubiq:dogfood-diagram -->
+
+</details>
