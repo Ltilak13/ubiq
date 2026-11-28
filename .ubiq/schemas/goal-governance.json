@@ -181,6 +181,10 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "src/ubiq/features/graph-blocks.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "src/ubiq/features/id-references.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
