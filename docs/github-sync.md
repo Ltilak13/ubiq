@@ -240,7 +240,8 @@ only be an issue"), so it becomes text.
   a `requires` entry is one action in the dry run, and a link added by hand is reported
   and removed by `--apply`.
 - The snapshot reads an issue's links (GET `.../blocked_by`) only when its
-  `issue_dependencies_summary.blocked_by` is above zero.
+  `issue_dependencies_summary.total_blocked_by` is above zero (`blocked_by` counts open
+  blockers only, so it would hide a link to a closed issue).
 - `fact_blocked_line` plans a `body` action that writes one line, `Blocked by: #12, #15
   (pull requests, generated from requires)`, between `<!-- ubiq-blocked-by:begin -->` and
   `<!-- ubiq-blocked-by:end -->`. The section is appended when missing, replaced in
@@ -327,8 +328,13 @@ item, with the marker `<!-- ubiq-plan: <plan> <step> -->`.
 - A plan with status `proposed` or `abandoned` mirrors nothing. A `done` plan closes the
   open issues of its steps. An `active` plan never closes or reopens anything: a step's
   issue closes with its pull request.
-- Each step's issue becomes a sub-issue of the plan's issue. The step's
-  `requires_markers` identify the other steps it waits on.
+- Each step's issue becomes a sub-issue of the plan's issue. The step's `requires` are
+  mirrored like a criterion's (see [Requires](#requires)): a required step with an
+  `issue`, in this plan or another (`<plan>/<step>`), becomes a blocked-by link on the
+  step's open issue. A step that has only a `pr` makes no link. An active plan is
+  compared with GitHub, so a link added by hand is drift. A `proposed` plan mirrors
+  nothing, so its links are not compared. The step's `requires_markers` identify the
+  other steps it waits on.
 - A step's `priority` is optional. A step without one takes the plan's (see
   [Priority inheritance](#priority-inheritance)).
 

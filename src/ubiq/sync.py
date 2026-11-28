@@ -377,8 +377,13 @@ def _step_body(plan_record: Mapping[str, Any], step: str, spec: Mapping[str, Any
             f"that changes them.\n\n<!-- {marker} -->\n")
 
 
-def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LABEL_PREFIX) -> list[Desired]:
+def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LABEL_PREFIX,
+                 step_issues: Mapping[str, int] | None = None) -> list[Desired]:
     """One `Desired` per plan step, a sub-issue of the plan's issue that waits on its `requires`.
+
+    `requires` becomes `Desired.requires` (`fact_requires` mirrors it as blocked-by links).
+    A step of this plan resolves to its `issue`; `<plan>/<step>` resolves through
+    `step_issues` (`<plan>/<step>` -> issue). A required step with no issue makes no link.
 
     A `proposed` or `abandoned` plan mirrors nothing, and a `done` plan closes its issues.
     A step without its own `priority` takes the plan's (`resolve_priority`).
@@ -402,6 +407,9 @@ def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LAB
         requires_markers=tuple(_step_marker(r, tracked, marker_of)
                                for r in spec.get('requires', [])
                                if r in tracked or '/' in r),
+        requires=tuple(dict.fromkeys(
+            n for r in spec.get('requires', [])
+            if (n := steps[r].get('issue') if r in steps else (step_issues or {}).get(r)))),
         parent=plan_record['name'], parent_issue=plan_record['issue'],
         branch=spec.get('branch', ''), prs=xref.pr_numbers(spec.get('pr', []))) for name, spec in tracked.items()]
 
@@ -565,13 +573,16 @@ def desired_from_config(cfg: Config, sha: str = '',
         items += goal_desired(goal, sha, cfg.sync.label_prefix, numbers, pulls, goal_issues,
                               prioritized_only=cfg.sync.create == 'prioritized', results=results)
     items += goal_issue_desired(goals, sha, results)
+    plans = [load_plan(path, cfg.root) for record in cfg.sync.records if record.kind == 'plan'
+             for path in sorted(record.glob.walk(cfg.ignore))]
+    step_issues = {f"{p['name']}/{step}": spec['issue'] for p in plans for step, spec in p['steps'].items()
+                   if spec.get('issue')}
+    for plan_record in plans:
+        items += plan_issue_desired(plan_record, cfg.sync.label_prefix)
+        items += plan_desired(plan_record, cfg.sync.label_prefix, step_issues)
     for record in cfg.sync.records:
         for path in sorted(record.glob.walk(cfg.ignore)):
-            if record.kind == 'plan':
-                plan_record = load_plan(path, cfg.root)
-                items += plan_issue_desired(plan_record, cfg.sync.label_prefix)
-                items += plan_desired(plan_record, cfg.sync.label_prefix)
-            elif record.kind == 'feature':
+            if record.kind == 'feature':
                 items += feature_desired(load_feature(path, cfg.root), sha, cfg.sync.label_prefix)
     return items + _part_of_records(cfg)
 
@@ -1222,8 +1233,12 @@ class GitHub:
             self._call('POST', f'{url}/comments', {'body': action['comment']})
 
     def _with_links(self, issue: dict) -> dict:
-        """`issue` plus `blocked_by`: the issues that block it, read only when it has any."""
-        if not (issue.get('issue_dependencies_summary') or {}).get('blocked_by'):
+        """`issue` plus `blocked_by`: the issues that block it, read only when it has any.
+
+        The summary's `blocked_by` counts open blockers only; `total_blocked_by` includes closed ones.
+        """
+        summary = issue.get('issue_dependencies_summary') or {}
+        if not (summary.get('total_blocked_by') or summary.get('blocked_by')):
             return issue
         links: list[Issue] = []
         page = 1

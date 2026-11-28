@@ -130,6 +130,14 @@ def test_snapshot_reads_links_only_for_issues_that_have_them():
     assert len(fake.calls) == 2
 
 
+def test_snapshot_reads_links_to_closed_blockers_too():
+    # `blocked_by` counts open blockers only; `total_blocked_by` includes closed ones.
+    page = [{"number": 7, "issue_dependencies_summary": {"blocked_by": 0, "total_blocked_by": 1}}]
+    fake = Fake({("GET", "?state=all&per_page=100&page=1"): page,
+                 ("GET", "/7/dependencies/blocked_by?per_page=100&page=1"): [{"number": 11, "id": 1011}]})
+    assert GitHub("o/r", "t", fake, 0).snapshot()[0]["blocked_by"] == [{"number": 11, "id": 1011}]
+
+
 def test_apply_posts_and_deletes_links_and_patches_the_body():
     fake = Fake()
     done = []

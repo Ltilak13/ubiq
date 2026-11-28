@@ -58,6 +58,12 @@ def test_repository_plans_are_in_the_glossary_namespace_and_sync_records():
     assert {d.ident["plan"] for d in desired_from_config(cfg) if d.kind == "plan-step"} == {"frontmatter-tracking"}
 
 
+def test_repository_step_requires_resolve_to_issue_numbers():
+    steps = {d.ident["step"]: d for d in desired_from_config(load_config(ROOT)) if d.kind == "plan-step"}
+    assert steps["requires-links"].requires == (120,)
+    assert steps["sync-github"].requires == (70,)  # `goal-issue-hardening` has a pr and no issue
+
+
 # -- ubiq check over a plan --------------------------------------------------------
 
 PLAN = """---
@@ -178,12 +184,43 @@ def test_step_with_only_a_pr_is_tracked_by_the_pr():
     assert after.requires_markers == ()
 
 
+def blocked_step(number, *links):
+    return {**bot_issue(number, "second" if number == 12 else "first"), "id": 1000 + number,
+            "blocked_by": [{"number": n, "id": 1000 + n} for n in links]}
+
+
+def test_step_requires_become_blocked_by_links_through_fact_requires():
+    first, second = plan_desired(record())
+    assert first.requires == () and second.requires == (11,)
+    issues = [plan_parent(11, 12), {**issue(11), "id": 1011}, {**bot_issue(12, "second"), "id": 1012}]
+    [link] = [a for a in plan([first, second], issues) if a["action"] == "link"]
+    assert link == {"action": "link", "plan": "demo", "step": "second", "issue": 12,
+                    "blocked_by": 11, "issue_id": 1011}
+    synced = [plan_parent(11, 12), {**issue(11), "id": 1011}, blocked_step(12, 11)]
+    assert {a["action"] for a in plan([first, second], synced)} == {"noop"}
+
+
+def test_a_hand_added_blocked_by_link_on_a_step_is_drift():
+    first, second = plan_desired(record())
+    synced = [plan_parent(11, 12), {**issue(11), "id": 1011}, blocked_step(12, 11, 99)]
+    [unlink] = [a for a in plan([first, second], synced) if a["action"] == "unlink"]
+    assert (unlink["step"], unlink["blocked_by"]) == ("second", 99) and drift([unlink])
+
+
+def test_a_step_requiring_a_step_of_another_plan_resolves_its_issue():
+    steps = {"only": {"issue": 11, "requires": ["other/done"]}}
+    [step] = plan_desired(record(steps=steps), step_issues={"other/done": 42, "other/x": 43})
+    assert step.requires == (42,)
+    [unresolved] = plan_desired(record(steps=steps))
+    assert unresolved.requires == ()
+
+
 def test_step_without_an_issue_is_created_once():
     [noop, create] = plan(plan_desired(record()), [plan_parent(11), issue(11)])
     assert create["action"] == "create" and create["step"] == "second"
     assert "<!-- ubiq-plan: demo second -->" in create["body"] and noop["action"] == "noop"
-    assert [a["action"] for a in plan(plan_desired(record()), [plan_parent(11, 12), issue(11), bot_issue(12, "second")])] \
-        == ["noop", "noop"]
+    assert [a["action"] for a in plan(plan_desired(record()), [plan_parent(11, 12), {**issue(11), "id": 1011},
+                                                        blocked_step(12, 11)])] == ["noop", "noop"]
 
 
 def test_proposed_and_abandoned_plans_mirror_nothing():

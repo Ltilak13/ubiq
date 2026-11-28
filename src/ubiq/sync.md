@@ -199,13 +199,14 @@ symbols:
     feature: plan-records
     term: plan desired
     form: bound
-    scenarios: [tests/test_plan_records.py::test_each_step_is_an_item_with_its_links]
+    scenarios: [tests/test_plan_records.py::test_each_step_is_an_item_with_its_links, tests/test_plan_records.py::test_step_requires_become_blocked_by_links_through_fact_requires]
     params:
       type: object
       additionalProperties: false
       properties:
         plan_record: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Mapping[str, Any]"}
         label_prefix: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "DEFAULT_LABEL_PREFIX"}
+        step_issues: {"x-python-kind": "positional-or-keyword", "x-python-type": "Mapping[str, int] | None", "x-python-default": "None"}
       required: ["plan_record"]
     result: {"type": "array", "x-python-type": "list[Desired]"}
     errors: false
