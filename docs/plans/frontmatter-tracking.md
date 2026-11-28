@@ -95,6 +95,7 @@ steps:
     requires: [sync-github, plan-records]
     branch: claude/ecstatic-mendel-nkgz6t-decision-records
     base: claude/ecstatic-mendel-nkgz6t-plan-records
+    pr: 170
   base-code-drift:
     issue: 171
     requires: [sync-github]
