@@ -17,6 +17,9 @@ steps:
     branch: claude/ecstatic-mendel-nkgz6t-issue-70
     base: main
     pr: 116
+  release-adoption-smoke-test:
+    issue: 163
+    requires: [feature-records]
   mermaid-drift:
     issue: 59
     requires: [feature-records]
@@ -57,6 +60,8 @@ to create issues for the steps that have none (`cli-spec-slice`,
 - `plan-record`: add this plan and link it from the goal and #113 (#124).
 - `feature-records`: model one real ubiq feature and its prerequisite as records, and
   link a goal criterion to the feature, a test, and an issue (#70).
+- `release-adoption-smoke-test`: install the built wheel and verify that `ubiq plan --next`
+  advances after one adoption step (#163).
 - `mermaid-drift` and `readme-membership`: generated Mermaid drift check (#59) and the
   README membership check (#65). Both need the feature relationships, and they can
   proceed independently.
