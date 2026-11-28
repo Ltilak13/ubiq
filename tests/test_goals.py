@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GOALS = (
     "domain-schema", "composable-knowledge", "human-agent-readability",
     "checkable-contracts-evidence", "safe-adoption-evolution", "no-code-spec",
+    "code-records",
 )
 SCHEMA = load_data(ROOT / '.ubiq/schemas/goal.json')
 
