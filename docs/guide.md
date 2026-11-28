@@ -296,6 +296,8 @@ becomes a record or an alias is left to the
 Use the bundled GitHub Action (`uses: Ltilak13/ubiq@main`) or the
 [pre-commit](https://pre-commit.com) hook in `.pre-commit-hooks.yaml`; Markdown, YAML, and JSON changes trigger it.
 The [integration skill](../skills/apply-ubiq/SKILL.md) covers setup in another repo.
+The [no-code checks recipe](no-code-checks.md) combines `ubiq check` with `cue vet`,
+`vale`, and `cucumber` in pre-commit and CI.
 
 `coverage` measures typed metadata over the files a `coverage:` section
 selects. List the asset families you own, give every exclusion a reason, and
