@@ -37,6 +37,21 @@ symbols:
       required: ["kind", "ident", "marker", "title", "body", "state"]
     result: {}
     errors: false
+  resolve_priority:
+    id: symbol:ubiq.sync.resolve_priority
+    feature: tracking-fields
+    term: resolve priority
+    form: bound
+    scenarios: [tests/test_priority_inheritance.py::test_resolve_priority_prefers_the_item]
+    params:
+      type: object
+      additionalProperties: false
+      properties:
+        item: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Mapping[str, Any]"}
+        container: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Mapping[str, Any]"}
+      required: ["item", "container"]
+    result: {"type": "string", "x-python-type": "str"}
+    errors: false
   load_goal:
     id: symbol:ubiq.sync.load_goal
     feature: github-sync
@@ -293,6 +308,10 @@ Failure to read a sync input or revision.
 ## `Desired`
 
 One item that should be mirrored to GitHub.
+
+## `resolve_priority`
+
+Use the item's priority if present and otherwise inherit its container's priority.
 
 ## `load_goal`
 

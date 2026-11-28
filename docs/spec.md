@@ -665,7 +665,8 @@ each `feature` in the feature namespace. See the records for
 The `symbols` map uses the declaration name as its key, including `Class.method`
 for methods. Each entry carries an ID of the form `symbol:package.module.name`,
 one owning `feature`, a vocabulary `term`, a `form`, and a list of `scenarios`.
-`params`, `result`, and `errors` are Draft 2020-12 JSON Schemas. `params` is an
+`params`, `result`, and `errors` are Draft 2020-12 JSON Schemas. Their references
+must resolve within the same contract. `params` is an
 object schema with `properties` in signature order and `required` for parameters
 without defaults. Parameter schemas use `x-python-kind`, `x-python-default`,
 and `x-python-type` to capture Python calling conventions, default expressions,
@@ -675,9 +676,12 @@ and type annotations. `result` uses `x-python-type` for a return annotation.
 module. It reports missing records for public functions, classes, and methods,
 records whose definitions are gone, and signature differences with both source
 locations. It also checks named imports and attribute references through static
-imports from other Python files. A record can make a module assignment or a
-private declaration available to those files. Dynamic lookups and inherited
-constructor parameters are outside this static check.
+imports from other Python files, including methods accessed through a class
+name or import alias. A canonical ID registers a declaration even when its
+signature has drifted. A record can make a module assignment or a private
+declaration available to other files. The checker follows straight-line
+bindings. Branch-dependent rebinding, dynamic lookups, instance dispatch, and
+inherited constructor parameters are outside this static check.
 
 ## Coverage
 

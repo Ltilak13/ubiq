@@ -2,22 +2,22 @@
 from __future__ import annotations
 
 import ast
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from importlib.util import resolve_name
 from pathlib import Path
 from typing import Any
 
 import yaml
-from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
+from referencing.exceptions import Unresolvable
 
 from . import xref
 from .check import Diagnostic
 from .config import Config
 from .globs import Glob, GlobError, first_match
 from .records import FRONTMATTER_RE
-from .schemas import load_data
+from .schemas import load_data, validate_schema
 
 
 @dataclass(frozen=True)
@@ -55,11 +55,15 @@ class _Definition:
     parameters: tuple[_Parameter, ...] = ()
     result: str | None = None
     required: bool = True
+    is_class: bool = False
 
 
 _Function = ast.FunctionDef | ast.AsyncFunctionDef
-_SCOPES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda,
-           ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+_FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+_SCOPES = (ast.ClassDef, ast.Lambda, *_FUNCTIONS, *_COMPREHENSIONS)
+_Aliases = dict[str, tuple[str, str]]  # local binding -> (module, class name or empty)
+_Tables = dict[str, dict[str, _Definition]]
 
 
 def _name(path: Path, root: Path) -> str:
@@ -117,23 +121,27 @@ def _constructor(cls: ast.ClassDef, methods: dict[str, _Function]) -> tuple[_Par
     if decorator is None or _option(decorator, "init") is False:
         return ()
     parameters: list[_Parameter] = []
+    keyword_only = _option(decorator, "kw_only") is True
     for node in cls.body:
         if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
             continue
         annotation = node.annotation.value if isinstance(node.annotation, ast.Subscript) else node.annotation
         if _called(annotation, "ClassVar"):
             continue
-        keyword_only = _option(decorator, "kw_only") is True
+        if _called(annotation, "KW_ONLY"):
+            keyword_only = True
+            continue
+        field_keyword_only = keyword_only
         default = node.value
         if isinstance(default, ast.Call) and _called(default, "field"):
             if _option(default, "init") is False:
                 continue
             explicit = _option(default, "kw_only")
             if explicit is not None:
-                keyword_only = explicit is True
+                field_keyword_only = explicit is True
             default = next((kw.value for kw in default.keywords
                             if kw.arg in ("default", "default_factory")), None)
-        kind = "keyword-only" if keyword_only else "positional-or-keyword"
+        kind = "keyword-only" if field_keyword_only else "positional-or-keyword"
         parameters.append(_Parameter(node.target.id, kind, _text(default), _text(node.annotation)))
     return tuple(sorted(parameters, key=lambda parameter: parameter.kind == "keyword-only"))
 
@@ -148,7 +156,8 @@ def _definitions(tree: ast.Module) -> dict[str, _Definition]:
             methods = {item.name: item for item in node.body
                        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))}
             public = not node.name.startswith("_")
-            definitions[node.name] = _Definition(node.lineno, _constructor(node, methods), required=public)
+            definitions[node.name] = _Definition(node.lineno, _constructor(node, methods), required=public,
+                                                 is_class=True)
             for name, method in methods.items():
                 receiver = not any(_called(d, "staticmethod") for d in method.decorator_list)
                 definitions[f"{node.name}.{name}"] = _Definition(
@@ -203,7 +212,8 @@ def _record(root: Path, path: Path, module: str, name: str, spec: Any, line: int
     source = _display(path, root, definition.line)
     sidecar = path.with_suffix(".md")
     if not isinstance(spec, dict):
-        return None  # E009 from the schema binding
+        diagnostics.append(Diagnostic("E009", f"{expected_id}: expected a symbol record mapping", sidecar, line))
+        return None
     if spec.get("id") != expected_id:
         diagnostics.append(Diagnostic("E010", f"Symbol {name} must use ID {expected_id}", sidecar, line))
         return None
@@ -213,9 +223,10 @@ def _record(root: Path, path: Path, module: str, name: str, spec: Any, line: int
             diagnostics.append(Diagnostic("E009", f"{expected_id} {key}: expected a JSON Schema", sidecar, line))
             return None
         try:
-            Draft202012Validator.check_schema(contract)
-        except SchemaError as exc:
-            diagnostics.append(Diagnostic("E009", f"{expected_id} {key}: {exc.message}", sidecar, line))
+            validate_schema(contract)
+        except (SchemaError, ValueError, TypeError, Unresolvable, RecursionError) as exc:
+            reason = exc.message if isinstance(exc, SchemaError) else str(exc)
+            diagnostics.append(Diagnostic("E009", f"{expected_id} {key}: {reason}", sidecar, line))
             return None
     differences = _signature_diff(definition, spec["params"], spec["result"])
     if differences:
@@ -227,14 +238,15 @@ def _record(root: Path, path: Path, module: str, name: str, spec: Any, line: int
     if not isinstance(feature, str) or not isinstance(scenarios, list) or not all(
         isinstance(scenario, str) for scenario in scenarios
     ):
-        return None  # E009 from the schema binding
+        diagnostics.append(Diagnostic("E009", f"{expected_id}: expected a feature name and scenario list",
+                                      sidecar, line))
+        return None
     return Symbol(expected_id, path, name, feature, tuple(scenarios), sidecar, line)
 
 
-def _read_module(cfg: Config, path: Path, tree: ast.Module, diagnostics: list[Diagnostic]
-                 ) -> tuple[set[str], list[Symbol]]:
+def _read_module(cfg: Config, path: Path, definitions: dict[str, _Definition],
+                 diagnostics: list[Diagnostic]) -> tuple[set[str], list[Symbol]]:
     sidecar = path.with_suffix(".md")
-    definitions = _definitions(tree)
     try:
         if not sidecar.resolve().is_relative_to(cfg.root):
             raise ValueError("symbol sidecar resolves outside the repository")
@@ -243,7 +255,7 @@ def _read_module(cfg: Config, path: Path, tree: ast.Module, diagnostics: list[Di
             raise TypeError("symbols must be a mapping")
         match = FRONTMATTER_RE.match(sidecar.read_text(encoding="utf-8"))
         frontmatter = match.group(1) if match else ""
-    except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError, RecursionError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError, RuntimeError) as exc:
         diagnostics.append(Diagnostic("E009", f"Cannot read symbol records for {_display(path, cfg.root)}: {exc}",
                                       sidecar))
         return set(), []
@@ -252,16 +264,20 @@ def _read_module(cfg: Config, path: Path, tree: ast.Module, diagnostics: list[Di
             diagnostics.append(Diagnostic("E010", f"Public symbol {name} has no record in "
                                           f"{_display(sidecar, cfg.root)}", path, definition.line))
     records: list[Symbol] = []
+    registered: set[str] = set()
+    module = _name(path, cfg.root)
     for name, spec in sorted(symbols.items()):
         line = xref.line_of(frontmatter, ("symbols", name))
         if name not in definitions:
             diagnostics.append(Diagnostic("E010", f"Symbol record {name} has no definition in "
                                           f"{_display(path, cfg.root)}", sidecar, line))
             continue
-        if record := _record(cfg.root, path, _name(path, cfg.root), name, spec, line,
+        if isinstance(spec, dict) and spec.get("id") == f"symbol:{module}.{name}":
+            registered.add(name)
+        if record := _record(cfg.root, path, module, name, spec, line,
                              definitions[name], diagnostics):
             records.append(record)
-    return set(symbols) & definitions.keys(), records
+    return registered, records
 
 
 def _absolute_from(node: ast.ImportFrom, own: str, pkg: bool) -> str:
@@ -282,67 +298,169 @@ def _access(node: ast.expr) -> str:
     return ""
 
 
-def _scope_nodes(scope: ast.AST) -> Iterator[ast.AST]:
-    for node in ast.iter_child_nodes(scope):
-        yield node
-        if not isinstance(node, _SCOPES):
-            yield from _scope_nodes(node)
-
-
-def _uses(path: Path, own: str, scope: ast.AST, names: dict[str, set[str]],
-          inherited: dict[str, str] | None = None) -> Iterator[tuple[str, str, int]]:
-    nodes = list(_scope_nodes(scope))
-    aliases = dict(inherited or {})
-    rebound = set()
+def _scope_nodes(nodes: Iterable[ast.AST]) -> Iterator[ast.AST]:
     for node in nodes:
-        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
-            rebound.add(node.id)
-        elif isinstance(node, ast.arg):
-            rebound.add(node.arg)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            rebound.add(node.name)
+        children: Iterator[ast.AST]
+        if isinstance(node, _FUNCTIONS):
+            yield from _scope_nodes([*node.decorator_list, node.args])
+            if node.returns is not None:
+                yield from _scope_nodes([node.returns])
+        elif isinstance(node, ast.ClassDef):
+            yield from _scope_nodes([*node.decorator_list, *node.bases, *node.keywords])
+        elif isinstance(node, ast.Lambda):
+            yield from _scope_nodes([node.args])
+        elif isinstance(node, _COMPREHENSIONS):
+            yield from _scope_nodes([node.generators[0].iter])
+        yield node
+        if isinstance(node, _SCOPES):
+            continue
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            if node.value is not None:
+                yield from _scope_nodes([node.value])
+            children = (child for child in ast.iter_child_nodes(node) if child is not node.value)
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            children = iter([node.iter, node.target, *node.body, *node.orelse])
+        else:
+            children = ast.iter_child_nodes(node)
+        yield from _scope_nodes(children)
+
+
+def _scope_body(scope: ast.AST) -> Iterable[ast.AST]:
+    if isinstance(scope, (ast.Module, ast.ClassDef, *_FUNCTIONS)):
+        return scope.body
+    if isinstance(scope, ast.Lambda):
+        return [scope.body]
+    if isinstance(scope, _COMPREHENSIONS):
+        nodes: list[ast.AST] = []
+        for index, generator in enumerate(scope.generators):
+            if index:
+                nodes.append(generator.iter)
+            nodes.extend([generator.target, *generator.ifs])
+        nodes.extend([scope.key, scope.value] if isinstance(scope, ast.DictComp) else [scope.elt])
+        return nodes
+    raise TypeError(f"Unexpected Python scope: {type(scope).__name__}")
+
+
+def _binding(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+        return node.id
+    if isinstance(node, (ast.ClassDef, *_FUNCTIONS, ast.ExceptHandler, ast.MatchAs, ast.MatchStar)):
+        return node.name
+    if isinstance(node, ast.MatchMapping):
+        return node.rest
+    return None
+
+
+def _clear(aliases: _Aliases, name: str) -> None:
+    for alias in list(aliases):
+        if alias.partition(".")[0] == name:
+            del aliases[alias]
+
+
+def _locals(scope: ast.AST, nodes: list[ast.AST]) -> set[str]:
+    local: set[str] = set()
+    outer: set[str] = set()
+    if isinstance(scope, (ast.Lambda, *_FUNCTIONS)):
+        local.update(arg.arg for arg in ast.iter_child_nodes(scope.args) if isinstance(arg, ast.arg))
+    for node in nodes:
+        if name := _binding(node):
+            local.add(name)
+        elif isinstance(node, ast.Import):
+            local.update(item.asname or item.name.partition(".")[0] for item in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            local.update(item.asname or item.name for item in node.names)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            outer.update(node.names)
+    return local - outer
+
+
+def _qualified_use(node: ast.Attribute, aliases: _Aliases,
+                   tables: _Tables) -> tuple[str, str] | None:
+    access = _access(node.value)
+    if f"{access}.{node.attr}" in aliases:
+        return None  # This attribute is itself an imported module.
+    if bound := aliases.get(access):
+        module, name = bound
+        if not name:
+            return module, node.attr
+        member = f"{name}.{node.attr}"
+        return (module, member) if member in tables[module] else None
+    prefix, _, name = access.rpartition(".")
+    if bound := aliases.get(prefix):
+        module, parent = bound
+        member = f"{name}.{node.attr}"
+        definition = tables[module].get(name)
+        if not parent and definition is not None and definition.is_class and member in tables[module]:
+            return module, member
+    return None
+
+
+def _uses(path: Path, own: str, scope: ast.AST, tables: _Tables,
+          inherited: _Aliases | None = None) -> Iterator[tuple[str, str, int]]:
+    nodes = list(_scope_nodes(_scope_body(scope)))
+    aliases = dict(inherited or {})
+    if isinstance(scope, (ast.Lambda, *_FUNCTIONS, *_COMPREHENSIONS)):
+        for name in _locals(scope, nodes):
+            _clear(aliases, name)
+    deferred = []
+    for node in nodes:
         if isinstance(node, ast.Import):
             for item in node.names:
-                if item.name in names and item.name != own:
-                    aliases[item.asname or item.name] = item.name
-                elif item.asname:
-                    rebound.add(item.asname)
-        if isinstance(node, ast.ImportFrom):
+                root = item.asname or item.name.partition(".")[0]
+                if item.asname or (root in aliases and aliases[root] != (root, "")):
+                    _clear(aliases, root)
+                if item.name in tables and item.name != own:
+                    aliases[item.asname or item.name] = item.name, ""
+        elif isinstance(node, ast.ImportFrom):
             target = _absolute_from(node, own, path.name == "__init__.py")
             for item in node.names:
                 full = f"{target}.{item.name}" if target else item.name
-                if full in names and full != own:
-                    aliases[item.asname or item.name] = full
-                else:
-                    rebound.add(item.asname or item.name)
-                    if target in names and target != own:
-                        yield target, item.name, node.lineno
-    aliases = {alias: target for alias, target in aliases.items() if alias.split(".", 1)[0] not in rebound}
-    for node in nodes:
-        if isinstance(node, ast.Attribute):
-            if module := aliases.get(_access(node.value)):
-                yield module, node.attr, node.lineno
-        elif isinstance(node, _SCOPES):
-            yield from _uses(path, own, node, names, aliases)
+                alias = item.asname or item.name
+                _clear(aliases, alias)
+                definition = tables.get(target, {}).get(item.name)
+                if target != own and definition is not None and definition.is_class:
+                    yield target, item.name, node.lineno
+                    aliases[alias] = target, item.name
+                elif full in tables and full != own:
+                    aliases[alias] = full, ""
+                elif target in tables and target != own:
+                    yield target, item.name, node.lineno
+        elif isinstance(node, ast.Attribute) and (use := _qualified_use(node, aliases, tables)):
+            module, name = use
+            yield module, name, node.lineno
+        elif isinstance(node, _FUNCTIONS):
+            deferred.append(node)
+        elif isinstance(node, (ast.ClassDef, ast.Lambda, *_COMPREHENSIONS)):
+            yield from _uses(path, own, node, tables, aliases)
+        if bound_name := _binding(node):
+            _clear(aliases, bound_name)
+    for node in deferred:
+        # Function bodies resolve enclosing names at call time. A class body is
+        # not a lexical scope for its methods.
+        yield from _uses(path, own, node, tables, inherited if isinstance(scope, ast.ClassDef) else aliases)
 
 
 def _walk(cfg: Config, globs: tuple[Glob, ...], diagnostics: list[Diagnostic]) -> list[Path]:
     paths: set[Path] = set()
     for pattern in globs:
         try:
-            paths.update(path for path in pattern.walk(cfg.ignore)
-                         if first_match(cfg.ignore, path) is None and path.resolve().is_relative_to(cfg.root))
+            for path in pattern.walk(cfg.ignore):
+                if first_match(cfg.ignore, path) is not None or not path.is_file():
+                    continue
+                if path.resolve().is_relative_to(cfg.root):
+                    paths.add(path)
+                elif path.suffix == ".py" and first_match(cfg.symbol_coverage, path) is not None:
+                    diagnostics.append(Diagnostic("E010", "Covered Python module resolves outside the repository",
+                                                  path))
         except GlobError as exc:
             diagnostics.append(Diagnostic("E010", f"Cannot scan symbol coverage: {exc}", cfg.root / "ubiq.yaml"))
     return sorted(paths)
 
 
 def _check_orphan_records(cfg: Config, diagnostics: list[Diagnostic]) -> None:
-    patterns = tuple(Glob.parse(pattern.pattern[:-3] + ".md", cfg.root)
-                     for pattern in cfg.symbol_coverage if pattern.pattern.endswith(".py"))
-    for sidecar in _walk(cfg, patterns, diagnostics):
+    for sidecar in _walk(cfg, (Glob.parse("**/*.md", cfg.root),), diagnostics):
         source = sidecar.with_suffix(".py")
-        if source.is_file():
+        if first_match(cfg.symbol_coverage, source) is None or source.is_file():
             continue
         try:
             data = load_data(sidecar, frontmatter=True)
@@ -360,13 +478,14 @@ def load_symbols(cfg: Config) -> SymbolRegistry:
     diagnostics: list[Diagnostic] = []
     records: list[Symbol] = []
     names: dict[str, set[str]] = {}
+    tables: _Tables = {}
     trees: dict[Path, ast.Module] = {}
     _check_orphan_records(cfg, diagnostics)
     for path in _walk(cfg, (Glob.parse("**/*.py", cfg.root),), diagnostics):
         covered = first_match(cfg.symbol_coverage, path) is not None
         try:
             tree = ast.parse(path.read_bytes(), filename=str(path))
-        except (OSError, SyntaxError, ValueError) as exc:
+        except (OSError, SyntaxError, ValueError, RecursionError) as exc:
             if covered:
                 line = exc.lineno or 0 if isinstance(exc, SyntaxError) else 0
                 diagnostics.append(Diagnostic("E010", f"Cannot inspect Python symbols: {exc}", path, line))
@@ -377,12 +496,26 @@ def load_symbols(cfg: Config) -> SymbolRegistry:
             if name in names:
                 diagnostics.append(Diagnostic("E010", f"Multiple covered modules use the name {name}", path))
                 continue
-            names[name], found = _read_module(cfg, path, tree, diagnostics)
+            try:
+                definitions = _definitions(tree)
+            except RecursionError:
+                diagnostics.append(Diagnostic("E010", "Python source is too deeply nested to inspect signatures",
+                                              path))
+                continue
+            tables[name] = definitions
+            names[name], found = _read_module(cfg, path, definitions, diagnostics)
             records.extend(found)
 
     for path, tree in trees.items():
         own = _name(path, cfg.root)
-        for target, name, line in sorted(set(_uses(path, own, tree, names)), key=lambda item: (item[2], item)):
+        try:
+            uses = set(_uses(path, own, tree, tables))
+        except RecursionError:
+            if first_match(cfg.symbol_coverage, path) is not None:
+                diagnostics.append(Diagnostic("E010", "Python source is too deeply nested to inspect symbol uses",
+                                              path))
+            continue
+        for target, name, line in sorted(uses, key=lambda item: (item[2], item)):
             if name not in names[target]:
                 diagnostics.append(Diagnostic("E010", f"Unregistered symbol {target}.{name} used from {own}",
                                               path, line))
