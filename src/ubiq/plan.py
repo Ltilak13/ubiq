@@ -5,6 +5,11 @@ features it builds on. The order is a topological sort that takes the
 alphabetically first ready feature at each step, so equal features list stably.
 `--next` prints only the unused features whose requirements a repository already
 meets, detected from its `ubiq.yaml` (each feature's `config` keys) and `--used`.
+
+A feature has a `status`: `shipped` (the default) or `planned`. A planned feature
+is work in flight, so it is not in the adoption order and `--next` never offers it;
+`ubiq plan --json` lists its name under `planned`. A planned feature may require
+planned or shipped features, but a shipped feature may not require a planned one.
 """
 from __future__ import annotations
 
@@ -20,6 +25,9 @@ from .records import InvalidRecord, parse_frontmatter
 BUNDLED = Path(__file__).resolve().parent / "features"
 
 
+STATUSES = ("planned", "shipped")
+
+
 class PlanError(ValueError):
     """Feature records that cannot be ordered (missing requirement, cycle, bad record)."""
 
@@ -32,6 +40,8 @@ class Feature:
     codes: tuple[str, ...] = ()
     config: tuple[str, ...] = ()
     docs: str = ""
+    status: str = "shipped"
+    issue: int | None = None
 
 
 def _strings(meta: dict, key: str, path: Path) -> tuple[str, ...]:
@@ -39,6 +49,14 @@ def _strings(meta: dict, key: str, path: Path) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
         raise PlanError(f"{path.name}: {key} must be a list of strings")
     return tuple(value)
+
+
+def feature_status(meta: Mapping[str, object]) -> str:
+    """Read the lifecycle state shared by the adoption plan and GitHub sync."""
+    status = meta.get("status", "shipped")
+    if not isinstance(status, str) or status not in STATUSES:
+        raise PlanError(f"status must be one of {', '.join(STATUSES)}")
+    return status
 
 
 def load_features(directory: Path = BUNDLED) -> list[Feature]:
@@ -54,17 +72,28 @@ def load_features(directory: Path = BUNDLED) -> list[Feature]:
         name, summary = meta.get("name"), meta.get("summary")
         if not isinstance(name, str) or not isinstance(summary, str):
             raise PlanError(f"{path.name}: name and summary must be strings")
+        try:
+            status = feature_status(meta)
+        except PlanError as exc:
+            raise PlanError(f"{path.name}: {exc}") from exc
+        issue = meta.get("issue")
+        if issue is not None:
+            if isinstance(issue, bool) or not str(issue).isdigit() or int(issue) < 1:
+                raise PlanError(f"{path.name}: issue must be a positive integer")
+            issue = int(issue)
         features.append(Feature(name, summary, _strings(meta, "requires", path),
                                 _strings(meta, "codes", path), _strings(meta, "config", path),
-                                str(meta.get("docs") or "")))
+                                str(meta.get("docs") or ""), status, issue))
     return sorted(features, key=lambda f: f.name)
 
 
 def order(features: Iterable[Feature]) -> list[Feature]:
-    """Features in dependency order, alphabetical among those ready together.
+    """Shipped features in dependency order, alphabetical among those ready together.
 
-    Raises PlanError for a duplicate name, a requirement that names no feature,
-    or a cycle (two features that require each other, or a longer loop).
+    Planned features take part in validation and ordering but are left out of the
+    result. Raises PlanError for a duplicate name, a requirement that names no
+    feature, a shipped feature that requires a planned one, or a cycle (two
+    features that require each other, or a longer loop).
     """
     by_name: dict[str, Feature] = {}
     for f in features:
@@ -75,6 +104,8 @@ def order(features: Iterable[Feature]) -> list[Feature]:
         for need in f.requires:
             if need not in by_name:
                 raise PlanError(f"feature {f.name} requires {need}, which is not a feature")
+            if f.status == "shipped" and by_name[need].status == "planned":
+                raise PlanError(f"shipped feature {f.name} requires {need}, which is only planned")
     done: list[Feature] = []
     placed: set[str] = set()
     pending = dict(by_name)
@@ -85,7 +116,7 @@ def order(features: Iterable[Feature]) -> list[Feature]:
         nxt = ready[0]
         done.append(pending.pop(nxt))
         placed.add(nxt)
-    return done
+    return [f for f in done if f.status == "shipped"]
 
 
 def _cycle(pending: Mapping[str, Feature]) -> str:
@@ -148,6 +179,10 @@ def cmd_plan(args) -> int:
     try:
         features = load_features(Path(args.features) if args.features else BUNDLED)
         ordered = order(features)
+        planned = sorted(f.name for f in features if f.status == "planned")
+        unplanned = sorted(set(args.used or ()) & set(planned))
+        if unplanned:
+            raise PlanError(f"--used names a planned feature: {', '.join(unplanned)}")
         unknown = sorted(set(args.used or ()) - {f.name for f in ordered})
         if unknown:
             raise PlanError(f"--used names no feature: {', '.join(unknown)}")
@@ -161,7 +196,7 @@ def cmd_plan(args) -> int:
         shown = next_steps(ordered, used)
     position = {f.name: i for i, f in enumerate(ordered, 1)}
     if args.json:
-        out: dict = {"features": [_json(position[f.name], f) for f in shown]}
+        out: dict = {"features": [_json(position[f.name], f) for f in shown], "planned": planned}
         if used is not None:
             out["used"] = [f.name for f in ordered if f.name in used]
         print(json.dumps(out, indent=2))

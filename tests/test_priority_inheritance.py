@@ -49,7 +49,8 @@ def test_plan_without_priority_leaves_steps_unmanaged():
 
 
 def test_dry_run_labels_each_inheriting_step_and_respects_overrides():
-    existing = [step_issue(11, "first", "bug"), step_issue(12, "second", "priority: P2")]
+    existing = [{"number": 10, "sub_issues": [11, 12]},
+                step_issue(11, "first", "bug"), step_issue(12, "second", "priority: P2")]
     actions = plan(plan_desired(plan_record("P1", second="P2")), existing)
     labels = [(a["issue"], a["add"], a["remove"]) for a in actions if a["action"] == "label"]
     assert labels == [(11, ["priority: P1"], [])]
@@ -57,7 +58,8 @@ def test_dry_run_labels_each_inheriting_step_and_respects_overrides():
 
 
 def test_turning_inheritance_on_shows_every_label_change():
-    existing = [step_issue(11, "first", "priority: P3"), step_issue(12, "second")]
+    existing = [{"number": 10, "sub_issues": [11, 12]},
+                step_issue(11, "first", "priority: P3"), step_issue(12, "second")]
     assert {a["action"] for a in plan(plan_desired(plan_record()), existing)} == {"noop"}
     with_p1 = plan(plan_desired(plan_record("P1")), existing)
     assert [(a["issue"], a["add"], a["remove"]) for a in with_p1] == [

@@ -599,8 +599,12 @@ plan's); an explicit item value wins.
 
 On a goal, they are optional properties of a criterion (`criteria.AC1.issue`), next to the
 existing `issues:` list, which keeps working; a criterion's `issue` is tracked like each
-number in `issues`. On a feature they are optional properties of the record, and the
+number in `issues`. A goal also takes `issue` at its top level: the issue of the goal
+itself, which its criteria's issues become sub-issues of. On a feature they are optional properties of the record, and the
 feature's own `requires` stays required.
+
+A feature also has a `status`, `planned` or `shipped` (the default), which `ubiq plan` and
+`ubiq sync github` read; see [planned features](features.md#planned-features).
 
 A schema declares a relationship once, by annotating the property that holds the
 names:
@@ -630,8 +634,13 @@ is `edge`, so `ubiq graph --kind requires` selects it.
 
 `ref_fields` and `edges.*.fields` keep working unchanged. A top-level field that is in
 `ref_fields` is resolved once, as before (an `invoke` edge, any namespace); annotating
-it only adds the rules. `single` is parsed and validated but not yet enforced; the
-one-parent check comes with the `part_of` work. `acyclic` is enforced (E014, below).
+it only adds the rules. `acyclic` is enforced (E014, below).
+
+`single` is enforced. A property that names more than one record is E009, at the
+field's line: `criteria.AC1.part_of: ["a", "b"]` fails, and each property is counted on
+its own, so two criteria may each name one parent. On a goal, a criterion's `part_of`
+names a goal (`ns: goal`), and a goal's own `issue` is the GitHub issue that its
+criteria's issues become sub-issues of (see [GitHub sync](github-sync.md#sub-issues)).
 
 `requires` is a list of record names. An entry `"pr: <n>"` (quote it, or YAML reads a
 mapping) names a pull request, not a record, so it is exempt from E006. `ubiq sync
