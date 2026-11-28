@@ -99,6 +99,9 @@ class Desired:
     parent_issue: int = 0
     parent: str = ''
     creates: bool = True
+    # A scenario-bound criterion whose scenario failed on this revision: when every
+    # tracked issue is closed, open a new one instead of reopening (the sync never reopens).
+    regression: bool = False
     # `pr`: the record's implementing pull requests, and for each record it `requires`
     # that has a `pr`, that record's name and pull requests (see `Stack`).
     prs: tuple[int, ...] = ()
@@ -137,6 +140,70 @@ def _goal_body(goal: Mapping[str, Any], ac: str, criterion: Mapping[str, Any], m
             f"this issue.\n\n<!-- {marker} -->\n")
 
 
+def _scenario_body(goal: Mapping[str, Any], ac: str, feature: str, marker: str, failed: bool) -> str:
+    state = (f"## Regression\n\nA scenario tagged `@{ac}` failed on `main`.\n\n" if failed else '')
+    return (f"Criterion from `{goal['path']}`:\n\n"
+            f"> {goal['text'].get(ac, ac)}\n\n{state}"
+            f"## Acceptance\n\nThe scenarios tagged `@{ac}` in `{feature}` accept this criterion. "
+            "It is met when all of them pass on `main`; nobody marks it by hand.\n\n"
+            "## Verify\n\n```sh\nubiq check\n"
+            f"python3 -m pytest tests/scenarios -p ubiq.pytest_plugin --ubiq-results results.json\n"
+            f"ubiq sync github --dry-run --results results.json\n```\n\n"
+            "When the scenarios pass on `main`, the sync closes this issue.\n\n"
+            f"<!-- {marker} -->\n")
+
+
+def criterion_met(goal: Mapping[str, Any], ac: str,
+                  results: Mapping[tuple[str, str], str] | None) -> bool | None:
+    """Whether a criterion holds: True, False, or None when nothing can say yet.
+
+    A scenario-bound criterion holds when its scenarios passed in `results`; without
+    results its state is unknown. Any other criterion holds when its assessment is `met`.
+    """
+    criterion = goal['criteria'][ac]
+    if criterion.get('scenario') is True:
+        if results is None:
+            return None
+        return results.get((_feature_path(goal), ac)) == 'passed'
+    return criterion.get('assessment') == 'met'
+
+
+def _feature_path(goal: Mapping[str, Any]) -> str:
+    return str(Path(goal['path']).with_suffix('.feature').as_posix())
+
+
+def goal_issue_desired(goals: Sequence[Mapping[str, Any]], sha: str = '',
+                       results: Mapping[tuple[str, str], str] | None = None) -> list[Desired]:
+    """A goal's own `issue` closes when every one of its criteria holds.
+
+    A criterion with `assessed_in` holds when the criterion it names does. The goal issue
+    is never created here, and stays open while any criterion is unknown or unmet.
+    """
+    by_name = {g['name']: g for g in goals}
+
+    def holds(goal: Mapping[str, Any], ac: str) -> bool | None:
+        target = goal['criteria'][ac].get('assessed_in')
+        if target:
+            other = by_name.get(target['goal'])
+            if other is None or target['criterion'] not in other['criteria']:
+                return False
+            return criterion_met(other, target['criterion'], results)
+        return criterion_met(goal, ac, results)
+
+    items = []
+    for goal in goals:
+        if not goal.get('issue'):
+            continue
+        done = all(holds(goal, ac) is True for ac in goal['criteria'])
+        items.append(Desired(
+            kind='goal', ident={'goal': goal['name']}, marker=f"ubiq-goal: {goal['name']}",
+            title=goal['name'], body='', state='closed' if done else 'open',
+            listed=(goal['issue'],), creates=False,
+            close_comment=(f"Every criterion of goal `{goal['name']}` holds at {sha or 'the merged commit'}.\n\n"
+                           f"<!-- ubiq-goal-closed: {goal['name']} -->") if done else ''))
+    return items
+
+
 def resolve_priority(item: Mapping[str, Any], container: Mapping[str, Any]) -> str:
     """An item's own `priority` wins; without one it takes its container's (plan or goal)."""
     return item.get('priority') or container.get('priority') or ''
@@ -160,8 +227,13 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
                  numbers: Mapping[str, int] | None = None,
                  pulls: Mapping[str, tuple[int, ...]] | None = None,
                  goal_issues: Mapping[str, int] | None = None,
-                 prioritized_only: bool = False) -> list[Desired]:
+                 prioritized_only: bool = False,
+                 results: Mapping[tuple[str, str], str] | None = None) -> list[Desired]:
     """One `Desired` per criterion: open until the criterion is `met`, then closed.
+
+    A criterion with `scenario: true` is met when every scenario tagged with its label in
+    `<goal>.feature` passed in `results` (`criterion_met`). Without results it stays open.
+    A failed scenario marks a regression, which opens a new issue once all are closed.
 
     A criterion with `assessed_in` is assessed by the criterion it names, so it has none.
     With `prioritized_only` (`sync.create: prioritized`), a criterion opens a new issue
@@ -180,9 +252,15 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             continue
         marker = f"ubiq-goal: {goal['name']} {ac}"
         title = goal['text'].get(ac, ac).split(': ', 1)[-1]
-        met = criterion['assessment'] == 'met'
+        bound = criterion.get('scenario') is True
+        met = criterion_met(goal, ac, results) is True
+        failed = bound and results is not None and results.get((_feature_path(goal), ac)) == 'failed'
         comment = ''
-        if met:
+        if met and bound:
+            comment = (f"Goal `{goal['name']}` {ac} is `met` at {sha or 'the merged commit'}: every "
+                       f"scenario tagged `@{ac}` in `{_feature_path(goal)}` passed.\n\n"
+                       + CLOSED_MARKER.format(name=goal['name'], ac=ac))
+        elif met:
             review = criterion['review']
             comment = (f"Goal `{goal['name']}` {ac} is `met` at {sha or 'the merged commit'}. "
                        f"Review by {review['by']}: {review['note']}\n\n"
@@ -191,12 +269,13 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
         items.append(Desired(
             kind='goal', ident={'goal': goal['name'], 'criterion': ac}, marker=marker,
             title=textwrap.shorten(f"{goal['name']} {ac}: {title}", 200),
-            body=_goal_body(goal, ac, criterion, marker),
-            state='closed' if met else 'open',
+            body=(_scenario_body(goal, ac, _feature_path(goal), marker, failed) if bound
+                  else _goal_body(goal, ac, criterion, marker)),
+            state='closed' if met else 'open', regression=failed,
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
             close_comment=comment, priority=resolve_priority(criterion, goal),
-            creates=not prioritized_only or bool(resolve_priority(criterion, goal)),
+            creates=failed or not prioritized_only or bool(resolve_priority(criterion, goal)),
             label_prefix=label_prefix, parent=parent, parent_issue=goal_issues.get(normalize(parent), 0),
             prs=xref.pr_numbers(criterion.get('pr', [])),
             required_prs=_required_prs(criterion, pulls or {}),
@@ -365,8 +444,13 @@ def feature_desired(feature: Mapping[str, Any], sha: str = '',
 
 
 def desired_from_config(cfg: Config, sha: str = '',
-                        records: Mapping[str, Tracked] | None = None) -> list[Desired]:
-    """Desired state for every record file that `sync.records` selects."""
+                        records: Mapping[str, Tracked] | None = None,
+                        results: Mapping[tuple[str, str], str] | None = None) -> list[Desired]:
+    """Desired state for every record file that `sync.records` selects.
+
+    `results` holds scenario outcomes (`scenarios.load_results`); without them, scenario-bound
+    criteria and the goals that contain them are left open.
+    """
     assert cfg.sync is not None
     items: list[Desired] = []
     if records is None:
@@ -378,7 +462,8 @@ def desired_from_config(cfg: Config, sha: str = '',
     goal_issues = {g['name']: g['issue'] for g in goals}
     for goal in goals:
         items += goal_desired(goal, sha, cfg.sync.label_prefix, numbers, pulls, goal_issues,
-                              prioritized_only=cfg.sync.create == 'prioritized')
+                              prioritized_only=cfg.sync.create == 'prioritized', results=results)
+    items += goal_issue_desired(goals, sha, results)
     for record in cfg.sync.records:
         for path in sorted(record.glob.walk(cfg.ignore)):
             if record.kind == 'plan':
@@ -444,11 +529,14 @@ def _marked(snapshot: Iterable[Issue]) -> dict[str, list[Issue]]:
 
 def fact_exists(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
     """An open record needs an issue; create one when none tracks it."""
-    if tracked or item.state != 'open' or not item.creates:
+    if item.state != 'open' or not item.creates:
+        return []
+    if tracked and not (item.regression and all(issues.get(n, {}).get('state') == 'closed' for n in tracked)):
         return []
     labels = [item.label_prefix + item.priority] if _mirrors_priority(item) else []
     body = set_blocked_by(item.body, item.requires_prs)
-    return [{'action': 'create', **item.ident, 'title': item.title, 'body': body,
+    title = textwrap.shorten(f"Regression: {item.title}", 200) if tracked else item.title
+    return [{'action': 'create', **item.ident, 'title': title, 'body': body,
              **({'labels': labels} if labels else {}),
              **({'parent_issue': item.parent_issue} if item.parent_issue else {})}]
 
@@ -1017,7 +1105,15 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
     github = GitHub(repo, token, transport, pause)
     try:
         records = tracked_records(cfg)
-        desired = desired_from_config(cfg, _head(root, getattr(args, 'ref', None)), records)
+        results = None
+        if getattr(args, 'results', None):
+            from .scenarios import load_results
+            try:
+                results = load_results(Path(args.results), root)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                print(f'error: --results: {exc}', file=sys.stderr)
+                return 2
+        desired = desired_from_config(cfg, _head(root, getattr(args, 'ref', None)), records, results)
         snapshot = github.snapshot(d.parent_issue for d in desired if d.parent_issue)
         actions = plan(desired, snapshot, github.pulls(), record_stacks(records), records.values())
     except SyncError as exc:

@@ -27,12 +27,11 @@
       "patternProperties": {
         "^AC[1-9][0-9]*$": {
           "type": "object",
-          "required": [
-            "assessment",
-            "support",
-            "gap"
-          ],
           "properties": {
+            "scenario": {
+              "description": "True when scenarios tagged with this label in <goal>.feature accept the criterion. The criterion then stores no assessment: it is met when every tagged scenario passes on main.",
+              "const": true
+            },
             "assessment": {
               "enum": [
                 "unassessed",
@@ -164,11 +163,59 @@
           "allOf": [
             {
               "if": {
+                "required": [
+                  "scenario"
+                ]
+              },
+              "then": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "assessment"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "support"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "gap"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "review"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "assessed_in"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "else": {
+                "required": [
+                  "assessment",
+                  "support",
+                  "gap"
+                ]
+              }
+            },
+            {
+              "if": {
                 "properties": {
                   "assessment": {
                     "const": "partial"
                   }
-                }
+                },
+                "required": [
+                  "assessment"
+                ]
               },
               "then": {
                 "properties": {
@@ -184,7 +231,10 @@
                   "assessment": {
                     "const": "met"
                   }
-                }
+                },
+                "required": [
+                  "assessment"
+                ]
               },
               "then": {
                 "required": [

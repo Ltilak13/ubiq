@@ -14,11 +14,11 @@ Ubiq helps repositories make their knowledge explicit, connected, and checkable.
 
 ## Adding goals and limiting work in progress
 
-New goals are paused until at least one criterion is `met` through a recorded review,
+New goals are paused until at least one criterion is met by its scenarios passing on `main`,
 and the goal or feature starter (#111) has been tried outside this repository. Until then:
 
-- Add a criterion to an existing goal instead of a new goal, and only when it names
-  evidence a reviewer could check.
+- Add a criterion to an existing goal instead of a new goal, and write it as a
+  scenario when it can be one.
 - Keep at most one plan `active` per goal, and at most five open implementation pull
   requests at a time. Close or merge a pull request that has had no activity for two
   days, with a comment that says which.
@@ -67,7 +67,15 @@ connects acceptance criteria to supporting features and evidence. The body
 explains the objective and defines each criterion with a stable `AC` label.
 Preserve those labels when reordering criteria.
 
-Frontmatter owns the current assessment. `unassessed` means no criterion review
+A criterion that sets `scenario: true` is accepted by the scenarios tagged with
+its label in the goal's feature file (`<goal>.feature`). Its frontmatter stores no
+assessment: the [sync](../github-sync.md#criterion-scenarios) treats it as met exactly
+when those scenarios pass on `main`, and closes the goal's issue when every criterion
+holds. Reviewers approve the scenario text in the pull request that adds or changes it.
+Prefer this form. A criterion that cannot be written as a scenario is a sign it needs
+restating; the forms below remain for criteria that need human judgment.
+
+For the other criteria, frontmatter owns the current assessment. `unassessed` means no criterion review
 is recorded. `partial` means supporting evidence is identified but a gap remains.
 Neither value asserts that the criterion passed. `met` records that a reviewer
 checked the cited evidence against the acceptance text and found that it holds.

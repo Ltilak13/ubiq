@@ -160,7 +160,7 @@ def test_this_repository_creates_only_for_untracked_criteria():
     created = {(a['goal'], a['criterion']) for a in actions if a['action'] == 'create' and 'goal' in a}
     loaded = [load_goal(p, ROOT) for p in sorted((ROOT / 'docs/goals').glob('*-goal.md'))]
     untracked = {(g['name'], ac) for g in loaded for ac, c in g['criteria'].items()
-                 if c['assessment'] != 'met' and not c.get('issues') and 'assessed_in' not in c
+                 if c.get('assessment') != 'met' and not c.get('issues') and 'assessed_in' not in c
                  and (c.get('priority') or g['priority'])}
     assert created == untracked
     assert not [a for a in actions if a['action'] == 'close' and 'goal' in a]

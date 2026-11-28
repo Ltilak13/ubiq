@@ -37,7 +37,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -e .
+      - run: python -m pip install -e '.[dev]'
+      # A criterion with `scenario: true` is met when its tagged scenarios pass on
+      # this commit. A failing scenario must not stop the sync: it opens a regression.
+      - name: Run goal scenarios
+        run: python -m pytest tests/scenarios -q -p ubiq.pytest_plugin --ubiq-results "$RUNNER_TEMP/results.json" || true
       # Every run syncs every record. The sync is idempotent, so a run that the
       # concurrency group cancels loses nothing: the next run covers it.
       - name: Create and close issues
@@ -47,7 +51,7 @@ jobs:
           FENCE: "```"
         run: |
           status=0
-          ubiq sync github --apply > "$RUNNER_TEMP/plan.json" || status=$?
+          ubiq sync github --apply --results "$RUNNER_TEMP/results.json" > "$RUNNER_TEMP/plan.json" || status=$?
           { echo "${FENCE}json"; cat "$RUNNER_TEMP/plan.json"; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
