@@ -9,7 +9,10 @@ criteria:
   AC2:
     assessment: unassessed
     support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    gap: Assessed with domain-schema-goal AC8, which states the same obligation.
+    assessed_in:
+      goal: domain-schema-goal
+      criterion: AC8
   AC3:
     assessment: unassessed
     support: []
@@ -17,11 +20,17 @@ criteria:
   AC4:
     assessment: unassessed
     support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    gap: Assessed with domain-schema-goal AC7, which states the same obligation.
+    assessed_in:
+      goal: domain-schema-goal
+      criterion: AC7
   AC5:
     assessment: unassessed
     support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    gap: Assessed with domain-schema-goal AC10, which states the same obligation.
+    assessed_in:
+      goal: domain-schema-goal
+      criterion: AC10
   AC6:
     assessment: unassessed
     support: []
@@ -30,7 +39,7 @@ criteria:
 
 # Goal: safe adoption and evolution
 
-Status: proposed. Existing related evidence does not establish completion of this goal.
+Existing related evidence does not establish completion of this goal.
 
 ## Objective
 
@@ -66,7 +75,10 @@ them to copy this repository's taxonomy.
 [Domain model AC3 and AC7–AC10](domain-schema-goal.md#acceptance-evidence) retain the
 requirements for review, drift detection, preservation, mixed cases, and staged changes.
 Their current assessments remain authoritative there. This goal adds end-to-end
-adoption and recovery evidence without duplicating those assessments.
+adoption and recovery evidence without duplicating those assessments. AC2, AC4,
+and AC5 below restate domain model AC8, AC7, and AC10, so their frontmatter sets
+`assessed_in` to those criteria: they keep their labels, carry no evidence of their
+own, and get no tracking issue.
 
 ## Acceptance evidence
 

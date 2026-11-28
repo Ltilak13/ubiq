@@ -166,9 +166,13 @@ def test_shipped_features_form_a_valid_order():
 def test_shipped_feature_codes_match_the_spec():
     spec = (ROOT / "docs" / "spec.md").read_text()
     documented = set(re.findall(r"^- `([EW]\d{3})`", spec, re.MULTILINE))
-    owned = [code for f in load_features(BUNDLED) for code in f.codes]
-    assert len(owned) == len(set(owned)), "a code is owned by two features"
-    assert set(owned) == documented
+    features = load_features(BUNDLED)
+    every = [code for f in features for code in f.codes]
+    assert len(every) == len(set(every)), "a code is owned by two features"
+    # A planned feature's codes are not in the spec until its pull request lands.
+    planned = {c for f in features if f.status == "planned" for c in f.codes}
+    shipped = {c for f in features if f.status == "shipped" for c in f.codes}
+    assert shipped == documented - planned
 
 
 def test_shipped_feature_docs_exist():
@@ -192,6 +196,7 @@ schemas:
 def feature_repo(tmp_path):
     (tmp_path / ".ubiq" / "schemas").mkdir(parents=True)
     shutil.copy(ROOT / ".ubiq" / "schemas" / "feature.json", tmp_path / ".ubiq" / "schemas")
+    shutil.copy(ROOT / ".ubiq" / "schemas" / "tracking.json", tmp_path / ".ubiq" / "schemas")
     (tmp_path / "ubiq.yaml").write_text(CONFIG)
     write_feature(tmp_path / "features", "glossary", codes=["E001"])
     return tmp_path

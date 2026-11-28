@@ -24,10 +24,15 @@ PLAN_SCHEMA = (ROOT / ".ubiq/schemas/plan.json").read_text()
 # -- the schema and the two repository plans ---------------------------------------
 
 
-def test_plan_schema_carries_an_exact_copy_of_the_tracking_fragment():
-    fragment = json.loads((ROOT / ".ubiq/schemas/tracking.json").read_text())
+TRACKING = (ROOT / ".ubiq/schemas/tracking.json").read_text()
+
+
+def test_plan_schema_references_the_tracking_fields_instead_of_copying_them():
     schema = json.loads(PLAN_SCHEMA)
-    assert schema["$defs"]["tracking"]["properties"] == fragment["properties"]
+    step = schema["properties"]["steps"]["patternProperties"]["^[a-z0-9]+(-[a-z0-9]+)*$"]
+    assert schema["properties"]["status"] == {"$ref": "tracking.json#/properties/status"}
+    assert step["properties"]["pr"] == {"$ref": "tracking.json#/properties/pr"}
+    assert "$defs" not in schema
 
 
 def test_step_requires_is_annotated_within_steps():
@@ -72,10 +77,13 @@ Demo.
 """
 
 
-def repo(root, text, schema=PLAN_SCHEMA):
+def repo(root, text, schema=PLAN_SCHEMA, others=()):
     (root / "schema.json").write_text(schema)
+    (root / "tracking.json").write_text(TRACKING)
     (root / "plans").mkdir()
     (root / "plans/demo.md").write_text(text)
+    for index, other in enumerate(others):
+        (root / f"plans/other-{index}.md").write_text(other)
     (root / "ubiq.yaml").write_text(
         'glossary:\n  - {glob: "plans/*.md", term_field: name, ns: plan}\ndocs: ["plans/*.md"]\n'
         'schemas:\n  - schema: schema.json\n    files: ["plans/*.md"]\n    format: frontmatter\n')
@@ -105,6 +113,28 @@ def test_requires_does_not_resolve_to_another_plans_step_or_plan_name(tmp_path, 
     assert [d["code"] for d in found if d["severity"] == "error"] == ["E006"]
 
 
+OTHER = "---\nname: shared\nstatus: proposed\nissue: 20\ntrunk: main\nsteps:\n  base-step:\n    requires: []\n---\n"
+
+
+def test_requires_resolves_a_step_of_another_plan_by_its_qualified_name(tmp_path, capsys):
+    repo(tmp_path, PLAN.replace("[first]", "[shared/base-step]"), others=[OTHER])
+    status, found = check(tmp_path, capsys)
+    assert status == 0, found
+
+
+@pytest.mark.parametrize("value", ["shared/missing", "missing/base-step", "demo/first"])
+def test_a_qualified_name_must_name_a_step_of_another_plan(tmp_path, capsys, value):
+    repo(tmp_path, PLAN.replace("[first]", f"[{value}]"), others=[OTHER])
+    _status, found = check(tmp_path, capsys)
+    assert [d["code"] for d in found if d["severity"] == "error"] == ["E006"]
+
+
+def test_a_step_pr_may_be_one_number_or_a_list(tmp_path, capsys):
+    repo(tmp_path, PLAN.replace("    requires: [first]", "    requires: [first]\n    pr: [3, 4]"))
+    status, found = check(tmp_path, capsys)
+    assert status == 0, found
+
+
 @pytest.mark.parametrize("old, new", [("status: active", "status: wip"), ("trunk: main\n", ""),
                                       ("    requires: [first]", "    branch: x"),
                                       ("issue: 11", "issue: 0"), ("  first:", "  First:")])
@@ -129,6 +159,10 @@ def bot_issue(number, step, state="open"):
     return {**issue(number, state), "body": f"x\n<!-- ubiq-plan: demo {step} -->"}
 
 
+def plan_parent(*children):
+    return {**issue(10), "sub_issues": list(children)}
+
+
 def test_each_step_is_an_item_with_its_links():
     first, second = plan_desired(record())
     assert (first.kind, first.ident) == ("plan-step", {"plan": "demo", "step": "first"})
@@ -145,10 +179,10 @@ def test_step_with_only_a_pr_is_tracked_by_the_pr():
 
 
 def test_step_without_an_issue_is_created_once():
-    [noop, create] = plan(plan_desired(record()), [issue(11)])
+    [noop, create] = plan(plan_desired(record()), [plan_parent(11), issue(11)])
     assert create["action"] == "create" and create["step"] == "second"
     assert "<!-- ubiq-plan: demo second -->" in create["body"] and noop["action"] == "noop"
-    assert [a["action"] for a in plan(plan_desired(record()), [issue(11), bot_issue(12, "second")])] \
+    assert [a["action"] for a in plan(plan_desired(record()), [plan_parent(11, 12), issue(11), bot_issue(12, "second")])] \
         == ["noop", "noop"]
 
 
@@ -158,21 +192,23 @@ def test_proposed_and_abandoned_plans_mirror_nothing():
 
 
 def test_done_plan_closes_open_issues_only():
-    found = plan(plan_desired(record(status="done")), [issue(11), bot_issue(12, "second", "closed")])
+    found = plan(plan_desired(record(status="done")), [plan_parent(11, 12), issue(11), bot_issue(12, "second", "closed")])
     assert [(a["action"], a.get("issue")) for a in found] == [("close", 11), ("noop", None)]
     assert "ubiq-plan-closed: demo first" in found[0]["comment"]
 
 
 def test_active_plan_never_closes_or_reopens():
-    found = plan(plan_desired(record()), [issue(11, "closed"), bot_issue(12, "second", "closed")])
+    found = plan(plan_desired(record()), [plan_parent(11, 12), issue(11, "closed"), bot_issue(12, "second", "closed")])
     assert drift(found) == []
 
 
 def test_apply_creates_the_step_issue():
-    fake = Fake({("POST", ""): {"number": 12}})
-    [create] = [a for a in plan(plan_desired(record()), [issue(11)]) if a["action"] == "create"]
+    fake = Fake({("POST", ""): {"number": 12, "id": 1012}})
+    [create] = [a for a in plan(plan_desired(record()), [plan_parent(11), issue(11)]) if a["action"] == "create"]
     GitHub("o/r", "t", fake, 0).apply([create], [])
     assert fake.calls[0][3]["title"] == "demo: second"
+    assert fake.calls[1][1] == "/10/sub_issues"
+    assert fake.calls[1][3]["sub_issue_id"] == 1012
 
 
 def test_load_plan_reads_frontmatter_and_rejects_unreadable(tmp_path):

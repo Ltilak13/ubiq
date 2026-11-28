@@ -6,6 +6,7 @@ from ubiq.cli import main
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = (ROOT / ".ubiq/schemas/plan.json").read_text()
+TRACKING = (ROOT / ".ubiq/schemas/tracking.json").read_text()
 
 
 def plan(name, **steps):
@@ -15,6 +16,7 @@ def plan(name, **steps):
 
 def repo(root, **plans):
     (root / "schema.json").write_text(SCHEMA)
+    (root / "tracking.json").write_text(TRACKING)
     (root / "plans").mkdir()
     for name, text in plans.items():
         (root / f"plans/{name}.md").write_text(text)

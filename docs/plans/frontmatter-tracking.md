@@ -28,31 +28,47 @@ steps:
     branch: claude/ecstatic-mendel-nkgz6t-tracking-fields
     base: claude/ecstatic-mendel-nkgz6t-sync-github
     pr: 135
+  base-revision-drift-check:
+    issue: 171
+    requires: [sync-github]
+  priority-inheritance:
+    issue: 150
+    requires: [tracking-fields, plan-records]
+    pr: 166
   requires-links:
     issue: 121
     requires: [tracking-fields]
     branch: claude/ecstatic-mendel-nkgz6t-requires-links
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+    pr: 145
   part-of-sub-issues:
     issue: 122
     requires: [tracking-fields]
     branch: claude/ecstatic-mendel-nkgz6t-part-of
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+    pr: 148
   feature-lifecycle:
     issue: 123
     requires: [tracking-fields]
     branch: claude/ecstatic-mendel-nkgz6t-feature-lifecycle
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+    pr: 146
   plan-records:
     issue: 124
     requires: [tracking-fields]
     branch: claude/ecstatic-mendel-nkgz6t-plan-records
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+    pr: 147
+  detect-plan-step-cycles:
+    issue: 149
+    requires: [requires-links, plan-records]
+    pr: 165
   pr-stacks:
     issue: 125
     requires: [requires-links]
     branch: claude/ecstatic-mendel-nkgz6t-pr-stacks
     base: claude/ecstatic-mendel-nkgz6t-requires-links
+    pr: 162
   schema-edge-diagrams:
     issue: 126
     requires: [tracking-fields, mermaid-blocks]
@@ -100,7 +116,7 @@ step. GitHub's sub-issues and blocked-by links on the spec mirror it.
 
 ## Status of this record
 
-This is an interim plan record. Until the plan records step (#124) adds a
-schema, the coordinator keeps it current by hand in the pull request that
-changes these facts. Once the plan schema lands, `ubiq check` validates it and
-`ubiq sync github` mirrors it.
+[The plan schema](../../.ubiq/schemas/plan.json) validates this record, and
+`ubiq sync github` mirrors its steps. The `pr` of a step is still written by
+hand: record it in the pull request that opens it, and check merged steps
+against GitHub when the plan changes (#184 tracks deriving it).

@@ -71,6 +71,27 @@ def test_invoke_and_include_edges_with_callers(tmp_path, capsys):
     assert status == 1 and "no record" in out["error"]
 
 
+def test_registering_parts_needs_only_config_and_a_moved_part_breaks_its_links(tmp_path, capsys):
+    # composable-knowledge-goal AC1: a glossary rule registers the parts, with no code;
+    # each link to a part then resolves to its record, and fails E002 once it moves.
+    repo(tmp_path, {
+        "skills/push/SKILL.md": skill("push", "Follow [checkout](../_shared/checkout.md)."),
+        "skills/ship/SKILL.md": skill("ship", "Then [checkout](../_shared/checkout.md) again."),
+        "skills/_shared/checkout.md": part("checkout", "Check out the branch."),
+    })
+    status, out = run(tmp_path, capsys, "refs", "part:checkout")
+    assert status == 0
+    assert [d["namespace"] for d in out["definitions"]] == ["part"]
+    assert sorted(r["file"] for r in out["references"]) == ["skills/push/SKILL.md", "skills/ship/SKILL.md"]
+    status, out = run(tmp_path, capsys, "check")
+    assert status == 0, out["diagnostics"]
+
+    (tmp_path / "skills/_shared/checkout.md").rename(tmp_path / "skills/_shared/checkout-branch.md")
+    status, out = run(tmp_path, capsys, "check")
+    broken = sorted(d["file"] for d in out["diagnostics"] if d["code"] == "E002")
+    assert status == 1 and broken == ["skills/push/SKILL.md", "skills/ship/SKILL.md"]
+
+
 def check(tmp_path, capsys):
     status, out = run(tmp_path, capsys, "check")
     return status, [(d["code"], d["message"]) for d in out["diagnostics"]
@@ -345,15 +366,30 @@ def test_links_into_another_repository_resolve_once_installed(tmp_path, capsys):
 
 def test_installed_fragments_preserve_entity_generated_suffixes(tmp_path, capsys):
     repo(tmp_path, {
-        "skills/a/SKILL.md": skill("a", "[space](../b/SKILL.md#section&#32;)\n"
-                                  "[bracket](../b/SKILL.md#section&gt;)\n"),
-        "skills/b/SKILL.md": skill("b", "# Section\n"),
+        # A file without frontmatter, since E013 checks fragments into the others.
+        "skills/a/SKILL.md": skill("a", "[space](../b/notes.md#section&#32;)\n"
+                                  "[bracket](../b/notes.md#section&gt;)\n"),
+        "skills/b/SKILL.md": skill("b"),
+        "skills/b/notes.md": "# Section\n",
     })
     _, found = check(tmp_path, capsys)
     assert found == [
-        ("W004", "link ../b/SKILL.md#section%20 names no heading in b/SKILL.md"),
-        ("W004", "link ../b/SKILL.md#section%3E names no heading in b/SKILL.md"),
+        ("W004", "link ../b/notes.md#section%20 names no heading in b/notes.md"),
+        ("W004", "link ../b/notes.md#section%3E names no heading in b/notes.md"),
     ]
+
+
+def test_installed_fragments_may_name_frontmatter_fields(tmp_path, capsys):
+    repo(tmp_path, {
+        "skills/a/SKILL.md": skill("a", "Run [b](../b/SKILL.md#name), [c](../b/SKILL.md#nmae), "
+                                   "and [sec](../b/SKILL.md#section).\n"),
+        "skills/b/SKILL.md": skill("b", "# Section\n"),
+    })
+    _, out = run(tmp_path, capsys, "check")
+    # E013 reports the misspelled field, so W004 does not report it again.
+    message = "field value [c](../b/SKILL.md#nmae) — no field or heading 'nmae' in ../b/SKILL.md"
+    assert [(d["code"], d["message"]) for d in out["diagnostics"] if d["code"] != "W001"] == [
+        ("E013", message)]
 
 
 def test_an_unreadable_external_repository_leaves_its_links_unchecked(tmp_path, capsys):

@@ -30,7 +30,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, coverage, query, review
+from . import __version__, coverage, query, readmes, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, at, run_checks
@@ -209,7 +209,12 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
         for source, overlay in glossary.overlay_sources.items():
             trace.record(source, "overlay-source", source=overlay)
 
+    memberships, extra = readmes.declarations(cfg, glossary)
     doc_files = _expand(cfg.docs, cfg.ignore, trace, "docs")
+    for membership in memberships:
+        doc_files.append(membership.readme)
+        if trace is not None:
+            trace.record(membership.readme, "readme", source=membership.source)
     hist_files = _expand(cfg.historical, cfg.ignore, trace, "historical")
     hist_set = {p.resolve() for p in hist_files}
     # Sidecars are docs too, so their ref_fields (uses: [...]) participate.
@@ -222,7 +227,7 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
             trace.files[_display_path(path, root)]["scanned"] = True
     refs = scan_docs(doc_files, glossary, cfg, historical=hist_set, invalid=glossary.invalid)
 
-    extra: list[Diagnostic] = []
+    extra.extend(readmes.check_membership(cfg, glossary, memberships, refs, hist_set))
     catalog = cfg.policies["catalog"]
     for spec in cfg.catalogs:
         if trace is not None:
@@ -242,11 +247,25 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
             extra.append(Diagnostic("E005", str(e), spec.file))
 
     if cfg.schemas:
-        from .schemas import xref_refs
+        from .schemas import single_diagnostics, xref_refs
         refs.extend(xref_refs(cfg))
         from .step_refs import step_cycle_diagnostics, within_diagnostics
         extra.extend(within_diagnostics(cfg))
         extra.extend(step_cycle_diagnostics(cfg))
+        extra.extend(single_diagnostics(cfg))
+    if cfg.sync is not None:
+        from .scenarios import diagnostics as scenario_diagnostics
+        from .schemas import load_data as _load
+        goals = []
+        for record in cfg.sync.records:
+            if record.kind != "goal":
+                continue
+            for path in sorted(record.glob.walk(cfg.ignore)):
+                try:
+                    goals.append((path, _load(path, frontmatter=True)))
+                except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, RecursionError):
+                    continue  # E009 reports it
+        extra.extend(scenario_diagnostics(goals))
     result.refs.extend(refs)
     result.diagnostics.extend(extra)
     result.docs.extend(doc_files)
@@ -474,12 +493,12 @@ def _check_build(result: Build) -> list[Diagnostic]:
                          if not path.resolve().is_relative_to(root))
     diags = result.diagnostics + run_checks(
         glossary, refs, cfg.external_id_patterns,
-        skip_unlinked=skip_mentions, unlinked_except=cfg.unlinked_except)
+        skip_unlinked=skip_mentions, unlinked_except=cfg.unlinked_except, lenient=cfg.lenient)
     if cfg.schemas:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))
         from .cycles import check_cycles
-        diags.extend(check_cycles(cfg))
+        diags.extend(check_cycles(cfg, glossary))
     live = [path for path in result.docs if path not in result.historical]
     diags.extend(check_edges(glossary, refs, cfg.edges, root, live, layout))
     return diags
@@ -512,10 +531,12 @@ def _layout(cfg: Config, load: Callable[[Config, str], Glossary] | None = None,
                 raise InvalidConfig(f"dependency {dependency.name!r}: {glossary.invalid}")
             files = _installed(other)
             if dependency.revision:
-                docs = _close_docs(other.root, _expand(other.docs, other.ignore, None, "docs"),
-                                   other.ignore, None)
+                memberships, _ = readmes.declarations(other, glossary)
+                readme_files = [membership.readme for membership in memberships]
+                docs = _close_docs(other.root, [*_expand(other.docs, other.ignore), *readme_files],
+                                   other.ignore)
                 validate_checkout(dependency, other,
-                                  [*docs, *files, *(t.file for t in glossary.terms),
+                                  [*docs, *readme_files, *files, *(t.file for t in glossary.terms),
                                    *glossary.overlay_sources, *glossary.overlay_sources.values()])
         except GlobError as exc:
             if dependency.name is not None:
@@ -1149,8 +1170,15 @@ def main(argv: list[str] | None = None) -> int:
                       help="exit 1 when GitHub differs from the records; skips without GITHUB_TOKEN")
     gh.add_argument("--ref", metavar="REV",
                     help="read the records and ubiq.yaml as they are at REV (a pull request's base)")
+    gh.add_argument("--ignore-derived", action="store_true",
+                    help="with --check, do not count what waits only for the next sync of main: "
+                         "the derived `status: in review`/`status: in progress` labels and "
+                         "\"met at\" comments owed to issues closed by keyword")
     gh.add_argument("--repo", metavar="OWNER/NAME",
                     help="issue repository (default: sync.repo, then $GITHUB_REPOSITORY)")
+    gh.add_argument("--results", metavar="FILE",
+                    help="scenario outcomes from `pytest -p ubiq.pytest_plugin --ubiq-results FILE`; a criterion with "
+                         "`scenario: true` is met when its tagged scenarios passed")
     gh.set_defaults(fn=cmd_sync)
 
     im = sub.add_parser("impact", help="records a change touches and the callers it affects")
