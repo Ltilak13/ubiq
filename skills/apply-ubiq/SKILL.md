@@ -22,7 +22,7 @@ It preserves source paths and does not edit files.
 Read existing `GLOSSARY-MAP.md` and context glossaries before you interpret directory candidates.
 Inspect representative files in each group, including files with different metadata fields.
 
-Follow the [domain review procedure](../references/domain-review.md) for the discovered vocabulary and context candidates.
+Follow the [domain review procedure](../references/domain-review.md), which uses /domain-modeling when installed, for the discovered vocabulary and context candidates.
 
 Design each group's schema from those files:
 
@@ -128,7 +128,7 @@ Overlay key is `source:` (not `on:` — YAML 1.1 loads `on:` as boolean `True`).
 
 ## 4. Check, then CI
 
-Follow the [validation procedure](../references/validate-changes.md). Always run `ubiq check`, including for a read-only inspection.
+Follow the [validation procedure](../references/validate-changes.md), which uses /validate-change when installed. Always run `ubiq check`, including for a read-only inspection.
 
 ```bash
 python3 -m ubiq.cli check
@@ -150,4 +150,4 @@ Or `ubiq check` in any job that already has Python. Gate merges on exit 1.
 
 Unlinked mentions (W002) are off by default. When `ubiq check` exits 0, offer to turn them on. If the owner agrees, set `unlinked_mentions: warn`, run `ubiq check --json`, count the warnings per term, and propose an `unlinked_except` list of ordinary words and core nouns. Expect hundreds of warnings on a first run.
 
-Ongoing upkeep — unlinked mentions, orphans, and new terms — is the `maintain-ubiq` skill.
+Ongoing upkeep — unlinked mentions, orphans, and new terms — is the [maintain-ubiq](../maintain-ubiq/SKILL.md) skill.

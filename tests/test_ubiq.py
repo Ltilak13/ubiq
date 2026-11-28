@@ -506,6 +506,23 @@ def test_markdown_symlink_to_registered_external_record(tmp_path):
     assert main(["check", "--root", str(root)]) == 0
 
 
+def test_broken_link_in_dependency_prose_is_not_reported(tmp_path, capsys):
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "upstream.md"
+    outside.write_text("[gone](missing.md)\n")
+    cfg = ('glossary: ["glossary/**/*.md"]\ndocs: ["**/*.md"]\n'
+           'references: {link: {severity: error}}\n')
+    make_repo(root, {}, {"own.md": "[vendored](vendored.md)\n"}, config=cfg)
+    (root / "vendored.md").symlink_to(outside)
+    assert main(["check", "--root", str(root)]) == 0
+    capsys.readouterr()
+    (root / "own.md").write_text("[vendored](vendored.md) [gone](missing.md)\n")
+    assert main(["check", "--root", str(root), "--json"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert [(d["code"], d["file"].rsplit("/", 1)[-1]) for d in out["diagnostics"]] == [("W007", "own.md")]
+
+
 def test_markdown_historical_missing_record_does_not_fail(tmp_path):
     cfg = ('glossary: ["glossary/**/*.md"]\ndocs: ["README.md"]\n'
            'historical: ["CHANGELOG.md"]\n')
