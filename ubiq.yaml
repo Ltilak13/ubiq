@@ -32,7 +32,10 @@ docs:
   - "src/ubiq/plan.md"
 overlays:
   - ".ubiq/overlays/*.md"
-ref_fields: [uses, requires]
+ref_fields: [uses, requires, routes]
+# A broken relative link fails the build (W007 is a warning by default).
+references:
+  link: {severity: error}
 catalogs:
   - file: ".ubiq/catalogs/skills.json"
     items: skills
@@ -66,6 +69,8 @@ id_patterns:
 # Skill directories install together as siblings under one root.
 edges:
   install: ["skills/*/SKILL.md", "skills/references/*.md"]
+  route: {fields: [routes]}
+  drift: {ns: [skill]}
 
 # Typed contracts for each owned asset family.
 symbols:
