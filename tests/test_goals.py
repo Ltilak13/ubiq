@@ -10,7 +10,7 @@ from ubiq.schemas import load_data
 ROOT = Path(__file__).resolve().parents[1]
 GOALS = (
     "domain-schema", "composable-knowledge", "human-agent-readability",
-    "checkable-contracts-evidence", "safe-adoption-evolution",
+    "checkable-contracts-evidence", "safe-adoption-evolution", "no-code-spec",
 )
 SCHEMA = load_data(ROOT / '.ubiq/schemas/goal.json')
 
@@ -44,3 +44,31 @@ def test_partial_assessment_requires_provisional_evidence(field, value):
     data['criteria']['AC2'][field] = value
     with pytest.raises(ValidationError):
         Draft202012Validator(SCHEMA).validate(data)
+
+
+MET = {'assessment': 'met', 'gap': 'None remaining.', 'review': {'by': 'Lucas', 'note': 'Checked.'},
+       'support': [{'feature': 'f', 'implementation': {'path': 'a', 'anchor': 'x'},
+                    'check': {'path': 'b', 'anchor': 'y'}}]}
+
+
+def _criterion(**fields):
+    return {'name': 'g', 'status': 'proposed', 'criteria': {'AC1': fields}}
+
+
+def test_met_assessment_with_review_and_adopted_issues_is_valid():
+    Draft202012Validator(SCHEMA).validate(_criterion(**MET, issues=[3, 4]))
+
+
+@pytest.mark.parametrize('fields', [
+    {**MET, 'support': []},
+    {key: value for key, value in MET.items() if key != 'review'},
+    {**MET, 'review': {'by': 'Lucas', 'note': ' '}},
+    {**MET, 'review': {'by': 'Lucas'}},
+    {'assessment': 'unassessed', 'support': [], 'gap': 'g', 'review': MET['review']},
+    {**MET, 'issues': [3, 3]},
+    {**MET, 'issues': [0]},
+    {**MET, 'issues': ['#3']},
+])
+def test_met_assessment_requires_support_and_review(fields):
+    with pytest.raises(ValidationError):
+        Draft202012Validator(SCHEMA).validate(_criterion(**fields))

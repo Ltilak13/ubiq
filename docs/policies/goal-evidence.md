@@ -13,8 +13,8 @@ nonempty remaining gap. Its support list must contain at least one entry.
 Each implementation and check must name a repository-relative path and an anchor.
 The assessment stays provisional. A partial assessment does not establish goal completion.
 
-The [goal schema](../../.ubiq/schemas/goal.json) enforces the required fields and
-provisional assessment values. The [goal tests](../../tests/test_goals.py) check
+The [goal schema](../../.ubiq/schemas/goal.json) enforces the required fields,
+the assessment values, and the review record that a `met` assessment needs. The [goal tests](../../tests/test_goals.py) check
 criterion labels and evidence locations, and reject unsupported assessment values.
 These checks do not establish that an implementation satisfies a criterion.
 
