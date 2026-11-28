@@ -40,11 +40,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from . import xref
 from .config import Config, load_config
-from .records import normalize
+from .records import DEFAULT_NS, normalize
 from .scan import HTML_COMMENT_RE, _blank_fences, _blank_inline
-from .schemas import load_data
+from .schemas import _annotations, load_data
 
 # A criterion line and its indented continuation lines.
 CRITERION_RE = re.compile(r'^\d+\. (AC\d+): .+(?:\n[ \t]+\S.*)*', re.MULTILINE)
@@ -71,7 +73,7 @@ class Desired:
     inside the generated body marker that finds the issue again. `state` is
     `closed` when the record is done, else `open`. `priority` (`P1`, `P2`, `P3`, or
     empty when the record sets none) is mirrored as the label `label_prefix + priority`.
-    Later tickets add fields here (requires, part_of) and one fact function each.
+    A nonzero `parent_issue` identifies the issue that owns this item’s sub-issues.
     """
     kind: str
     ident: Mapping[str, str]
@@ -93,6 +95,7 @@ class Desired:
     # is the number of the issue this one belongs under (0 for none). Plan steps set both.
     requires_markers: tuple[str, ...] = ()
     parent_issue: int = 0
+    parent: str = ''
     # `pr`: the record's implementing pull requests, and for each record it `requires`
     # that has a `pr`, that record's name and pull requests (see `Stack`).
     prs: tuple[int, ...] = ()
@@ -144,7 +147,7 @@ def load_goal(path: Path, root: Path) -> dict[str, Any]:
         text = {m.group(1): ' '.join(m.group(0).split())
                 for m in CRITERION_RE.finditer(path.read_text(encoding='utf-8'))}
         return {'name': data['name'], 'path': path.relative_to(Path(root).resolve()).as_posix(),
-                'criteria': data['criteria'], 'text': text, 'priority': data.get('priority', '')}
+                'criteria': data['criteria'], 'text': text, 'issue': data.get('issue', 0), 'priority': data.get('priority', '')}
     except (ValueError, KeyError, OSError) as exc:
         raise SyncError(f"{path}: not a readable goal ({exc})") from exc
 
@@ -152,13 +155,16 @@ def load_goal(path: Path, root: Path) -> dict[str, Any]:
 def goal_desired(goal: Mapping[str, Any], sha: str = '',
                  label_prefix: str = DEFAULT_LABEL_PREFIX,
                  numbers: Mapping[str, int] | None = None,
-                 pulls: Mapping[str, tuple[int, ...]] | None = None) -> list[Desired]:
+                 pulls: Mapping[str, tuple[int, ...]] | None = None,
+                 goal_issues: Mapping[str, int] | None = None) -> list[Desired]:
     """One `Desired` per criterion: open until the criterion is `met`, then closed.
 
     A criterion's `issue` is tracked like each number in its `issues` list. `numbers`
     maps a normalized record name to its issue, to resolve the criterion's `requires`;
-    `pulls` maps it to the record's `pr`, for the stack check.
+    `pulls` maps it to the record's `pr`, for the stack check. `goal_issues` maps goal
+    names to parent issue numbers for `part_of`.
     """
+    goal_issues = {normalize(k): n for k, n in {goal['name']: goal.get('issue', 0), **(goal_issues or {})}.items()}
     items = []
     for ac, criterion in goal['criteria'].items():
         marker = f"ubiq-goal: {goal['name']} {ac}"
@@ -170,6 +176,7 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             comment = (f"Goal `{goal['name']}` {ac} is `met` at {sha or 'the merged commit'}. "
                        f"Review by {review['by']}: {review['note']}\n\n"
                        + CLOSED_MARKER.format(name=goal['name'], ac=ac))
+        parent = (criterion.get('part_of') or [goal['name']])[0]
         items.append(Desired(
             kind='goal', ident={'goal': goal['name'], 'criterion': ac}, marker=marker,
             title=textwrap.shorten(f"{goal['name']} {ac}: {title}", 200),
@@ -178,7 +185,8 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
             close_comment=comment, priority=resolve_priority(criterion, goal),
-            label_prefix=label_prefix, prs=tuple(criterion.get('pr', ())),
+            label_prefix=label_prefix, parent=parent, parent_issue=goal_issues.get(normalize(parent), 0),
+            prs=tuple(criterion.get('pr', ())),
             required_prs=_required_prs(criterion, pulls or {}),
             **_requires(criterion, numbers or {})))
     return items
@@ -260,8 +268,7 @@ def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LAB
     A `proposed` or `abandoned` plan mirrors nothing, and a `done` plan closes its issues.
     A step without its own `priority` takes the plan's (`resolve_priority`).
     A step that names a `pr` and no `issue` is tracked by that pull request, so it gets no
-    issue. `requires_markers` and `parent_issue` carry the links for the facts that mirror
-    them (blocked-by, sub-issue); no fact here performs them yet.
+    issue. Its issue-backed steps become sub-issues of the plan issue.
     """
     if plan_record['status'] in ('proposed', 'abandoned'):
         return []
@@ -278,7 +285,7 @@ def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LAB
                        f"<!-- ubiq-plan-closed: {plan_record['name']} {name} -->") if done else '',
         label_prefix=label_prefix, priority=resolve_priority(spec, plan_record),
         requires_markers=tuple(marker_of[r] for r in spec.get('requires', []) if r in tracked),
-        parent_issue=plan_record['issue']) for name, spec in tracked.items()]
+        parent=plan_record['name'], parent_issue=plan_record['issue']) for name, spec in tracked.items()]
 
 
 def tracked_issue_numbers(cfg: Config) -> dict[str, int]:
@@ -302,12 +309,57 @@ def desired_from_config(cfg: Config, sha: str = '',
         records = tracked_records(cfg)
     numbers = {name: t.issue for name, t in records.items() if t.issue is not None}
     pulls = {name: t.prs for name, t in records.items()}
+    goals = [load_goal(path, cfg.root) for record in cfg.sync.records if record.kind == 'goal'
+             for path in sorted(record.glob.walk(cfg.ignore))]
+    goal_issues = {g['name']: g['issue'] for g in goals}
+    for goal in goals:
+        items += goal_desired(goal, sha, cfg.sync.label_prefix, numbers, pulls, goal_issues)
     for record in cfg.sync.records:
         for path in sorted(record.glob.walk(cfg.ignore)):
-            if record.kind == 'goal':
-                items += goal_desired(load_goal(path, cfg.root), sha, cfg.sync.label_prefix, numbers, pulls)
-            elif record.kind == 'plan':
+            if record.kind == 'plan':
                 items += plan_desired(load_plan(path, cfg.root), cfg.sync.label_prefix)
+    return items + _part_of_records(cfg)
+
+
+def _part_of_records(cfg: Config) -> list[Desired]:
+    record_issues: dict[tuple[str, str], set[int]] = {}
+    children: set[tuple[str, int, str, str]] = set()
+    by_path: dict[Path, set[str]] = {}
+    for spec in cfg.schemas:
+        if spec.format != 'frontmatter':
+            continue
+        try:
+            namespaces = {a.ref.ns for a in _annotations(cfg.root, spec.schema)
+                          if a.ref.edge == 'part_of' and a.steps == (('key', 'part_of'),)}
+        except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError, RecursionError):
+            namespaces = set()
+        for pattern in spec.files:
+            for path in pattern.walk(cfg.ignore):
+                by_path.setdefault(path, set()).update(namespaces)
+    for path, parent_namespaces in sorted(by_path.items()):
+        try:
+            data = load_data(path, frontmatter=True)
+        except (OSError, ValueError, yaml.YAMLError):
+            continue  # Schema validation reports unreadable records.
+        if not isinstance(data, dict):
+            continue
+        name, number = data.get('name'), data.get('issue')
+        if not isinstance(name, str) or type(number) is not int or number < 1:
+            continue
+        for rule in cfg.glossary:
+            if rule.glob.matches(path):
+                key = (normalize(rule.ns or DEFAULT_NS), normalize(name))
+                record_issues.setdefault(key, set()).add(number)
+        parents = data.get('part_of')
+        if (len(parent_namespaces) == 1 and isinstance(parents, list)
+                and len(parents) == 1 and isinstance(parents[0], str)):
+            children.add((name, number, parents[0], next(iter(parent_namespaces))))
+    items = []
+    for name, number, parent, namespace in sorted(children):
+        parent_numbers = record_issues.get((normalize(namespace), normalize(parent)), set())
+        if len(parent_numbers) == 1:
+            items.append(Desired('record', {'record': name}, '', '', '', 'open', listed=(number,),
+                                 parent=parent, parent_issue=next(iter(parent_numbers))))
     return items
 
 
@@ -330,7 +382,8 @@ def fact_exists(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issu
     labels = [item.label_prefix + item.priority] if _mirrors_priority(item) else []
     body = set_blocked_by(item.body, item.requires_prs)
     return [{'action': 'create', **item.ident, 'title': item.title, 'body': body,
-             **({'labels': labels} if labels else {})}]
+             **({'labels': labels} if labels else {}),
+             **({'parent_issue': item.parent_issue} if item.parent_issue else {})}]
 
 
 def fact_state(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
@@ -522,9 +575,46 @@ def fact_stack(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue
 PR_FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue], Mapping[int, Pull]], list[Action]], ...] = (
     fact_stack,)
 
+def fact_part_of(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
+    """Each issue that tracks the record is a sub-issue of the parent record's issue.
+
+    An issue missing from the parent's `sub_issues` (the snapshot's list of its children)
+    is a `link`; GitHub allows one parent per issue, so the link replaces any other parent.
+    A record whose parent has no `issue` plans nothing, and a parent that is not an issue
+    gets a `warn`. A sub-issue that GitHub holds but no record asks for is `unlink`,
+    planned across items by `unexpected_sub_issues`.
+    """
+    if not item.parent_issue:
+        return []
+    parent = issues.get(item.parent_issue)
+    if parent is None:
+        return [{'action': 'warn', **item.ident, 'issue': item.parent_issue,
+                 'reason': f'parent issue of {item.parent} is not an issue'}]
+    children = set(parent.get('sub_issues') or ())
+    return [{'action': 'link', **item.ident, 'issue': n, 'parent': item.parent_issue,
+             'sub_issue_id': issues[n].get('id')}
+            for n in tracked if n in issues and n != item.parent_issue and n not in children]
+
+
+def unexpected_sub_issues(items: Sequence[tuple[Desired, list[int]]], issues: Mapping[int, Issue]) -> list[Action]:
+    """Sub-issues on a parent issue that no record puts there: added by hand on GitHub.
+
+    An issue that a record moves to another parent is not unexpected: its `link` replaces the old parent.
+    """
+    expected = {n for item, tracked in items if item.parent_issue for n in tracked}
+    found: list[Action] = []
+    for parent in sorted({d.parent_issue for d, _ in items if d.parent_issue in issues}):
+        for n in issues[parent].get('sub_issues') or ():
+            if n not in expected:
+                found.append({'action': 'unlink', 'issue': n, 'parent': parent,
+                              'sub_issue_id': issues.get(n, {}).get('id'),
+                              'reason': 'sub-issue is not part_of the parent record'})
+    return found
+
+
 # Each mirrored fact: (item, tracked issue numbers, issues by number) -> actions.
 FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action]], ...] = (
-    fact_exists, fact_state, fact_priority, fact_requires, fact_blocked_line)
+    fact_exists, fact_state, fact_priority, fact_part_of, fact_requires, fact_blocked_line)
 
 
 def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
@@ -568,6 +658,7 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
         if not found:
             reason = 'met; no open issue' if item.state == 'closed' else 'tracked'
             actions.append({'action': 'noop', **item.ident, 'reason': reason, 'issues': tracked})
+    actions += unexpected_sub_issues(items, by_number)
     untracked = [n for n in by_number if n not in tracked_issues]
     if untracked:
         actions += fact_in_review({}, untracked, by_number, in_review)
@@ -610,7 +701,7 @@ class GitHub:
     def _call(self, method: str, url: str, payload: dict | None = None) -> Any:
         return self.transport(method, url, self.token, payload)
 
-    def snapshot(self) -> list[Issue]:
+    def snapshot(self, parents: Iterable[int] = ()) -> list[Issue]:
         """Every issue (not pull request) in the repository, open or closed."""
         issues: list[Issue] = []
         page = 1
@@ -618,8 +709,28 @@ class GitHub:
             batch = self._call('GET', f'{self.base}?state=all&per_page=100&page={page}')
             issues += [self._with_links(i) for i in batch if 'pull_request' not in i]
             if len(batch) < 100:
-                return issues
+                break
             page += 1
+        by_number: dict[int, Any] = {i['number']: i for i in issues}
+        for parent in dict.fromkeys(parents):
+            if parent in by_number:
+                by_number[parent]['sub_issues'] = self._sub_issues(parent)
+        return issues
+
+    def _sub_issues(self, parent: int) -> list[int]:
+        found: list[int] = []
+        page = 1
+        while True:
+            batch = self._call('GET', f'{self.base}/{parent}/sub_issues?per_page=100&page={page}')
+            found += [i['number'] for i in batch]
+            if len(batch) < 100:
+                return found
+            page += 1
+
+    def _attach(self, parent: int, sub_issue_id: Any) -> None:
+        # One parent per issue: replace_parent moves an issue that has another parent.
+        self._call('POST', f'{self.base}/{parent}/sub_issues',
+                   {'sub_issue_id': sub_issue_id, 'replace_parent': True})
 
     def pulls(self) -> list[Pull]:
         """Every open pull request, with separate closing and stacked-review references."""
@@ -666,11 +777,18 @@ class GitHub:
             page += 1
 
     def _link(self, action: Action) -> None:
+        if 'parent' in action:
+            self._attach(action['parent'], action['sub_issue_id'])
+            return
         self._call('POST', f"{self.base}/{action['issue']}/dependencies/blocked_by",
                    {'issue_id': action['issue_id']})
 
     def _unlink(self, action: Action) -> None:
         try:
+            if 'parent' in action:
+                self._call('DELETE', f"{self.base}/{action['parent']}/sub_issue",
+                           {'sub_issue_id': action['sub_issue_id']})
+                return
             self._call('DELETE', f"{self.base}/{action['issue']}/dependencies/blocked_by/{action['issue_id']}")
         except urllib.error.HTTPError as exc:
             if exc.code != 404:  # already gone is the state we want
@@ -685,6 +803,8 @@ class GitHub:
             payload['labels'] = action['labels']
         issue = self._call('POST', self.base, payload)
         action['issue'] = issue['number']
+        if action.get('parent_issue'):
+            self._attach(action['parent_issue'], issue['id'])
 
     def _label(self, action: Action) -> None:
         url = f"{self.base}/{action['issue']}/labels"
@@ -768,10 +888,11 @@ def revision_root(root: Path, rev: str) -> Iterator[Path]:
             patterns = [record.glob for record in cfg.sync.records]
             patterns.extend(pattern for spec in cfg.schemas if spec.format == 'frontmatter'
                             for pattern in spec.files)
+            schemas = {spec.schema.partition('#')[0] for spec in cfg.schemas}
             listing = _git(root, rev, 'ls-tree', '-r', '-z', rev).decode().split('\0')
             for entry in filter(None, listing):
                 meta, path = entry.split('\t', 1)
-                if meta.startswith('100') and any(pattern.matches(tmp / path) for pattern in patterns):
+                if meta.startswith('100') and (path in schemas or any(pattern.matches(tmp / path) for pattern in patterns)):
                     fetch(path)
         yield tmp
 
@@ -819,7 +940,8 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
     try:
         records = tracked_records(cfg)
         desired = desired_from_config(cfg, _head(root, getattr(args, 'ref', None)), records)
-        actions = plan(desired, github.snapshot(), github.pulls(), record_stacks(records), records.values())
+        snapshot = github.snapshot(d.parent_issue for d in desired if d.parent_issue)
+        actions = plan(desired, snapshot, github.pulls(), record_stacks(records), records.values())
     except SyncError as exc:
         print(f'error: {exc}', file=sys.stderr)
         return 2
