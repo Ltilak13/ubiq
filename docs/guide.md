@@ -141,6 +141,16 @@ Headings, historical docs, a term's own record, and overlay sidecars are not
 reported. The [maintain skill](../skills/maintain-ubiq/SKILL.md) works through
 these warnings.
 
+A value that lives in a record's frontmatter should not be copied into its prose,
+where it goes stale when the field changes. List the fields to guard:
+
+```yaml
+restated_values: [pct, max_retries]   # W008 when a record's body repeats one of its own values
+```
+
+With `pct: 10` in the frontmatter, a body line such as "It takes 10% off" reports
+`W008`. Code, links, booleans, one-character values, and the term itself are skipped.
+
 Wiki-links remain available. A typo such as `[[sesion]]` reports:
 
 ```text

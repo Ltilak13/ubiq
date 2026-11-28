@@ -219,6 +219,14 @@ membership. `ubiq check` reports discrepancies without editing the README.
   `coverage.exclude` glob matches no selected file. Only `ubiq coverage` reports it.
 - `W007` broken link — a relative Markdown link to a missing file or directory that
   is not a [[record]] (see the `link` kind). `references.link.severity` tunes it.
+- `W008` restated value — a [[record]]'s prose repeats the value of one of its own
+  frontmatter fields listed in `restated_values` (`pct: 10` and "10% off"). Each
+  value lives in frontmatter only. Fenced and inline code, links, wiki-links, URLs,
+  HTML, and comments are not prose. Lists, booleans, one-character values, and
+  values that spell the record's own term are not checked. A number inside a longer
+  number (`10` in `100`, `10.5`, `10,000`, `2026-10-01`, or `10:30`) is not a match.
+  Text matches ignore case, and a multi-word value may wrap across lines. Reported
+  once per field, at the first restatement. Off unless `restated_values` lists fields.
 - `W009` graph block — a `<!-- ubiq:graph -->` block (see Mermaid blocks) differs from
   the `ubiq graph --format mermaid` output for its selection, or cannot be read: an
   unknown attribute or kind, a target that names no single record, a missing closing
