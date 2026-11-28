@@ -52,11 +52,27 @@ def test_line_of_finds_the_nested_key():
 # -- the shared fragment --------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["goal", "feature"])
-def test_schemas_carry_an_exact_copy_of_the_tracking_fragment(name):
+@pytest.mark.parametrize("name", ["goal", "feature", "plan"])
+def test_schemas_reference_the_tracking_fields_instead_of_copying_them(name):
+    text = (SCHEMAS / f"{name}.json").read_text()
+    assert "tracking.json#/properties/" in text
+    assert '"tracking"' not in text
+
+
+def test_bundled_schema_inlines_tracking_json_as_one_same_document_definition():
+    from ubiq.schemas import load_schema
+    schema = load_schema(ROOT, SCHEMAS / "feature.json")
     fragment = json.loads((SCHEMAS / "tracking.json").read_text())
-    schema = json.loads((SCHEMAS / f"{name}.json").read_text())
-    assert schema["$defs"]["tracking"]["properties"] == fragment["properties"]
+    assert schema["$defs"]["ubiq-file:.ubiq/schemas/tracking.json"] == fragment
+    assert schema["properties"]["pr"] == {
+        "$ref": "#/$defs/ubiq-file:.ubiq~1schemas~1tracking.json/properties/pr"}
+
+
+def test_a_ref_outside_the_repository_is_an_unloadable_schema(tmp_path):
+    from ubiq.schemas import load_schema
+    (tmp_path / "s.json").write_text('{"$ref": "../outside.json"}')
+    with pytest.raises(ValueError, match="no schema file inside"):
+        load_schema(tmp_path, tmp_path / "s.json")
 
 
 # -- ubiq check and ubiq graph ----------------------------------------------------------
@@ -182,4 +198,4 @@ def test_this_repository_declares_edges_on_its_goal_and_feature_schemas():
     for name in ("goal", "feature"):
         schema = json.loads((SCHEMAS / f"{name}.json").read_text())
         names |= {a.ref.edge for a in xref.collect(schema)}
-    assert names == {"requires", "part_of"}
+    assert names == {"requires", "part_of", "supported_by", "assessed_in"}

@@ -13,16 +13,13 @@
       "pattern": "\\S"
     },
     "status": {
-      "enum": [
-        "proposed",
-        "in-progress"
-      ]
+      "$ref": "tracking.json#/properties/status"
     },
     "issue": {
-      "$ref": "#/$defs/tracking/properties/issue"
+      "$ref": "tracking.json#/properties/issue"
     },
     "priority": {
-      "$ref": "#/$defs/tracking/properties/priority"
+      "$ref": "tracking.json#/properties/priority"
     },
     "criteria": {
       "type": "object",
@@ -54,8 +51,13 @@
                 ],
                 "properties": {
                   "feature": {
+                    "description": "The feature record that supplies this evidence, by name.",
                     "type": "string",
-                    "pattern": "\\S"
+                    "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                    "x-ubiq-ref": {
+                      "ns": "feature",
+                      "edge": "supported_by"
+                    }
                   },
                   "implementation": {
                     "$ref": "#/$defs/location"
@@ -71,11 +73,36 @@
               "type": "string",
               "pattern": "\\S"
             },
+            "assessed_in": {
+              "description": "The criterion that owns this obligation and its assessment. This criterion keeps its label and gets no evidence or issue of its own.",
+              "type": "object",
+              "required": [
+                "goal",
+                "criterion"
+              ],
+              "properties": {
+                "goal": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                  "x-ubiq-ref": {
+                    "ns": "goal",
+                    "edge": "assessed_in"
+                  }
+                },
+                "criterion": {
+                  "type": "string",
+                  "pattern": "^AC[1-9][0-9]*$"
+                }
+              },
+              "additionalProperties": false
+            },
             "review": {
               "type": "object",
               "required": [
                 "by",
-                "note"
+                "note",
+                "at",
+                "date"
               ],
               "properties": {
                 "by": {
@@ -85,6 +112,16 @@
                 "note": {
                   "type": "string",
                   "pattern": "\\S"
+                },
+                "at": {
+                  "description": "The commit the reviewer checked. Files cited in support that change after it make the review stale.",
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{40}$"
+                },
+                "date": {
+                  "description": "The day of the review, as YYYY-MM-DD.",
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                 }
               },
               "additionalProperties": false
@@ -98,13 +135,13 @@
               "uniqueItems": true
             },
             "issue": {
-              "$ref": "#/$defs/tracking/properties/issue"
+              "$ref": "tracking.json#/properties/issue"
             },
             "priority": {
-              "$ref": "#/$defs/tracking/properties/priority"
+              "$ref": "tracking.json#/properties/priority"
             },
             "requires": {
-              "$ref": "#/$defs/tracking/properties/requires",
+              "$ref": "tracking.json#/properties/requires",
               "x-ubiq-ref": {
                 "ns": "feature",
                 "edge": "requires",
@@ -112,7 +149,7 @@
               }
             },
             "part_of": {
-              "$ref": "#/$defs/tracking/properties/part_of",
+              "$ref": "tracking.json#/properties/part_of",
               "x-ubiq-ref": {
                 "ns": "goal",
                 "edge": "part_of",
@@ -120,7 +157,7 @@
               }
             },
             "pr": {
-              "$ref": "#/$defs/tracking/properties/pr"
+              "$ref": "tracking.json#/properties/pr"
             }
           },
           "additionalProperties": false,
@@ -166,6 +203,23 @@
                   ]
                 }
               }
+            },
+            {
+              "if": {
+                "required": [
+                  "assessed_in"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "assessment": {
+                    "const": "unassessed"
+                  },
+                  "support": {
+                    "maxItems": 0
+                  }
+                }
+              }
             }
           ]
         }
@@ -192,47 +246,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "tracking": {
-      "description": "Copy of .ubiq/schemas/tracking.json; a test keeps them equal.",
-      "type": "object",
-      "properties": {
-        "issue": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "priority": {
-          "enum": [
-            "P1",
-            "P2",
-            "P3"
-          ]
-        },
-        "requires": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "\\S"
-          }
-        },
-        "part_of": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "\\S"
-          }
-        },
-        "pr": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      }
     }
   }
 }

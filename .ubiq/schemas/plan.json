@@ -5,9 +5,9 @@
   "required": ["name", "status", "issue", "trunk", "steps"],
   "properties": {
     "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
-    "status": {"enum": ["proposed", "active", "done", "abandoned"]},
-    "issue": {"$ref": "#/$defs/tracking/properties/issue"},
-    "priority": {"$ref": "#/$defs/tracking/properties/priority"},
+    "status": {"$ref": "tracking.json#/properties/status"},
+    "issue": {"$ref": "tracking.json#/properties/issue"},
+    "priority": {"$ref": "tracking.json#/properties/priority"},
     "trunk": {"type": "string", "pattern": "\\S"},
     "steps": {
       "type": "object",
@@ -19,46 +19,21 @@
           "required": ["requires"],
           "additionalProperties": false,
           "properties": {
-            "issue": {"$ref": "#/$defs/tracking/properties/issue"},
-            "priority": {"$ref": "#/$defs/tracking/properties/priority"},
+            "issue": {"$ref": "tracking.json#/properties/issue"},
+            "priority": {"$ref": "tracking.json#/properties/priority"},
             "requires": {
               "type": "array",
               "uniqueItems": true,
-              "items": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+              "items": {"type": "string", "pattern": "^([a-z0-9]+(-[a-z0-9]+)*/)?[a-z0-9]+(-[a-z0-9]+)*$"},
               "x-ubiq-ref": {"ns": "plan-step", "edge": "requires", "acyclic": true, "within": "steps"}
             },
             "branch": {"type": "string", "pattern": "\\S"},
             "base": {"type": "string", "pattern": "\\S"},
-            "pr": {"type": "integer", "minimum": 1}
+            "pr": {"$ref": "tracking.json#/properties/pr"}
           }
         }
       }
     }
   },
-  "additionalProperties": false,
-  "$defs": {
-    "tracking": {
-      "description": "Copy of .ubiq/schemas/tracking.json; a test keeps them equal.",
-      "type": "object",
-      "properties": {
-        "issue": {"type": "integer", "minimum": 1},
-        "priority": {"enum": ["P1", "P2", "P3"]},
-        "requires": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"type": "string", "pattern": "\\S"}
-        },
-        "part_of": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"type": "string", "pattern": "\\S"}
-        },
-        "pr": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"type": "integer", "minimum": 1}
-        }
-      }
-    }
-  }
+  "additionalProperties": false
 }

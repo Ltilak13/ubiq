@@ -75,6 +75,7 @@ class Desired:
     `closed` when the record is done, else `open`. `priority` (`P1`, `P2`, `P3`, or
     empty when the record sets none) is mirrored as the label `label_prefix + priority`.
     A nonzero `parent_issue` identifies the issue that owns this item’s sub-issues.
+    `creates` is false when an open item with no issue should stay without one.
     """
     kind: str
     ident: Mapping[str, str]
@@ -97,6 +98,7 @@ class Desired:
     requires_markers: tuple[str, ...] = ()
     parent_issue: int = 0
     parent: str = ''
+    creates: bool = True
     # `pr`: the record's implementing pull requests, and for each record it `requires`
     # that has a `pr`, that record's name and pull requests (see `Stack`).
     prs: tuple[int, ...] = ()
@@ -157,8 +159,14 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
                  label_prefix: str = DEFAULT_LABEL_PREFIX,
                  numbers: Mapping[str, int] | None = None,
                  pulls: Mapping[str, tuple[int, ...]] | None = None,
-                 goal_issues: Mapping[str, int] | None = None) -> list[Desired]:
+                 goal_issues: Mapping[str, int] | None = None,
+                 prioritized_only: bool = False) -> list[Desired]:
     """One `Desired` per criterion: open until the criterion is `met`, then closed.
+
+    A criterion with `assessed_in` is assessed by the criterion it names, so it has none.
+    With `prioritized_only` (`sync.create: prioritized`), a criterion opens a new issue
+    only when it or its goal sets a `priority`; a listed or marked issue is still tracked
+    and closed when the criterion is `met`.
 
     A criterion's `issue` is tracked like each number in its `issues` list. `numbers`
     maps a normalized record name to its issue, to resolve the criterion's `requires`;
@@ -168,6 +176,8 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
     goal_issues = {normalize(k): n for k, n in {goal['name']: goal.get('issue', 0), **(goal_issues or {})}.items()}
     items = []
     for ac, criterion in goal['criteria'].items():
+        if 'assessed_in' in criterion:
+            continue
         marker = f"ubiq-goal: {goal['name']} {ac}"
         title = goal['text'].get(ac, ac).split(': ', 1)[-1]
         met = criterion['assessment'] == 'met'
@@ -186,8 +196,9 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
             close_comment=comment, priority=resolve_priority(criterion, goal),
+            creates=not prioritized_only or bool(resolve_priority(criterion, goal)),
             label_prefix=label_prefix, parent=parent, parent_issue=goal_issues.get(normalize(parent), 0),
-            prs=tuple(criterion.get('pr', ())),
+            prs=xref.pr_numbers(criterion.get('pr', [])),
             required_prs=_required_prs(criterion, pulls or {}),
             **_requires(criterion, numbers or {})))
     return items
@@ -235,7 +246,7 @@ def tracked_records(cfg: Config) -> dict[str, Tracked]:
                 prs, requires = data.get('pr'), data.get('requires')
                 found.setdefault(normalize(data['name']), Tracked(
                     number if isinstance(number, int) and not isinstance(number, bool) else None,
-                    tuple(n for n in prs if isinstance(n, int)) if isinstance(prs, list) else (),
+                    xref.pr_numbers(prs),
                     tuple(v for v in requires if isinstance(v, str)) if isinstance(requires, list) else ()))
     return found
 
@@ -285,8 +296,18 @@ def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LAB
         close_comment=(f"Plan `{plan_record['name']}` is done.\n\n"
                        f"<!-- ubiq-plan-closed: {plan_record['name']} {name} -->") if done else '',
         label_prefix=label_prefix, priority=resolve_priority(spec, plan_record),
-        requires_markers=tuple(marker_of[r] for r in spec.get('requires', []) if r in tracked),
+        requires_markers=tuple(_step_marker(r, tracked, marker_of)
+                               for r in spec.get('requires', [])
+                               if r in tracked or '/' in r),
         parent=plan_record['name'], parent_issue=plan_record['issue']) for name, spec in tracked.items()]
+
+
+def _step_marker(required: str, tracked: Mapping[str, Any], marker_of: Mapping[str, str]) -> str:
+    """The marker of a required step: one in this plan, or `<plan>/<step>` in another."""
+    if required in tracked:
+        return marker_of[required]
+    other, _, step = required.partition('/')
+    return f"ubiq-plan: {other} {step}"
 
 
 def tracked_issue_numbers(cfg: Config) -> dict[str, int]:
@@ -356,7 +377,8 @@ def desired_from_config(cfg: Config, sha: str = '',
              for path in sorted(record.glob.walk(cfg.ignore))]
     goal_issues = {g['name']: g['issue'] for g in goals}
     for goal in goals:
-        items += goal_desired(goal, sha, cfg.sync.label_prefix, numbers, pulls, goal_issues)
+        items += goal_desired(goal, sha, cfg.sync.label_prefix, numbers, pulls, goal_issues,
+                              prioritized_only=cfg.sync.create == 'prioritized')
     for record in cfg.sync.records:
         for path in sorted(record.glob.walk(cfg.ignore)):
             if record.kind == 'plan':
@@ -422,7 +444,7 @@ def _marked(snapshot: Iterable[Issue]) -> dict[str, list[Issue]]:
 
 def fact_exists(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
     """An open record needs an issue; create one when none tracks it."""
-    if tracked or item.state != 'open':
+    if tracked or item.state != 'open' or not item.creates:
         return []
     labels = [item.label_prefix + item.priority] if _mirrors_priority(item) else []
     body = set_blocked_by(item.body, item.requires_prs)

@@ -42,6 +42,7 @@ def record(root, name, status=None, issue=None, requires=(), codes=(), extra="")
 def repo(root):
     (root / ".ubiq" / "schemas").mkdir(parents=True)
     shutil.copy(ROOT / ".ubiq" / "schemas" / "feature.json", root / ".ubiq" / "schemas")
+    shutil.copy(ROOT / ".ubiq" / "schemas" / "tracking.json", root / ".ubiq" / "schemas")
     (root / "ubiq.yaml").write_text(CONFIG)
     return root
 

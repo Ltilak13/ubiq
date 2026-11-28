@@ -1,11 +1,11 @@
 ---
 name: composable-knowledge-goal
-status: in-progress
+status: active
 criteria:
   AC1:
     assessment: partial
     support:
-    - feature: Registered shared parts
+    - feature: composition-edges
       implementation:
         path: src/ubiq/graph.py
         anchor: def build_edges(
@@ -17,7 +17,7 @@ criteria:
   AC2:
     assessment: partial
     support:
-    - feature: Typed composition edges
+    - feature: composition-edges
       implementation:
         path: src/ubiq/graph.py
         anchor: def build_edges(
@@ -28,7 +28,7 @@ criteria:
   AC3:
     assessment: partial
     support:
-    - feature: Pinned overlap survey
+    - feature: overlap
       implementation:
         path: src/ubiq/overlap.py
         anchor: def find_overlap(
@@ -39,7 +39,7 @@ criteria:
   AC4:
     assessment: partial
     support:
-    - feature: Installed link validation
+    - feature: composition-edges
       implementation:
         path: src/ubiq/graph.py
         anchor: def _install_layout(
@@ -54,7 +54,7 @@ criteria:
   AC6:
     assessment: partial
     support:
-    - feature: Composition constraints
+    - feature: composition-edges
       implementation:
         path: src/ubiq/graph.py
         anchor: def _include_cycles(

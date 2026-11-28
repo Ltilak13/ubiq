@@ -178,6 +178,12 @@ def groups(data: Any, steps: tuple[Step, ...], keys: tuple[str, ...] = ()
 PR_ENTRY_RE = re.compile(r"pr:\s*(\d+)")
 
 
+def pr_numbers(value: Any) -> tuple[int, ...]:
+    """A `pr` field as pull request numbers: one integer, or a list of them."""
+    items = value if isinstance(value, list) else [value]
+    return tuple(n for n in items if isinstance(n, int) and not isinstance(n, bool))
+
+
 def pr_entry(value: str) -> int | None:
     """The pull request number of a `pr: <n>` entry, else None (the entry names a record)."""
     match = PR_ENTRY_RE.fullmatch(value.strip().strip("'\""))

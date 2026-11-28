@@ -2,43 +2,10 @@
 name: code-records-goal
 status: proposed
 criteria:
-  AC1:
-    assessment: unassessed
-    support: []
-    gap: Public symbols have no records, and nothing reports a symbol without one.
-    issues: [155]
-  AC2:
-    assessment: unassessed
-    support: []
-    gap: No controlled vocabulary record type exists (#68), and no check reads code identifiers or step phrases against it.
-    issues: [68]
-  AC3:
-    assessment: unassessed
-    support: []
-    gap: Behavior tests are Python tests. No Gherkin scenario binds to a record, and step names are not checked (#66, #67).
-    issues: [66, 67]
   AC4:
     assessment: unassessed
     support: []
     gap: Every diagnostic is implemented in Python. No rule is defined as record data.
-  AC5:
-    assessment: unassessed
-    support: []
-    gap: No code is generated from schemas or command records.
-  AC6:
-    assessment: unassessed
-    support: []
-    gap: No command carries a term rename from its record to prose, steps, and code (#134).
-    issues: [134]
-  AC7:
-    assessment: unassessed
-    support: []
-    gap: Records are not grouped into registries, and nothing exports or imports a registry as a JSON Schema bundle.
-  AC8:
-    assessment: unassessed
-    support: []
-    gap: Decisions and wayfinder resolutions live only as GitHub comments, not as records the comments mirror.
-    issues: [152]
   AC9:
     assessment: unassessed
     support: []
@@ -108,12 +75,22 @@ decisions are records in [docs/decisions](../decisions/README.md).
 
 The goal is achieved when:
 
-1. AC1: Every public symbol in Ubiq's source has a record that declares its contract as JSON Schema and names its form (interpreted, generated, or bound), and `ubiq check` reports a public symbol with no record, a record with no symbol, and a signature that differs from its contract.
-2. AC2: A controlled vocabulary maps one to one onto code symbols and Gherkin step phrases. Each code term names exactly one symbol, each public symbol name uses approved terms, and each step definition matches one step phrase.
-3. AC3: All behavior tests at public seams are Gherkin scenarios bound to records and run in CI with no agent.
-4. AC4: At least one diagnostic's rule is defined entirely as record data, and a change to that record changes `ubiq check` behavior with no code edit, shown by a failing and then passing CI run.
-5. AC5: Generated code (types from schemas, CLI parsers from command records) is kept current by `ubiq check`, and a stale generated file is reported with its location.
-6. AC6: Renaming a term in its record carries the rename to prose, step phrases, and code symbols through `ubiq sync`, and a dry run shows every edit first.
-7. AC7: Each namespace is a registry. Public records are exactly the registered ones, a link from outside a module to a private symbol fails `ubiq check`, and `ubiq export schema` writes a versioned JSON Schema bundle that another repository can import by `$ref`.
-8. AC8: Decisions, including wayfinder resolutions, are records, and the GitHub comments that announce them are generated from those records.
-9. AC9: Feature interactions are derived from shared symbols, configuration keys, diagnostic codes, and record kinds; every pull request reports the features it involves and breaks; and collisions between open pull requests are reported. Only semantic conflicts are declared.
+1. AC4: At least one diagnostic's rule is defined entirely as record data, and a change to that record changes `ubiq check` behavior with no code edit, shown by a failing and then passing CI run.
+2. AC9: Feature interactions are derived from shared symbols, configuration keys, diagnostic codes, and record kinds; every pull request reports the features it involves and breaks; and collisions between open pull requests are reported. Only semantic conflicts are declared.
+
+## Exploration
+
+On 2026-11-28 the goal was narrowed to AC4 and AC9. These two prove the pattern
+on one rule and on change impact, which other repositories can use without
+adopting the rest. The outcomes below are not acceptance criteria. They stay
+open questions on the [wayfinder map](https://github.com/Ltilak13/ubiq/issues/137)
+until AC4 is `met` and a decision record promotes one of them back to a
+criterion. Their old labels (AC1–AC3 and AC5–AC8) are retired, not reused.
+
+- Symbol records (#155): Every public symbol in Ubiq's source has a record that declares its contract as JSON Schema and names its form (interpreted, generated, or bound), and `ubiq check` reports a public symbol with no record, a record with no symbol, and a signature that differs from its contract.
+- Code vocabulary (#68, #141): A controlled vocabulary maps one to one onto code symbols and Gherkin step phrases. Each code term names exactly one symbol, each public symbol name uses approved terms, and each step definition matches one step phrase.
+- Gherkin behavior tests (#66, #67, #143): All behavior tests at public seams are Gherkin scenarios bound to records and run in CI with no agent.
+- Generated code (#142): Generated code (types from schemas, CLI parsers from command records) is kept current by `ubiq check`, and a stale generated file is reported with its location.
+- Rename sync (#134): Renaming a term in its record carries the rename to prose, step phrases, and code symbols through `ubiq sync`, and a dry run shows every edit first.
+- Registries and schema export: Each namespace is a registry. Public records are exactly the registered ones, a link from outside a module to a private symbol fails `ubiq check`, and `ubiq export schema` writes a versioned JSON Schema bundle that another repository can import by `$ref`.
+- Decision records (#152): Decisions, including wayfinder resolutions, are records, and the GitHub comments that announce them are generated from those records.

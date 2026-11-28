@@ -8,6 +8,7 @@ repository chooses which records sync and where in `ubiq.yaml`.
 sync:
   repo: owner/name          # default: $GITHUB_REPOSITORY
   label_prefix: "priority: " # the sync owns labels that start with this; never empty
+  create: always            # or `prioritized`: open goal-criterion issues only for priorities
   records:
     - glob: "docs/goals/*-goal.md"
       kind: goal             # goal, plan, or feature
@@ -215,7 +216,11 @@ only be an issue"), so it becomes text.
 ## Goal behavior
 
 - A criterion that is not `met`, lists no `issues`, and has no issue with the
-  marker `<!-- ubiq-goal: <name> <AC> -->` gets a new issue.
+  marker `<!-- ubiq-goal: <name> <AC> -->` gets a new issue. With
+  `create: prioritized`, it gets one only when the criterion or its goal sets a
+  `priority`; a criterion without one is still tracked through listed and marked issues.
+- A criterion with `assessed_in` is assessed by the criterion it names, so it is not
+  mirrored at all.
 - A criterion that is `met` closes its listed and marked issues that are open,
   with a comment that names the review and the commit.
 - Only markers in issues opened by `github-actions[bot]` count, because anyone
