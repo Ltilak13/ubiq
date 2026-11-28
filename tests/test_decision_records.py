@@ -140,7 +140,7 @@ def test_index_names_the_replacement():
 def test_accepted_decision_gets_one_comment_and_closes_the_question():
     [item] = decision_desired([rec()])
     first, second = plan([item], [with_comments(5, [])])
-    assert (first["action"], second["action"]) == ("close", "comment")
+    assert (first["action"], second["action"]) == ("close", "decision-comment")
     assert first["comment"] == "" and second["issue"] == 5
     assert second["body"].startswith("<!-- ubiq-decision: alpha -->")
     assert second["body"].endswith("<!-- /ubiq-decision: alpha -->")
@@ -159,13 +159,13 @@ def test_changed_record_updates_the_generated_comment_only():
     person = comment(2, item.comment, login="someone")
     quoting_bot = comment(3, "see " + item.comment_marker)
     found = drift(plan([item], [with_comments(5, [person, quoting_bot, comment(1, old)], "closed")]))
-    assert [(a["action"], a["comment_id"]) for a in found] == [("comment-update", 1)]
+    assert [(a["action"], a["comment_id"]) for a in found] == [("decision-comment-update", 1)]
 
 
 def test_a_person_comment_with_the_marker_is_not_ours_and_a_new_one_is_made():
     [item] = decision_desired([rec()])
     found = drift(plan([item], [with_comments(5, [comment(2, item.comment, login="someone")], "closed")]))
-    assert [a["action"] for a in found] == ["comment"]
+    assert [a["action"] for a in found] == ["decision-comment"]
 
 
 def test_duplicate_generated_comments_warn():
@@ -194,7 +194,7 @@ def test_apply_posts_then_patches_the_comment_endpoint():
     create = plan([item], [with_comments(5, [], "closed")])[0]
     GitHub("o/r", "t", fake, 0).apply([create], [])
     assert create["comment_id"] == 77 and fake.calls[0][:2] == ("POST", "/5/comments")
-    update = {"action": "comment-update", "issue": 5, "comment_id": 77, "body": "x"}
+    update = {"action": "decision-comment-update", "issue": 5, "comment_id": 77, "body": "x"}
     GitHub("o/r", "t", fake, 0).apply([update], [])
     assert fake.calls[1][:2] == ("PATCH", "/comments/77") and fake.calls[1][3] == {"body": "x"}
 
@@ -229,7 +229,7 @@ def test_closes_false_posts_the_comment_but_leaves_the_question_open():
     [item] = decision_desired([rec(closes=False)])
     assert item.state == "open"
     found = plan([item], [with_comments(5, [])])
-    assert [a["action"] for a in found] == ["comment"]
+    assert [a["action"] for a in found] == ["decision-comment"]
     [default] = decision_desired([rec()])
     assert default.state == "closed"
 

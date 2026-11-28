@@ -1,8 +1,8 @@
 ---
 name: feature-interactions
 question: 156
-status: accepted
 closes: false
+status: accepted
 decided: 2026-11-27
 by: Ltilak13
 options: [declare interactions on feature records, derive interactions from shared data]

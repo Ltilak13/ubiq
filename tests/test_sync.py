@@ -1,11 +1,14 @@
 """Plan and apply the GitHub issue mirror without touching GitHub (`ubiq sync github`)."""
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from ubiq.cli import main
 from ubiq.config import InvalidConfig, load_config
@@ -56,6 +59,21 @@ def test_unmet_criterion_without_issue_is_created_with_verifiable_body():
                  '## Verify', 'ubiq check', 'python3 -m pytest tests/test_a.py',
                  '<!-- ubiq-goal: demo-goal AC1 -->'):
         assert text in action['body']
+
+
+def test_prioritized_only_creates_for_a_criterion_or_goal_with_a_priority():
+    def created(g):
+        items = goal_desired(g, prioritized_only=True)
+        return [a['criterion'] for a in plan(items, []) if a['action'] == 'create']
+    assert created(goal(AC1=unmet(), AC2=unmet(priority='P2'))) == ['AC2']
+    assert created({**goal(AC1=unmet()), 'priority': 'P3'}) == ['AC1']
+    [item] = goal_desired(goal(AC1=unmet(issues=[9])), prioritized_only=True)
+    assert plan([item], [issue(9)])[0]['action'] == 'noop'
+
+
+def test_a_criterion_assessed_elsewhere_is_not_mirrored():
+    elsewhere = unmet(assessed_in={'goal': 'other-goal', 'criterion': 'AC1'})
+    assert [d.ident['criterion'] for d in goal_desired(goal(AC1=unmet(), AC2=elsewhere))] == ['AC1']
 
 
 def test_listed_or_marked_issue_prevents_create_and_is_never_reopened():
@@ -139,12 +157,13 @@ def test_unreadable_goal_is_a_sync_error(tmp_path):
 
 def test_this_repository_creates_only_for_untracked_criteria():
     actions = plan(desired_from_config(load_config(ROOT)), [])
-    created = {(a['goal'], a['criterion']) for a in actions if a['action'] == 'create'}
+    created = {(a['goal'], a['criterion']) for a in actions if a['action'] == 'create' and 'goal' in a}
     loaded = [load_goal(p, ROOT) for p in sorted((ROOT / 'docs/goals').glob('*-goal.md'))]
     untracked = {(g['name'], ac) for g in loaded for ac, c in g['criteria'].items()
-                 if c['assessment'] != 'met' and not c.get('issues')}
+                 if c.get('assessment') != 'met' and not c.get('issues') and 'assessed_in' not in c
+                 and (c.get('priority') or g['priority'])}
     assert created == untracked
-    assert not [a for a in actions if a['action'] == 'close']
+    assert not [a for a in actions if a['action'] == 'close' and 'goal' in a]
 
 
 # -- adapter, through a fake transport ---------------------------------------------
@@ -253,7 +272,7 @@ def test_repository_comes_from_the_flag_then_config_then_environment(tmp_path, m
     urls = []
 
     def spy(method, url, token, payload=None):
-        urls.append(url.split('/issues')[0].rsplit('repos/', 1)[-1])
+        urls.append(url.split('/issues')[0].split('/pulls')[0].rsplit('repos/', 1)[-1])
         return []
     (tmp_path / 'a').mkdir()
     (tmp_path / 'b').mkdir()
@@ -262,7 +281,7 @@ def test_repository_comes_from_the_flag_then_config_then_environment(tmp_path, m
     cmd_sync(flags(configured), spy, 0)
     cmd_sync(flags(configured, repo='flag/repo'), spy, 0)
     cmd_sync(flags(bare), spy, 0)
-    assert urls == ['o/r', 'flag/repo', 'env/repo']
+    assert urls == ['o/r', 'o/r', 'flag/repo', 'flag/repo', 'env/repo', 'env/repo']  # issues, pulls
     capsys.readouterr()
     monkeypatch.delenv('GITHUB_REPOSITORY')
     assert cmd_sync(flags(bare), spy, 0) == 2
@@ -351,6 +370,113 @@ def test_pull_request_that_meets_a_criterion_is_pending_not_drift(tmp_path, monk
     assert 'nope' in capsys.readouterr().err
 
 
+def test_pull_request_workflow_checks_base_code_and_previews_head_code(tmp_path):
+    workflow = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())['jobs']
+    preview = workflow['sync-preview']
+    prepare, check = workflow['sync-check']['steps'][-2:]
+    assert preview['steps'][0]['with']['ref'] == '${{ github.event.pull_request.head.sha }}'
+    assert prepare['env']['BASE_SHA'] == '${{ github.event.pull_request.base.sha }}'
+
+    root = tmp_path / 'repo'
+    root.mkdir()
+    write_repo(root)
+    shutil.copytree(ROOT / 'src/ubiq', root / 'src/ubiq', ignore=shutil.ignore_patterns('__pycache__'))
+
+    def git(*args):
+        return subprocess.check_output(
+            ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *args],
+            cwd=root, text=True,
+        ).strip()
+
+    git('init', '-q', '-b', 'main')
+    git('commit', '-q', '--allow-empty', '-m', 'pre-sync')
+    before_sync = git('rev-parse', 'HEAD')
+    git('add', '.')
+    git('commit', '-q', '-m', 'base')
+    base_sha = git('rev-parse', 'HEAD')
+    with (root / 'src/ubiq/sync.py').open('a') as planner:
+        planner.write("""
+
+def extra_label(item, tracked, issues):
+    return [{'action': 'label', **item.ident, 'issue': number} for number in tracked]
+
+FACTS = (*FACTS, extra_label)
+""")
+    git('commit', '-qam', 'add a mirrored fact')
+
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    (stubs / 'sitecustomize.py').write_text("""
+import io
+import os
+import urllib.request
+
+def snapshot(request, timeout):
+    assert request.get_method() == 'GET'
+    if '/pulls?' in request.full_url:
+        return io.BytesIO(b'[]')
+    assert '/issues?' in request.full_url
+    return io.BytesIO(os.environ['ISSUE_SNAPSHOT'].encode())
+
+urllib.request.urlopen = snapshot
+""")
+    python = stubs / 'python'
+    python.write_text("""#!/usr/bin/env bash
+if [[ "$1" == "-m" && "$2" == "pip" ]]; then
+  printf '%s\n' "$PWD" >> "$INSTALL_LOG"
+  exit 0
+fi
+PYTHONPATH="$PYTHONPATH:$STUBS" exec "$TEST_PYTHON" "$@"
+""")
+    python.chmod(0o755)
+    summary = tmp_path / 'summary.md'
+    install_log = tmp_path / 'install.txt'
+    env = {
+        **os.environ,
+        'FENCE': '```',
+        'GITHUB_SHA': 'synthetic-merge',
+        'GITHUB_STEP_SUMMARY': str(summary),
+        'GITHUB_TOKEN': 'test',
+        'HEAD_SHA': git('rev-parse', 'HEAD'),
+        'INSTALL_LOG': str(install_log),
+        'ISSUE_SNAPSHOT': json.dumps([issue(5, marker='AC1')]),
+        'PATH': f"{stubs}{os.pathsep}{os.environ['PATH']}",
+        'PYTHONPATH': str(root / 'src'),
+        'STUBS': str(stubs),
+        'TEST_PYTHON': sys.executable,
+    }
+
+    def step(script, cwd, env):
+        return subprocess.run(['bash', '-eo', 'pipefail', '-c', script],
+                              cwd=cwd, env=env, text=True, capture_output=True, check=False)
+
+    result = step(preview['steps'][-1]['run'], root, env)
+    assert result.returncode == 0, result.stderr
+    pending = json.loads(summary.read_text().split('```json\n', 1)[1].split('```', 1)[0])
+    assert [(action['action'], action['issue']) for action in pending] == [('label', 5)]
+
+    runner_temp = tmp_path / 'runner'
+    runner_temp.mkdir()
+    base_tree = runner_temp / 'ubiq-sync-base'
+    env.update(BASE_SHA=base_sha, RUNNER_TEMP=str(runner_temp))
+    prepared = step(prepare['run'], root, env)
+    assert prepared.returncode == 0, prepared.stderr
+    assert install_log.read_text().splitlines() == [str(base_tree)]
+
+    result = step(check['run'], base_tree, env)
+    assert result.returncode == 0 and json.loads(result.stdout) == [], result
+    result = step(check['run'], base_tree, {**env, 'ISSUE_SNAPSHOT': '[]'})
+    assert result.returncode == 1 and json.loads(result.stdout)[0]['action'] == 'create', result
+
+    runner_temp = tmp_path / 'before-sync'
+    runner_temp.mkdir()
+    env.update(BASE_SHA=before_sync, RUNNER_TEMP=str(runner_temp))
+    prepared = step(prepare['run'], root, env)
+    assert prepared.returncode == 0, prepared.stderr
+    result = step(check['run'], runner_temp / 'ubiq-sync-base', env)
+    assert result.returncode == 0 and 'does not mirror GitHub issues' in result.stdout, result
+
+
 def test_ref_reads_only_the_records_and_ignores_symlinks(tmp_path, monkeypatch, capsys):
     root = write_repo(tmp_path)
     monkeypatch.setenv('GITHUB_TOKEN', 't')
@@ -389,3 +515,103 @@ def test_ref_without_a_sync_section_skips(tmp_path, monkeypatch, capsys):
     assert 'has no sync section' in capsys.readouterr().err
     assert cmd_sync(flags(root, check=True, ref='main'), remote, 0) == 0
     assert 'has no sync section' in capsys.readouterr().err and not remote.calls
+
+
+def test_sync_create_setting_is_validated(tmp_path):
+    from ubiq.config import InvalidConfig
+    write_repo(tmp_path, sync=f'sync:\n  repo: o/r\n  create: prioritized\n  records:\n{RECORDS}')
+    assert load_config(tmp_path).sync.create == 'prioritized'
+    (tmp_path / 'ubiq.yaml').write_text(f'sync:\n  repo: o/r\n  create: sometimes\n  records:\n{RECORDS}')
+    with pytest.raises(InvalidConfig, match='sync.create'):
+        load_config(tmp_path)
+
+
+def test_ignore_derived_drops_only_the_derived_status_labels():
+    from ubiq.sync import drift
+    review = {'action': 'label', 'issue': 1, 'add': ['status: in review'], 'remove': ['status: in progress']}
+    unreview = {'action': 'label', 'issue': 2, 'add': [], 'remove': ['Status: In Review']}
+    priority = {'action': 'label', 'issue': 3, 'add': ['priority: P1'], 'remove': []}
+    mixed = {'action': 'label', 'issue': 4, 'add': ['status: in review', 'priority: P2'], 'remove': []}
+    create = {'action': 'create', 'title': 't'}
+    noop = {'action': 'noop'}
+    actions = [review, unreview, priority, mixed, create, noop]
+    assert drift(actions) == [review, unreview, priority, mixed, create]
+    assert drift(actions, ignore_derived=True) == [priority, mixed, create]
+
+
+def test_check_ignore_derived_passes_when_only_in_review_labels_lag(tmp_path, monkeypatch, capsys):
+    root = write_repo(tmp_path, issues='    issues: [7]\n')
+    snapshot = [{'number': 7, 'state': 'open', 'body': '', 'labels': [], 'user': {'login': 'x'}}]
+    # The branch name ties the pull request to #7 without a closing keyword.
+    pulls = [{'number': 9, 'head': {'ref': 'feature/issue-7-x', 'repo': {'full_name': 'o/r'}},
+              'base': {'ref': 'main', 'repo': {'default_branch': 'main'}}, 'body': ''}]
+
+    def transport(method, url, token, payload=None):
+        if url.endswith('/commits?per_page=100'):
+            return []
+        if '/pulls' in url:
+            return pulls if 'page=1' in url else []
+        if '/issues?' in url:
+            return snapshot if 'page=1' in url else []
+        return {}
+    monkeypatch.setenv('GITHUB_TOKEN', 't')
+    from ubiq.sync import cmd_sync
+    assert cmd_sync(flags(root, check=True), transport, pause=0) == 1
+    capsys.readouterr()
+    assert cmd_sync(flags(root, check=True, ignore_derived=True), transport, pause=0) == 0
+
+
+
+# -- issue references and "met at" ---------------------------------------------------
+
+def test_commit_messages_and_branch_names_name_issues():
+    from ubiq.sync import branch_numbers, referenced_numbers
+    assert referenced_numbers("feat: x\n\nRefs #12\nPart of o/r#13, closes #14\nrefs other/r#15", "o/r") == (12, 13, 14)
+    assert referenced_numbers("`Refs #9` in code is not a reference") == ()
+    assert branch_numbers("claude/x-issue-70") == (70,)
+    assert branch_numbers("fix/issue-7-and-issue-8") == (7, 8)
+    assert branch_numbers("tissue-3") == ()
+
+
+def test_refs_mark_an_issue_in_review_without_a_closing_keyword():
+    [item] = goal_desired(goal(AC1=unmet(issues=[7])))
+    pulls = [{'number': 9, 'head': 'b', 'base': 'main', 'closes': (), 'keyword_closes': (), 'refs': (7,)}]
+    [label] = [a for a in plan([item], [{**issue(7), 'labels': []}], pulls) if a['action'] == 'label']
+    assert label['add'] == ['status: in review']
+
+
+def test_a_closing_keyword_on_an_unmet_criterions_own_issue_warns():
+    [item] = goal_desired(goal(AC1=unmet()))
+    pulls = [{'number': 9, 'head': 'b', 'base': 'main', 'closes': (7,), 'keyword_closes': (7,), 'refs': ()}]
+    [warn] = [a for a in plan([item], [issue(7, marker='AC1')], pulls) if a['action'] == 'warn']
+    assert warn['issue'] == 7 and warn['pr'] == 9 and 'Refs #7' in warn['reason']
+    # A listed work item may be closed by its pull request, and a met criterion's issue too.
+    [listed] = goal_desired(goal(AC1=unmet(issues=[7])))
+    assert not [a for a in plan([listed], [issue(7)], pulls) if a['action'] == 'warn']
+    [met_item] = goal_desired(goal(AC1=met()))
+    assert not [a for a in plan([met_item], [issue(7, marker='AC1')], pulls) if a['action'] == 'warn']
+
+
+def test_an_issue_closed_before_the_sync_gets_its_met_at_comment_once():
+    [item] = goal_desired(goal(AC1=met(issues=[7])), 'abc')
+    closed = {**issue(7, state='closed'), 'bot_markers': set()}
+    [comment] = [a for a in plan([item], [closed]) if a['action'] == 'comment']
+    assert comment['issue'] == 7 and 'met` at abc' in comment['comment']
+    done = {**closed, 'bot_markers': {'ubiq-goal-closed: demo-goal AC1'}}
+    assert not [a for a in plan([item], [done]) if a['action'] == 'comment']
+    # Without the markers read, nothing is known and nothing is posted.
+    assert not [a for a in plan([item], [issue(7, state='closed')]) if a['action'] == 'comment']
+    from ubiq.sync import confirmable, drift
+    assert confirmable([item], [issue(7, state='closed')]) == [7]
+    assert drift([comment], ignore_derived=True) == [] and drift([comment]) == [comment]
+
+
+def test_bot_markers_reads_only_the_bots_comments():
+    answers = {'/7/comments?per_page=100': [
+        {'user': {'login': 'github-actions[bot]'}, 'body': 'x <!-- ubiq-goal-closed: g AC1 -->'},
+        {'user': {'login': 'someone'}, 'body': '<!-- ubiq-goal-closed: g AC2 -->'}]}
+
+    def transport(method, url, token, payload=None):
+        return answers.get(url.split('/issues', 1)[-1], [])
+    from ubiq.sync import GitHub
+    assert GitHub('o/r', 't', transport, 0).bot_markers([7]) == {7: {'ubiq-goal-closed: g AC1'}}

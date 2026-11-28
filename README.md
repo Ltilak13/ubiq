@@ -11,14 +11,9 @@ request, so people and agents can catch mistakes before they spread.
 
 ## How it works
 
-Write down a rule. Connect it to your files. Check it when things change.
-
-```mermaid
-flowchart LR
-    accTitle: Define, connect, check
-    accDescr: Define vocabulary or record rules, connect your files, then check changes with ubiq.
-    A["1. Define"] --> B["2. Connect"] --> C["3. Check"]
-```
+1. **Define** a term or a rule for your records.
+2. **Connect** it to the files it applies to.
+3. **Check** changes with `ubiq check` locally or in CI.
 
 | Your rule | What ubiq catches |
 | --- | --- |
@@ -57,7 +52,9 @@ skill root, keeping their names and subdirectories. For example:
     references/
       schema-validation.md
   references/
+    domain-review.md
     schema-workflow.md
+    validate-changes.md
   maintain-ubiq/
     SKILL.md
   upgrade-ubiq/
@@ -88,7 +85,7 @@ You need Python 3.10 or later and Git. Run these commands in a terminal.
 ### 1. Install ubiq
 
 ```bash
-python -m pip install 'git+https://github.com/Ltilak13/ubiq.git@v0.7.0'
+python -m pip install 'git+https://github.com/Ltilak13/ubiq.git@v0.14.0'
 ```
 
 ### 2. Open your project and start

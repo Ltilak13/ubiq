@@ -19,11 +19,13 @@ schemas:
 Frontmatter mode requires a YAML mapping between opening and closing `---` markers.
 All bindings that select a file apply to it.
 
-Schemas can share definitions through same-document fragment references.
+Schemas can share definitions through fragment references, in the same document or in
+another schema file of the repository, named relative to the referencing file
+(`"$ref": "tracking.json#/properties/pr"`). Ubiq copies each referenced file into the
+schema's `$defs` before validating, so every reference is checked as same-document.
 Fragments must select declared schema locations, such as `$defs`, `properties`, or `items`.
 Annotation data in `examples`, `default`, or `const` cannot be a schema target.
-External references, including remote URLs and other schema files, are unsupported and never fetched.
-Bundle shared definitions into one schema file. An omitted `$schema` selects Draft 2020-12.
+A file outside the repository and a remote URL are unsupported and never fetched. An omitted `$schema` selects Draft 2020-12.
 Other explicit dialects fail validation.
 
 The schema parser preserves JSON value types. YAML `true` and `false` are booleans,

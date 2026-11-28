@@ -82,6 +82,15 @@ def test_used_features_come_from_config_and_requirements(tmp_path):
         == {"glossary", "refs"}
 
 
+def test_empty_config_does_not_count_as_a_glossary(tmp_path):
+    features = [feature("glossary", config=["glossary"])]
+    (tmp_path / "ubiq.yaml").write_text("{}")
+    assert used_features(features, tmp_path) == set()
+    (tmp_path / "glossary").mkdir()
+    (tmp_path / "glossary" / "term.md").write_text("A glossary record.")
+    assert used_features(features, tmp_path) == {"glossary"}
+
+
 def run(capsys, *argv):
     status = main(["plan", *argv])
     return status, capsys.readouterr().out
@@ -122,6 +131,20 @@ def test_plan_next_for_a_repo_using_some_features(tmp_path, capsys):
     assert status == 1 and "typo" in out
 
 
+def test_plan_rejects_missing_directory(tmp_path, capsys):
+    missing = tmp_path / "missing"
+    status, out = run(capsys, "--features", str(missing), "--next", "--json")
+    assert status == 1
+    assert str(missing) in json.loads(out)["error"]
+
+
+def test_plan_rejects_falsey_non_list_field(tmp_path, capsys):
+    path = tmp_path / "bad.md"
+    path.write_text("---\nname: bad\nsummary: bad\nrequires: false\n---\n")
+    status, out = run(capsys, "--features", str(tmp_path))
+    assert status == 1 and "requires must be a list of strings" in out
+
+
 def test_plan_reports_missing_requirement_and_cycle(tmp_path, capsys):
     features = tmp_path / "features"
     write_feature(features, "field-links", ["glossary"])
@@ -143,9 +166,13 @@ def test_shipped_features_form_a_valid_order():
 def test_shipped_feature_codes_match_the_spec():
     spec = (ROOT / "docs" / "spec.md").read_text()
     documented = set(re.findall(r"^- `([EW]\d{3})`", spec, re.MULTILINE))
-    owned = [code for f in load_features(BUNDLED) for code in f.codes]
-    assert len(owned) == len(set(owned)), "a code is owned by two features"
-    assert set(owned) == documented
+    features = load_features(BUNDLED)
+    every = [code for f in features for code in f.codes]
+    assert len(every) == len(set(every)), "a code is owned by two features"
+    # A planned feature's codes are not in the spec until its pull request lands.
+    planned = {c for f in features if f.status == "planned" for c in f.codes}
+    shipped = {c for f in features if f.status == "shipped" for c in f.codes}
+    assert shipped == documented - planned
 
 
 def test_shipped_feature_docs_exist():
@@ -169,6 +196,7 @@ schemas:
 def feature_repo(tmp_path):
     (tmp_path / ".ubiq" / "schemas").mkdir(parents=True)
     shutil.copy(ROOT / ".ubiq" / "schemas" / "feature.json", tmp_path / ".ubiq" / "schemas")
+    shutil.copy(ROOT / ".ubiq" / "schemas" / "tracking.json", tmp_path / ".ubiq" / "schemas")
     (tmp_path / "ubiq.yaml").write_text(CONFIG)
     write_feature(tmp_path / "features", "glossary", codes=["E001"])
     return tmp_path

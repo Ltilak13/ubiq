@@ -3,15 +3,14 @@
 A property annotated `{"x-ubiq-ref": {"ns": "feature", "edge": "requires"}}` holds a
 record name (or a list of them) that must resolve to a record in `ns` (E006). The
 resolved link is a composition edge named `edge`, so `ubiq graph --kind requires`
-selects it. `acyclic` and `single` are parsed and kept for the checks that enforce
-them (cycles, one parent); nothing here enforces them yet.
+selects it. cycles.py enforces `acyclic` (E014), and schemas.py enforces `single` (E009).
 
 This module reads schemas and walks instance data. It does not touch the glossary.
 """
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -149,3 +148,73 @@ def line_of(frontmatter: str, keys: tuple[str, ...]) -> int:
         if found is not None:
             at = found
     return at + 2
+
+
+def groups(data: Any, steps: tuple[Step, ...], keys: tuple[str, ...] = ()
+           ) -> Iterator[tuple[tuple[str, ...], list[str]]]:
+    """The values of each annotated property in `data`, one list per property.
+
+    `single` is checked on these lists: `criteria.AC1.part_of` is one group, and
+    `criteria.AC2.part_of` is another. Items of an array on the way stay separate
+    groups even though their keys match.
+    """
+    if not steps:
+        if isinstance(data, str):
+            yield keys, [data]
+        elif isinstance(data, list):
+            yield keys, [item for item in data if isinstance(item, str)]
+        return
+    (kind, name), rest = steps[0], steps[1:]
+    if kind == "items":
+        for item in data if isinstance(data, list) else []:
+            yield from groups(item, rest, keys)
+    elif isinstance(data, Mapping):
+        for key, item in data.items():
+            if (kind == "key" and key == name) or (kind == "pattern" and re.search(name, key)):
+                yield from groups(item, rest, (*keys, key))
+
+
+# A `requires` entry that names a pull request, not a record: `pr: 12`.
+PR_ENTRY_RE = re.compile(r"pr:\s*(\d+)")
+
+
+def pr_numbers(value: Any) -> tuple[int, ...]:
+    """A `pr` field as pull request numbers: one integer, or a list of them."""
+    items = value if isinstance(value, list) else [value]
+    return tuple(n for n in items if isinstance(n, int) and not isinstance(n, bool))
+
+
+def pr_entry(value: str) -> int | None:
+    """The pull request number of a `pr: <n>` entry, else None (the entry names a record)."""
+    match = PR_ENTRY_RE.fullmatch(value.strip().strip("'\""))
+    return int(match.group(1)) if match else None
+
+
+def find_cycles(edges: Mapping[str, Sequence[str]]) -> list[list[str]]:
+    """Each distinct cycle in a directed graph, as `[a, b, a]`, smallest node first.
+
+    `edges` maps a node to the nodes it points at. Nodes are visited in sorted order,
+    so the result is stable. A self-edge is the cycle `[a, a]`.
+    """
+    found: dict[tuple[str, ...], list[str]] = {}
+    state: dict[str, int] = {}  # 1 on the current path, 2 finished
+    path: list[str] = []
+
+    def visit(node: str) -> None:
+        state[node] = 1
+        path.append(node)
+        for nxt in sorted(set(edges.get(node, ()))):
+            if state.get(nxt) == 1:
+                loop = path[path.index(nxt):]
+                at = loop.index(min(loop))
+                ring = loop[at:] + loop[:at]
+                found.setdefault(tuple(ring), [*ring, ring[0]])
+            elif nxt not in state:
+                visit(nxt)
+        path.pop()
+        state[node] = 2
+
+    for node in sorted(edges):
+        if node not in state:
+            visit(node)
+    return list(found.values())

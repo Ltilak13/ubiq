@@ -1,0 +1,8 @@
+extends: existence
+message: "Spec prose states a rule. Replace the hedge '%s' with a fact or a scenario."
+level: error
+ignorecase: true
+tokens:
+  - should
+  - might
+  - probably

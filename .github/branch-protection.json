@@ -10,7 +10,8 @@
       {"context": "test (ubuntu-latest, 3.14)", "app_id": 15368},
       {"context": "test (macos-15-intel, 3.14)", "app_id": 15368},
       {"context": "package", "app_id": 15368},
-      {"context": "action", "app_id": 15368}
+      {"context": "action", "app_id": 15368},
+      {"context": "pr-title", "app_id": 15368}
     ]
   },
   "enforce_admins": true,
