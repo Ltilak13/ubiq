@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 KEY = "x-ubiq-ref"
-FIELDS = ("ns", "edge", "acyclic", "single")
+FIELDS = ("ns", "edge", "acyclic", "single", "within")
 EDGE_RE = re.compile(r"[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*")
 # Edge kinds that ubiq derives itself; an annotation cannot reuse their names.
 RESERVED = ("invoke", "include", "route", "reference")
@@ -32,6 +32,7 @@ class XRef:
     edge: str
     acyclic: bool = False
     single: bool = False
+    within: str = ""  # a top-level mapping in the same file whose keys are the valid values
 
 
 @dataclass(frozen=True)
@@ -57,8 +58,11 @@ def parse(value: Any) -> XRef:
     for name in ("acyclic", "single"):
         if not isinstance(value.get(name, False), bool):
             raise TypeError(f"{KEY}.{name}: expected true or false")
+    within = value.get("within", "")
+    if not isinstance(within, str) or (within and not within.strip()):
+        raise TypeError(f"{KEY}.within: expected the name of a top-level property")
     return XRef(value["ns"].strip(), value["edge"], value.get("acyclic", False),
-                value.get("single", False))
+                value.get("single", False), within.strip())
 
 
 def pointer(root: Any, ref: str) -> Any:

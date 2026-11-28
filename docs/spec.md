@@ -608,6 +608,7 @@ names:
 | `edge` | required; the [[edge name]]: lowercase words joined by `-` or `_`, and not `invoke`, `include`, `route`, or `reference` |
 | `acyclic` | optional boolean; the edge must have no cycle |
 | `single` | optional boolean; at most one value |
+| `within` | optional; the name of a top-level property whose keys are the valid values, so the values resolve inside the file, not through the glossary (see [plan records](#plan-records)) |
 
 `x-ubiq-ref` sits on a property whose value is a string or a list of strings, anywhere
 a schema reaches (nested properties, `patternProperties`, `items`, `allOf`, `$ref`
@@ -621,6 +622,33 @@ is `edge`, so `ubiq graph --kind requires` selects it.
 `ref_fields` is resolved once, as before (an `invoke` edge, any namespace); annotating
 it only adds the rules. `acyclic` and `single` are parsed and validated but not yet
 enforced: cycle and one-parent checks come with the `requires` and `part_of` work.
+
+### Plan records
+
+A *plan record* sequences coordination work: `docs/plans/*.md`, bound to
+`.ubiq/schemas/plan.json`, glossary namespace `plan` (`term_field: name`). Its
+frontmatter is the source for the order, branches, and pull requests of each step.
+[[plan:frontmatter-tracking]] and [[plan:no-code-dogfood]] are the records here.
+
+| Field | Value |
+| --- | --- |
+| `name` | the plan's name (lowercase words joined by `-`) |
+| `status` | `proposed`, `active`, `done`, or `abandoned` |
+| `issue` | the issue the plan coordinates; each step's issue is a sub-issue of it |
+| `priority` | optional `P1`, `P2`, or `P3` |
+| `trunk` | the branch the work lands on |
+| `steps` | a mapping from step name to `requires` (required), `issue`, `branch`, `base`, `pr` |
+
+A step's `requires` lists other step names of the same plan. The schema annotates it with
+`x-ubiq-ref` and the `within` member:
+`{"ns": "plan-step", "edge": "requires", "acyclic": true, "within": "steps"}`. Steps are
+keys of a mapping, not records, so `within` makes each value resolve against the keys
+of the file's top-level `steps` mapping instead of the glossary. A name that is no step
+is E006 at the line of the field. These links make no composition edge. `acyclic` is not
+yet enforced here either.
+
+`ubiq sync github` mirrors steps with `sync.records` entries of kind `plan`; see
+[plan behavior](github-sync.md#plan-behavior).
 
 ## Coverage
 
