@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 class Context(enum.Flag):
     """Document regions a kind may match in, besides plain prose.
 
-    Fences, frontmatter, and reference definitions have no member, so no policy,
-    and therefore no configuration, can scan them.
+    Fences, frontmatter, and reference definitions are outside the prose policy.
+    The `fences:` setting separately enables field uses and term mentions.
     """
     NONE = 0
     INLINE_CODE = enum.auto()
@@ -154,7 +154,7 @@ def _relaxes_includes(config: Config) -> str | None:
 
 
 GUARANTEES = (
-    Guarantee("Fenced code blocks are never scanned"),
+    Guarantee("Fenced code blocks are excluded from prose scanning"),
     Guarantee("Frontmatter is never scanned as prose"),
     Guarantee("Definition lines are metadata: they produce no references"),
     Guarantee("can never fail the build",

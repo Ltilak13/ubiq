@@ -48,7 +48,13 @@ from difflib import get_close_matches
 from pathlib import Path
 
 from .kinds import Policy, Severity
-from .records import Glossary, InvalidRecord, normalize, parse_frontmatter
+from .records import (
+    Glossary,
+    InvalidRecord,
+    normalize,
+    parse_frontmatter,
+    shared_fields,
+)
 from .scan import EXPLICIT_RE, Ref, _interpret_markdown, _line_index, _mask, value_of
 
 
@@ -132,7 +138,7 @@ def unlinked_mentions(glossary: Glossary, refs: list[Ref],
     warned: set[tuple[Path, int, int]] = set()
     diags: list[Diagnostic] = []
     for r in refs:
-        if r.policy.name != "mention" or r.historical or r.heading:
+        if r.policy.name != "mention" or r.historical or r.heading or r.fenced:
             continue
         matches = [t for t in r.resolve(glossary)
                    if t.term not in excepted and normalize(t.qualified) not in excepted]
@@ -235,11 +241,17 @@ def run_checks(glossary: Glossary, refs: list[Ref],
             continue
         if r.kind == "value":
             try:
-                value = "" if r.historical else " ".join(value_of(glossary, r, lenient).split())
-                if not r.historical and r.target != value:
-                    raise LookupError(f"label '{r.target}' ≠ {r.field} '{value}' — "
-                                      "update the label")
-            except LookupError as exc:
+                if r.historical:
+                    continue
+                if r.fenced:
+                    if r.field not in shared_fields(r.file, glossary, lenient):
+                        raise LookupError(f"no frontmatter field '{r.field}' in this file")
+                else:
+                    value = " ".join(value_of(glossary, r, lenient).split())
+                    if r.target != value:
+                        raise LookupError(f"label '{r.target}' ≠ {r.field} '{value}' — "
+                                          "update the label")
+            except (LookupError, InvalidRecord) as exc:
                 diags += reported(r.policy, r.policy.code,
                                   f"field value {r.raw} — {exc}", r.file, r.line)
             continue

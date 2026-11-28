@@ -125,7 +125,7 @@ overlays.
 
 No configuration can contradict a guarantee: a setting that would is E008, and a
 test fails if this spec stops stating one. The guarantees are that fenced code
-blocks are never scanned, frontmatter is never scanned as prose, definition lines
+blocks are excluded from prose scanning, frontmatter is never scanned as prose, definition lines
 produce no references, a plain-prose mention can never fail the build, and an
 include link that resolves nowhere always fails it (see Composition edges).
 
@@ -193,7 +193,8 @@ membership. `ubiq check` reports discrepancies without editing the README.
 - `E010` graph integrity failure — declared record coverage, relationships, or source evidence is invalid.
 - `E013` field value — a link into a file with frontmatter whose fragment names no
   anchor of that file, and whose field is absent, null, or not text, or differs
-  from the label. The message names the value to use.
+  from the label. The message names the value to use. Also reported when a configured
+  fence pattern names a missing frontmatter field.
 - `E015` README membership — a declaration is invalid or names an unavailable README,
   a record is missing its field link in a declared README, or a managed field
   link points to a record that does not declare that README. The report points
@@ -423,10 +424,35 @@ would report W003 and the fix is the author's call. The list is empty when no
 composite applies. The command exits 0 unless configuration or assembly fails,
 and never writes files.
 
+## Configured fenced blocks
+
+Use `fences:` to opt a language into field-name and vocabulary checks. The
+language key matches the first token after the opening fence, case-sensitively.
+Include the spec files in your `docs` globs if they are outside the existing
+document scan. Fences inside HTML comments are ignored.
+
+```yaml
+docs: ["README.md", "specs/**/*.feature.md"]
+fences:
+  gherkin:
+    value_refs: ["the record's (\\w+)", '<(\w+)>']
+    terms: true
+```
+
+Each `value_refs` entry is a regular expression with exactly one capturing
+group. A nonempty capture names a case-sensitive, top-level frontmatter field
+of the file containing the block, including its effective overlay fields. A
+missing field reports E013 on the line of the captured name at the
+`references.value.severity` setting. The check only requires the field key.
+With `terms: true`, known glossary names and aliases inside the block count
+as uses for W001 and are indexed as mentions. Fence mentions do not produce
+W002. Both options are disabled by default. Cucumber still runs Gherkin
+scenarios.
+
 ## Invariants
 
-Fenced code blocks are never scanned, so documentation of syntax and shell
-`[[` tests cannot trip the linker. By default, wiki-links, id patterns, and mentions
+Fenced code blocks are excluded from prose scanning, so documentation of syntax
+and shell `[[` tests cannot trip the linker. By default, wiki-links, id patterns, and mentions
 skip inline code as well. Markdown vocabulary links also skip code and images.
 Fences may have up to three leading spaces and at least three backticks or tildes.
 The closing marker must use the same character and be at least as long. An unclosed
@@ -441,7 +467,8 @@ YAML keeps scalars as text: `No`, `007`, and `1.10` stay strings rather than
 becoming a boolean or numbers. Null still reads as absent. Plain-prose mentions of a defined [[term]] are
 indexed for search and orphan detection but can never fail the build — the
 error surface is exactly what the author explicitly marked (wiki-links, Markdown
-vocabulary links, delimiters, id patterns, `ref_fields`, catalogs, and configured schemas).
+vocabulary links, delimiters, id patterns, `ref_fields`, catalogs, configured fence field
+patterns, and configured schemas).
 A mention matches a name as written: a name with no spaces (`grill-me`) needs a
 hyphen or underscore between its words, so the phrase "grill me" is prose; a
 spaced name (`issue tracker`) matches with any of space, hyphen, or underscore.
