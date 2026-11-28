@@ -69,10 +69,6 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
-          "source": "docs/goals/no-code-spec-goal.md",
-          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
-        },
-        {
           "source": "docs/goals/safe-adoption-evolution-goal.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
