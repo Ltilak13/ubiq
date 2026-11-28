@@ -196,6 +196,7 @@ schemas:
 def feature_repo(tmp_path):
     (tmp_path / ".ubiq" / "schemas").mkdir(parents=True)
     shutil.copy(ROOT / ".ubiq" / "schemas" / "feature.json", tmp_path / ".ubiq" / "schemas")
+    shutil.copy(ROOT / ".ubiq" / "schemas" / "tracking.json", tmp_path / ".ubiq" / "schemas")
     (tmp_path / "ubiq.yaml").write_text(CONFIG)
     write_feature(tmp_path / "features", "glossary", codes=["E001"])
     return tmp_path

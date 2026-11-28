@@ -10,7 +10,7 @@ criteria:
   AC2:
     assessment: partial
     support:
-    - feature: No-code checks recipe
+    - feature: no-code-checks
       implementation:
         path: docs/no-code-checks.md
         anchor: '## Pre-commit'

@@ -61,6 +61,21 @@ def test_unmet_criterion_without_issue_is_created_with_verifiable_body():
         assert text in action['body']
 
 
+def test_prioritized_only_creates_for_a_criterion_or_goal_with_a_priority():
+    def created(g):
+        items = goal_desired(g, prioritized_only=True)
+        return [a['criterion'] for a in plan(items, []) if a['action'] == 'create']
+    assert created(goal(AC1=unmet(), AC2=unmet(priority='P2'))) == ['AC2']
+    assert created({**goal(AC1=unmet()), 'priority': 'P3'}) == ['AC1']
+    [item] = goal_desired(goal(AC1=unmet(issues=[9])), prioritized_only=True)
+    assert plan([item], [issue(9)])[0]['action'] == 'noop'
+
+
+def test_a_criterion_assessed_elsewhere_is_not_mirrored():
+    elsewhere = unmet(assessed_in={'goal': 'other-goal', 'criterion': 'AC1'})
+    assert [d.ident['criterion'] for d in goal_desired(goal(AC1=unmet(), AC2=elsewhere))] == ['AC1']
+
+
 def test_listed_or_marked_issue_prevents_create_and_is_never_reopened():
     existing = [issue(5, 'closed'), issue(7, 'closed', marker='AC2')]
     actions = run([goal(AC1=unmet(issues=[5]), AC2=unmet())], existing)
@@ -145,7 +160,8 @@ def test_this_repository_creates_only_for_untracked_criteria():
     created = {(a['goal'], a['criterion']) for a in actions if a['action'] == 'create' and 'goal' in a}
     loaded = [load_goal(p, ROOT) for p in sorted((ROOT / 'docs/goals').glob('*-goal.md'))]
     untracked = {(g['name'], ac) for g in loaded for ac, c in g['criteria'].items()
-                 if c['assessment'] != 'met' and not c.get('issues')}
+                 if c['assessment'] != 'met' and not c.get('issues') and 'assessed_in' not in c
+                 and (c.get('priority') or g['priority'])}
     assert created == untracked
     assert not [a for a in actions if a['action'] == 'close' and 'goal' in a]
 
@@ -499,3 +515,12 @@ def test_ref_without_a_sync_section_skips(tmp_path, monkeypatch, capsys):
     assert 'has no sync section' in capsys.readouterr().err
     assert cmd_sync(flags(root, check=True, ref='main'), remote, 0) == 0
     assert 'has no sync section' in capsys.readouterr().err and not remote.calls
+
+
+def test_sync_create_setting_is_validated(tmp_path):
+    from ubiq.config import InvalidConfig
+    write_repo(tmp_path, sync=f'sync:\n  repo: o/r\n  create: prioritized\n  records:\n{RECORDS}')
+    assert load_config(tmp_path).sync.create == 'prioritized'
+    (tmp_path / 'ubiq.yaml').write_text(f'sync:\n  repo: o/r\n  create: sometimes\n  records:\n{RECORDS}')
+    with pytest.raises(InvalidConfig, match='sync.create'):
+        load_config(tmp_path)

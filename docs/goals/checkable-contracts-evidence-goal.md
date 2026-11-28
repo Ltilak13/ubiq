@@ -30,7 +30,7 @@ criteria:
 
 # Goal: checkable contracts and evidence
 
-Status: proposed. Existing related evidence does not establish completion of this goal.
+Existing related evidence does not establish completion of this goal.
 
 ## Objective
 

@@ -5,48 +5,30 @@ issue: 113
 priority: P2
 trunk: main
 steps:
-  plan-record:
-    issue: 124
-    requires: []
-    branch: claude/ecstatic-mendel-nkgz6t-plan-records
-    base: claude/ecstatic-mendel-nkgz6t-tracking-fields
-    pr: 147
-  feature-records:
-    issue: 70
-    requires: []
-    branch: claude/ecstatic-mendel-nkgz6t-issue-70
-    base: main
-    pr: 116
   release-adoption-smoke-test:
     issue: 163
-    requires: [feature-records]
-  mermaid-drift:
-    issue: 59
-    requires: [feature-records]
-    branch: claude/ecstatic-mendel-nkgz6t-issue-59
-    base: main
-    pr: 117
+    requires: [frontmatter-tracking/feature-records]
   readme-membership:
     issue: 65
-    requires: [feature-records]
+    requires: [frontmatter-tracking/feature-records]
   readme-generation:
     issue: 173
     requires: [readme-membership]
   relationship-navigation:
     issue: 174
-    requires: [feature-records]
+    requires: [frontmatter-tracking/feature-records]
+  starter:
+    issue: 111
+    requires: [release-adoption-smoke-test]
   cli-spec-slice:
     requires: [readme-membership]
   no-code-authoring-proof:
     requires: [cli-spec-slice]
   tracking-proof:
-    requires: [mermaid-drift, cli-spec-slice]
-  starter:
-    issue: 111
-    requires: [tracking-proof]
+    requires: [frontmatter-tracking/mermaid-blocks, cli-spec-slice]
   reusable-issue-sync:
     issue: 112
-    requires: [tracking-proof]
+    requires: [tracking-proof, starter]
 ---
 
 # Plan: no-code dogfood
@@ -63,19 +45,24 @@ to create issues for the steps that have none (`cli-spec-slice`,
 
 ## Steps
 
-- `plan-record`: add this plan and link it from the goal and #113 (#124).
-- `feature-records`: model one real ubiq feature and its prerequisite as records, and
-  link a goal criterion to the feature, a test, and an issue (#70).
+Three steps this plan depends on are defined once, in the
+[frontmatter tracking plan](frontmatter-tracking.md), and required here by their
+qualified names: `frontmatter-tracking/plan-records` added this plan (#124),
+`frontmatter-tracking/feature-records` modeled the features (#70), and
+`frontmatter-tracking/mermaid-blocks` is the generated Mermaid drift check (#59).
+
 - `release-adoption-smoke-test`: install the built wheel and verify that `ubiq plan --next`
   advances after one adoption step (#163).
-- `mermaid-drift` and `readme-membership`: generated Mermaid drift check (#59) and the
-  README membership check (#65). Both need the feature relationships, and they can
-  proceed independently.
+- `readme-membership`: the README membership check (#65). It needs the feature
+  relationships and can proceed independently of the Mermaid check.
 - `readme-generation`: generate the managed feature list from checked frontmatter after
   the membership checks ship (#173).
 - `relationship-navigation`: use fixture feature and release records to check both ways
   through one declared relationship. Check lookup behavior separately from diagram or list
   drift. This follow-up supports AC10 of the [composable knowledge goal](../goals/composable-knowledge-goal.md#acceptance-evidence) (#174).
+- `starter`: ship the versioned goal and feature starter (#111) as soon as the release
+  smoke test passes, and try it on a second repository. It comes before the tracking proof
+  so that an outside adoption tests the record shapes while they are still cheap to change.
 - `cli-spec-slice`: convert one real CLI behavior and its acceptance scenarios into a
   Markdown spec, with the README membership check as the first slice. Reuse a test
   binding that builds a small repository, runs `ubiq check`, and asserts the diagnostic
@@ -89,13 +76,13 @@ to create issues for the steps that have none (`cli-spec-slice`,
   views, refresh both, and verify the checks pass without Python or workflow edits. Record
   a reviewed assessment and verify that the linked issue closes on merge, and capture a
   case where missing review leaves the issue open.
-- `starter` and `reusable-issue-sync`: link the proof pull requests and check results
-  from this plan and the README, use the findings to scope the starter (#111) and the
-  reusable issue sync (#112), then validate the workflow in a second repository.
+- `reusable-issue-sync`: make the issue sync reusable in consumer repositories (#112),
+  using what the starter and the tracking proof found.
 
 ## How to read the steps
 
-`requires` names the steps that must finish first. `pr` is the pull request that
+`requires` names the steps that must finish first; `<plan>/<step>` names a step of
+another plan. `pr` is the pull request that
 implements the step, once it is open. Workflow status is not stored here: an open pull
 request means the step is in review, and a merged one means it is done. Record the current
 blocker, next action, and evidence for a step in the pull request that changes them.
@@ -110,38 +97,34 @@ to their GitHub issues. Refresh this view with
 <!-- ubiq:dogfood-diagram -->
 ```mermaid
 flowchart LR
+  ext_1["frontmatter-tracking/feature-records"]
+  ext_2["frontmatter-tracking/mermaid-blocks"]
   step_1["cli-spec-slice"]
-  step_2["feature-records (#35;70)"]
-  click step_2 "https://github.com/Ltilak13/ubiq/issues/70"
-  step_3["mermaid-drift (#35;59)"]
-  click step_3 "https://github.com/Ltilak13/ubiq/issues/59"
-  step_4["no-code-authoring-proof"]
-  step_5["plan-record (#35;124)"]
-  click step_5 "https://github.com/Ltilak13/ubiq/issues/124"
-  step_6["readme-generation (#35;173)"]
-  click step_6 "https://github.com/Ltilak13/ubiq/issues/173"
-  step_7["readme-membership (#35;65)"]
-  click step_7 "https://github.com/Ltilak13/ubiq/issues/65"
-  step_8["relationship-navigation (#35;174)"]
-  click step_8 "https://github.com/Ltilak13/ubiq/issues/174"
-  step_9["release-adoption-smoke-test (#35;163)"]
-  click step_9 "https://github.com/Ltilak13/ubiq/issues/163"
-  step_10["reusable-issue-sync (#35;112)"]
-  click step_10 "https://github.com/Ltilak13/ubiq/issues/112"
-  step_11["starter (#35;111)"]
-  click step_11 "https://github.com/Ltilak13/ubiq/issues/111"
-  step_12["tracking-proof"]
-  step_7 --> step_1
-  step_2 --> step_3
-  step_1 --> step_4
-  step_7 --> step_6
-  step_2 --> step_7
-  step_2 --> step_8
-  step_2 --> step_9
-  step_12 --> step_10
-  step_12 --> step_11
-  step_1 --> step_12
-  step_3 --> step_12
+  step_2["no-code-authoring-proof"]
+  step_3["readme-generation (#35;173)"]
+  click step_3 "https://github.com/Ltilak13/ubiq/issues/173"
+  step_4["readme-membership (#35;65)"]
+  click step_4 "https://github.com/Ltilak13/ubiq/issues/65"
+  step_5["relationship-navigation (#35;174)"]
+  click step_5 "https://github.com/Ltilak13/ubiq/issues/174"
+  step_6["release-adoption-smoke-test (#35;163)"]
+  click step_6 "https://github.com/Ltilak13/ubiq/issues/163"
+  step_7["reusable-issue-sync (#35;112)"]
+  click step_7 "https://github.com/Ltilak13/ubiq/issues/112"
+  step_8["starter (#35;111)"]
+  click step_8 "https://github.com/Ltilak13/ubiq/issues/111"
+  step_9["tracking-proof"]
+  step_4 --> step_1
+  step_1 --> step_2
+  step_4 --> step_3
+  ext_1 --> step_4
+  ext_1 --> step_5
+  ext_1 --> step_6
+  step_8 --> step_7
+  step_9 --> step_7
+  step_6 --> step_8
+  step_1 --> step_9
+  ext_2 --> step_9
 ```
 <!-- /ubiq:dogfood-diagram -->
 

@@ -24,15 +24,21 @@ def issue_link(node: str, issue: int) -> str:
 def plan_lines(plan: dict) -> list[str]:
     steps = plan["steps"]
     nodes = {name: f"step_{index}" for index, name in enumerate(sorted(steps), 1)}
+    external = sorted({r for spec in steps.values() for r in spec["requires"] if "/" in r})
+    nodes.update({name: f"ext_{index}" for index, name in enumerate(external, 1)})
     lines = ["flowchart LR"]
+    for name in external:
+        lines.append(f'  {nodes[name]}["{label(name)}"]')
     for name, node in nodes.items():
+        if name not in steps:
+            continue
         issue = steps[name].get("issue")
         title = name if issue is None else f"{name} (#{issue})"
         lines.append(f'  {node}["{label(title)}"]')
         if issue is not None:
             lines.append(issue_link(node, issue))
     for name, node in nodes.items():
-        for prerequisite in sorted(steps[name]["requires"]):
+        for prerequisite in sorted(steps[name]["requires"]) if name in steps else []:
             if prerequisite not in nodes:
                 raise ValueError(f"{name} requires undeclared step {prerequisite}")
             lines.append(f"  {nodes[prerequisite]} --> {node}")

@@ -1,23 +1,30 @@
 ---
 name: composable-knowledge-goal
-status: in-progress
+status: active
 criteria:
   AC1:
     assessment: partial
     support:
-    - feature: Registered shared parts
+    - feature: composition-edges
       implementation:
         path: src/ubiq/graph.py
         anchor: def build_edges(
       check:
         path: tests/test_graph.py
         anchor: def test_invoke_and_include_edges_with_callers(
-    gap: Existing tests support this criterion. This migration does not re-audit the complete
-      goal.
+    - feature: composition-edges
+      implementation:
+        path: ubiq.yaml
+        anchor: 'ns: part'
+      check:
+        path: tests/test_graph.py
+        anchor: def test_registering_parts_needs_only_config_and_a_moved_part_breaks_its_links(
+    gap: The cited tests pass on the branch. The criterion becomes met only from a passing
+      check on main, not from a hand-written review.
   AC2:
     assessment: partial
     support:
-    - feature: Typed composition edges
+    - feature: composition-edges
       implementation:
         path: src/ubiq/graph.py
         anchor: def build_edges(
@@ -28,7 +35,7 @@ criteria:
   AC3:
     assessment: partial
     support:
-    - feature: Pinned overlap survey
+    - feature: overlap
       implementation:
         path: src/ubiq/overlap.py
         anchor: def find_overlap(
@@ -39,7 +46,7 @@ criteria:
   AC4:
     assessment: partial
     support:
-    - feature: Installed link validation
+    - feature: composition-edges
       implementation:
         path: src/ubiq/graph.py
         anchor: def _install_layout(
@@ -54,7 +61,7 @@ criteria:
   AC6:
     assessment: partial
     support:
-    - feature: Composition constraints
+    - feature: composition-edges
       implementation:
         path: src/ubiq/graph.py
         anchor: def _include_cycles(
