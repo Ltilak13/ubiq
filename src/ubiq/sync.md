@@ -42,6 +42,8 @@ symbols:
         confirm_closed: {"x-python-kind": "positional-or-keyword", "type": "boolean", "x-python-type": "bool", "x-python-default": "False"}
         prs: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "tuple[int, ...]", "x-python-default": "()"}
         required_prs: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "tuple[tuple[str, tuple[int, ...]], ...]", "x-python-default": "()"}
+        comment: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "''"}
+        comment_marker: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "''"}
       required: ["kind", "ident", "marker", "title", "body", "state"]
     result: {}
     errors: false
@@ -202,6 +204,36 @@ symbols:
         plan_record: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Mapping[str, Any]"}
         label_prefix: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "DEFAULT_LABEL_PREFIX"}
       required: ["plan_record"]
+    result: {"type": "array", "x-python-type": "list[Desired]"}
+    errors: false
+  decision_comment:
+    id: symbol:ubiq.sync.decision_comment
+    feature: decision-records
+    term: decision comment
+    form: bound
+    scenarios: [tests/test_decision_records.py::test_superseded_comment_names_the_replacement_and_proposed_mirrors_nothing]
+    params:
+      type: object
+      additionalProperties: false
+      properties:
+        decision: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Mapping[str, Any]"}
+        replacement: {"x-python-kind": "positional-or-keyword", "x-python-type": "Mapping[str, Any] | None"}
+      required: ["decision", "replacement"]
+    result: {"type": "string", "x-python-type": "str"}
+    errors: false
+  decision_desired:
+    id: symbol:ubiq.sync.decision_desired
+    feature: decision-records
+    term: decision desired
+    form: bound
+    scenarios: [tests/test_decision_records.py::test_accepted_decision_gets_one_comment_and_closes_the_question]
+    params:
+      type: object
+      additionalProperties: false
+      properties:
+        decisions: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Sequence[Mapping[str, Any]]"}
+        label_prefix: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "DEFAULT_LABEL_PREFIX"}
+      required: ["decisions"]
     result: {"type": "array", "x-python-type": "list[Desired]"}
     errors: false
   tracked_issue_numbers:
@@ -584,6 +616,22 @@ symbols:
       required: ["items", "issues"]
     result: {"type": "array", "x-python-type": "list[Action]"}
     errors: false
+  fact_comment:
+    id: symbol:ubiq.sync.fact_comment
+    feature: decision-records
+    term: fact comment
+    form: bound
+    scenarios: [tests/test_decision_records.py::test_changed_record_updates_the_generated_comment_only]
+    params:
+      type: object
+      additionalProperties: false
+      properties:
+        item: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Desired"}
+        tracked: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Sequence[int]"}
+        issues: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Mapping[int, Issue]"}
+      required: ["item", "tracked", "issues"]
+    result: {"type": "array", "x-python-type": "list[Action]"}
+    errors: false
   plan:
     id: symbol:ubiq.sync.plan
     feature: github-sync
@@ -704,6 +752,35 @@ symbols:
         numbers: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Iterable[int]"}
       required: ["numbers"]
     result: {"type": "object", "x-python-type": "dict[int, set[str]]"}
+    errors: false
+  GitHub.comments:
+    id: symbol:ubiq.sync.GitHub.comments
+    feature: decision-records
+    term: GitHub comments
+    form: bound
+    scenarios: [tests/test_decision_records.py::test_with_comments_reads_only_the_named_issues]
+    params:
+      type: object
+      additionalProperties: false
+      properties:
+        number: {"x-python-kind": "positional-or-keyword", "type": "integer", "x-python-type": "int"}
+      required: ["number"]
+    result: {"type": "array", "x-python-type": "list[Issue]"}
+    errors: false
+  GitHub.with_comments:
+    id: symbol:ubiq.sync.GitHub.with_comments
+    feature: decision-records
+    term: GitHub with comments
+    form: bound
+    scenarios: [tests/test_decision_records.py::test_with_comments_reads_only_the_named_issues]
+    params:
+      type: object
+      additionalProperties: false
+      properties:
+        snapshot: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Sequence[Issue]"}
+        numbers: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Iterable[int]"}
+      required: ["snapshot", "numbers"]
+    result: {"type": "array", "x-python-type": "list[Issue]"}
     errors: false
   GitHub.apply:
     id: symbol:ubiq.sync.GitHub.apply
@@ -946,3 +1023,23 @@ The open pull requests, with their bases, heads, and closing intent.
 ## `GitHub.bot_markers`
 
 For each issue, the markers in comments the sync's bot wrote.
+
+## `decision_comment`
+
+The generated comment body for an accepted or superseded decision.
+
+## `decision_desired`
+
+One desired item per decision, tracking the issue its question names.
+
+## `fact_comment`
+
+Each question issue holds exactly one generated decision comment that matches its record.
+
+## `GitHub.comments`
+
+Every comment on one issue.
+
+## `GitHub.with_comments`
+
+The snapshot with comments read for the named issues.

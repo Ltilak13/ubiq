@@ -112,7 +112,7 @@ DEFAULT_CONFIG: dict = {
     # reports setup guidance and exits 2.
     # repo: owner/name of the issue tracker (default: $GITHUB_REPOSITORY).
     # label_prefix: prefix of the labels the sync owns (default "priority: ").
-    # records: the record files to mirror, each a `glob` and its `kind` (goal, plan, feature).
+    # records: the record files to mirror, each a `glob` and its `kind` (goal, plan, feature, decision).
     # create: which open goal criteria get a new issue: `always` (default), or
     # `prioritized`, only those whose criterion or goal sets a `priority`.
     "sync": None,
@@ -163,7 +163,7 @@ class CoverageSpec:
     no_regression: bool
 
 
-SYNC_KINDS = ("goal", "plan", "feature")
+SYNC_KINDS = ("goal", "plan", "feature", "decision")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 

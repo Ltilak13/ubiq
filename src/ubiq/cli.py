@@ -35,6 +35,7 @@ from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, at, restated_values, run_checks
 from .config import Config, InvalidConfig, load_config
+from .decisions import cmd_decisions
 from .dependencies import Snapshots, validate_checkout
 from .discovery import discover, init_assets
 from .globs import Glob, GlobError, first_match
@@ -252,6 +253,8 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
         from .step_refs import step_cycle_diagnostics, within_diagnostics
         extra.extend(within_diagnostics(cfg))
         extra.extend(step_cycle_diagnostics(cfg))
+        from .decisions import decision_diagnostics
+        extra.extend(decision_diagnostics(cfg))
         extra.extend(single_diagnostics(cfg))
     if cfg.sync is not None:
         from .scenarios import diagnostics as scenario_diagnostics
@@ -1244,6 +1247,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="scenario outcomes from `pytest -p ubiq.pytest_plugin --ubiq-results FILE`; a criterion with "
                          "`scenario: true` is met when its tagged scenarios passed")
     gh.set_defaults(fn=cmd_sync)
+
+    dc = sub.add_parser("decisions", help="print or write the generated list of decision records")
+    dc.add_argument("--root", default=".")
+    dc.add_argument("--write", action="store_true", help="rewrite the block in the decisions README")
+    dc.set_defaults(fn=cmd_decisions)
 
     im = sub.add_parser("impact", help="records a change touches and the callers it affects")
     im.add_argument("--since", required=True, metavar="REV",
