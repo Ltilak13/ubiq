@@ -19,7 +19,7 @@ jobs:
     if: github.event_name != 'schedule' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    concurrency: github-sync
+    concurrency: goal-issues  # share the legacy workflow's lock during rollout
     permissions:
       contents: read
       issues: write
