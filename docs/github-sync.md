@@ -40,6 +40,7 @@ pure function that returns actions:
 | `link` | A required issue is not yet a blocker; add the blocked-by link. |
 | `unlink` | An issue blocks this one but `requires` does not name it; remove the link. |
 | `body` | The generated "Blocked by" section differs; rewrite it between its markers. |
+| `stack` | A pull request is not based on the branch of its required record's pull request. Report only. |
 | `close` | A record that is done still has an open issue; close it with a comment. |
 | `warn` | A record lists a number that is not an issue (a pull request, a typo). |
 | `noop` | The issue already matches. |
@@ -82,6 +83,78 @@ dry run shows each resulting change as a `label` or `create` action.
 - A container with no `priority` changes nothing: items without their own value stay unmanaged.
 
 A criterion's `issue` number, like each number in `issues`, names an issue the sync tracks.
+
+## Pull requests
+
+A record's `pr` (one of the [[tracking field]]s) lists its implementing pull requests.
+Each sync reads the open pull requests (`GET repos/{o}/{r}/pulls?state=open`): head
+ref, base ref, and closing references from each PR body. REST has no closing-issues field, so the
+sync reads the body for `Closes #n`, `Fixes #n`, or `Resolves #n` (also `closed`,
+`fixed`, `resolved`, and `owner/repo#n` for this repository). The token needs
+`pull-requests: read`.
+
+### Stack check
+
+When record X `requires` record Y, and Y has an open pull request, X's pull request must
+target the head ref of Y's. A pull request whose base is anything else is a `stack`
+action in the dry run, which is drift and fails `--check`. The sync only reports it and
+never retargets a pull request.
+
+This repository's stack is #116, #132, #135, #145: each pull request is based on the
+head ref of the one before. Its records say so:
+
+```yaml
+# sync-github.md        (head: claude/..-sync-github, base: main)
+name: sync-github
+pr: [132]
+# tracking-fields.md    (head: claude/..-tracking-fields, base: claude/..-sync-github)
+name: tracking-fields
+pr: [135]
+requires: [sync-github]
+# requires-links.md     (head: claude/..-requires-links, base: claude/..-tracking-fields)
+name: requires-links
+pr: [145]
+requires: [tracking-fields]
+```
+
+With those records, #145 must target `claude/..-tracking-fields`, the head of #135. If
+#145 were opened against `main`, the dry run reports:
+
+```json
+{"action": "stack", "record": "requires-links", "pr": 145, "base": "main",
+ "expected": ["claude/..-tracking-fields"], "requires": ["tracking fields"],
+ "reason": "pull request base is not the head branch of a required record's pull request"}
+```
+
+- The check covers every schema-bound frontmatter record with a `pr`, and every goal
+  criterion the sync mirrors; the required record can be any record with a `pr`.
+  `requires` names are shown normalized. `pr: <n>` entries in `requires` are not records.
+- Only open pull requests count. When #135 merges it is no longer open, so #145 makes no
+  claim until it is retargeted to the trunk; a merged or closed `pr` entry is ignored.
+- A pull request has one base. A record that requires several records with open pull
+  requests passes when its base is the head of any of them.
+- `--apply` does nothing for a `stack` finding, prints it with the warnings, and exits 1.
+- A pull request from a fork is compared by head ref name only.
+
+### Derived status: in review
+
+An open issue carries `status: in review` when an open pull request implements it.
+Sync recognizes three kinds of evidence:
+
+- A closing reference on a pull request that targets the default branch.
+- A closing reference on a stacked pull request that targets the branch of another
+  open pull request in the repository. GitHub enables automatic closing by keyword
+  when the pull request targets the default branch.
+- A record whose tracked issue and `pr` link it to an open implementing pull request.
+
+Sync removes the label when the issue closes or the last evidence of an open
+implementing pull request disappears. It derives the label on every sync.
+
+- Adding it removes `status: in progress` in the same `label` action. Every other
+  `status: ` label (`blocked`, `ready`, and so on) is left alone.
+- It applies to all issues in the repository. A draft pull request counts. A hand-added or hand-removed label is drift that `--apply` restores.
+- The label name is fixed (`STATUS_PREFIX` in `src/ubiq/sync.py`) and is independent of
+  `sync.label_prefix`.
 
 ## Requires
 
@@ -159,6 +232,11 @@ skips the check.
 The preview job uses the pull request's exact head commit and prints its plan
 as "Pending on merge" in the job summary. The preview is read-only and does
 not block the pull request.
+
+The pull request checks use the current state of GitHub when the revision
+supports pull request sync. Opening, editing, retargeting, or closing a pull
+request can change review labels between pushes to `main`. Use the manual
+`github-sync` workflow to apply those changes between pushes.
 
 ## Workflow
 
