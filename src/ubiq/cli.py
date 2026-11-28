@@ -244,8 +244,9 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
     if cfg.schemas:
         from .schemas import xref_refs
         refs.extend(xref_refs(cfg))
-        from .step_refs import within_diagnostics
+        from .step_refs import step_cycle_diagnostics, within_diagnostics
         extra.extend(within_diagnostics(cfg))
+        extra.extend(step_cycle_diagnostics(cfg))
     result.refs.extend(refs)
     result.diagnostics.extend(extra)
     result.docs.extend(doc_files)

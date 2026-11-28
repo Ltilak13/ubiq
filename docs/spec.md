@@ -143,7 +143,8 @@ include link that resolves nowhere always fails it (see Composition edges).
   The message names the loop (`requires cycle: a -> b -> a`) at the first record's
   field. Only a top-level annotated field of a frontmatter-bound record is a node,
   because a nested field (a goal criterion's `requires`) has a source that is not a
-  record of the namespace.
+  record of the namespace. A `within` annotation (plan step `requires`) is checked per
+  file and the message gives each step's line.
 - `W003` blocked invoke — an invoke edge targets a record whose
   `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
 - `W004` install layout — a link that leaves an `edges.install` directory resolves
@@ -573,8 +574,9 @@ A step's `requires` lists other step names of the same plan. The schema annotate
 `{"ns": "plan-step", "edge": "requires", "acyclic": true, "within": "steps"}`. Steps are
 keys of a mapping, not records, so `within` makes each value resolve against the keys
 of the file's top-level `steps` mapping instead of the glossary. A name that is no step
-is E006 at the line of the field. These links make no composition edge. `acyclic` is not
-yet enforced here either.
+is E006 at the line of the field. These links make no composition edge. `acyclic` is enforced per plan file: a loop
+between steps is E014 (`requires cycle: a (line 9) -> b (line 12) -> a`) at the first
+step, and steps of different plans never join.
 
 `ubiq sync github` mirrors steps with `sync.records` entries of kind `plan`; see
 [plan behavior](github-sync.md#plan-behavior).
