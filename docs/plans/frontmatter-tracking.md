@@ -48,6 +48,10 @@ steps:
     requires: [tracking-fields]
     branch: claude/ecstatic-mendel-nkgz6t-plan-records
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
+  detect-plan-step-cycles:
+    issue: 149
+    requires: [requires-links, plan-records]
+    pr: 165
   pr-stacks:
     issue: 125
     requires: [requires-links]
