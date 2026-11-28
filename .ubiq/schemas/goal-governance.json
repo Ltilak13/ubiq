@@ -33,7 +33,15 @@
       "glossary": true,
       "exclude": [
         {
+          "source": "skills/references/domain-review.md",
+          "reason": "Shared skill procedure outside the policy/domain-schema-goal example."
+        },
+        {
           "source": "skills/references/schema-workflow.md",
+          "reason": "Shared skill procedure outside the policy/domain-schema-goal example."
+        },
+        {
+          "source": "skills/references/validate-changes.md",
           "reason": "Shared skill procedure outside the policy/domain-schema-goal example."
         },
         {
@@ -114,6 +122,10 @@
         },
         {
           "source": "glossary/term.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/x-ubiq.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
