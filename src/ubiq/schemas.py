@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 from jsonschema import Draft202012Validator
@@ -15,11 +15,14 @@ from referencing import Registry
 from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
 
+from . import xref
 from .check import Diagnostic
 from .config import SchemaSpec
 from .globs import GlobError
 from .integrity import Finding, assess_integrity, validate_spec
-from .records import FRONTMATTER_RE
+from .kinds import by_id, by_name
+from .records import FRONTMATTER_RE, normalize
+from .scan import SKIP_FIELD_VALUES, Ref
 
 if TYPE_CHECKING:
     from jsonschema.protocols import Validator
@@ -135,10 +138,67 @@ def _pointer(parts):
     return "/" + "/".join(str(p).replace("~", "~0").replace("/", "~1") for p in parts)
 
 
+BUNDLED = "ubiq-file:"  # prefix of the $defs keys under which load_schema inlines files
+
+
+def load_schema(root: Path, path: Path):
+    """A schema with each relative-file `$ref` inlined, so every reference is same-document.
+
+    `"$ref": "tracking.json#/properties/pr"` names a schema file next to this one. Its
+    contents are copied to `$defs["ubiq-file:.ubiq/schemas/tracking.json"]` (the key is
+    the file's repository path) and the reference is
+    rewritten to point there; the copied file's own references are rewritten the same way.
+    Only files inside `root` can be referenced, and a reference with a scheme (`https:`)
+    stays as written, which the validator rejects (E008).
+    """
+    root = Path(root).resolve()
+    schema = load_data(path)
+    files: dict[str, Any] = {}
+
+    def key_of(base: Path, target: str) -> str:
+        resolved = (base.parent / target).resolve()
+        if not resolved.is_relative_to(root) or not resolved.is_file():
+            raise ValueError(f"$ref: {target!r} names no schema file inside the repository")
+        name = resolved.relative_to(root).as_posix()
+        if name not in files:
+            files[name] = None  # reserve the key first, so a reference cycle ends
+            files[name] = rewrite(load_data(resolved), resolved, f"/$defs/{_escape(BUNDLED + name)}")
+        return name
+
+    def rewrite(node: Any, base: Path, prefix: str) -> Any:
+        if isinstance(node, list):
+            return [rewrite(item, base, prefix) for item in node]
+        if not isinstance(node, dict):
+            return node
+        out = {k: rewrite(v, base, prefix) for k, v in node.items()}
+        for key in ("$ref", "$dynamicRef"):
+            ref = node.get(key)
+            if not isinstance(ref, str) or ":" in ref.split("#", 1)[0]:
+                continue
+            target, _, fragment = ref.partition("#")
+            if target:
+                out[key] = f"#/$defs/{_escape(BUNDLED + key_of(base, target))}{fragment}"
+            elif prefix:
+                out[key] = "#" + prefix + fragment
+        return out
+
+    path = Path(path).resolve()
+    if not isinstance(schema, dict):
+        return schema
+    bundled = rewrite(schema, path, "")
+    if files:
+        bundled.setdefault("$defs", {}).update({BUNDLED + name: value for name, value in files.items()})
+    return bundled
+
+
+def _escape(name: str) -> str:
+    return name.replace("~", "~0").replace("/", "~1")
+
+
 def _validator(root: Path, location: str):
     filename, separator, fragment = location.partition("#")
     path = root / filename
-    schema = load_data(path)
+    schema = load_schema(root, path)
     Draft202012Validator.check_schema(schema)
     resource = DRAFT202012.create_resource(schema)
     resolver = Registry().resolver_with_root(resource)
@@ -156,6 +216,120 @@ def _validator(root: Path, location: str):
         selected = resolved
         validator = validator.evolve(schema={"$ref": reference})
     return selected, validator
+
+
+def _annotations(root: Path, location: str) -> list[xref.Annotation]:
+    """The `x-ubiq-ref` annotations of the schema (or fragment) at `location`."""
+    filename, _, fragment = location.partition("#")
+    document = load_schema(root, root / filename)
+    selected = xref.pointer(document, "#" + fragment) if fragment else document
+    return xref.collect(selected, document)
+
+
+def _in_namespace(glossary, ref: Ref):
+    """A record id or name that resolves, among the records of the annotation's namespace."""
+    return [t for t in by_id(glossary, ref) if t.ns == ref.ns] or by_name(glossary, ref)
+
+
+def edge_names(cfg) -> set[str]:
+    """The edge and field names that bound schemas declare with `x-ubiq-ref`."""
+    names: set[str] = set()
+    for spec in cfg.schemas:
+        try:
+            for annotation in _annotations(cfg.root, spec.schema):
+                names.add(annotation.ref.edge)
+                if annotation.steps and annotation.steps[-1][0] == "key":
+                    names.add(annotation.steps[-1][1])
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError, yaml.YAMLError, RecursionError):
+            continue  # an unreadable schema is E008
+    return names
+
+
+def xref_refs(cfg) -> list[Ref]:
+    """A field reference for each value of an `x-ubiq-ref` property in a bound file.
+
+    Each resolves to a record in the annotation's namespace (E006 when none does) and
+    makes an edge named by the annotation. A top-level field that `ref_fields` already
+    resolves keeps its `ref_fields` meaning, so it is not read twice. Files and schemas
+    that cannot be read, or do not conform, are reported (E005, E008, E009) elsewhere.
+    """
+    refs: list[Ref] = []
+    field_policy = cfg.policies["field"]
+    for spec in cfg.schemas:
+        try:
+            found = _annotations(cfg.root, spec.schema)
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError, yaml.YAMLError, RecursionError):
+            continue
+        if not found or spec.format != "frontmatter":
+            continue  # the other formats have no lines to point at
+        policy = replace(field_policy, resolve=_in_namespace)
+        paths: set[Path] = set()
+        for pattern in spec.files:
+            try:
+                paths.update(p for p in pattern.walk(cfg.ignore)
+                             if not any(g.matches(p) for g in cfg.ignore))
+            except GlobError:
+                continue
+        for path in sorted(paths):
+            try:
+                data = load_data(path, frontmatter=True)
+                match = FRONTMATTER_RE.match(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, RecursionError):
+                continue
+            text = match.group(1) if match else ""
+            for annotation in found:
+                if annotation.ref.within:
+                    continue  # names in the same file: step_refs.py checks them
+                for keys, value in xref.values(data, annotation.steps):
+                    value = value.strip().strip("'\"")
+                    if (not value or value.lower() in SKIP_FIELD_VALUES
+                            or (len(keys) == 1 and keys[0] in cfg.ref_fields)):
+                        continue
+                    ref = annotation.ref
+                    if ref.edge == "requires" and xref.pr_entry(value) is not None:
+                        continue  # `pr: <n>` names a pull request, not a record
+                    field_name = keys[-1] if keys else ref.edge
+                    refs.append(Ref(policy, f"{field_name}: {value}", normalize(value), ref.ns,
+                                    path, xref.line_of(text, keys), target=value, edge=ref.edge))
+    return refs
+
+
+def single_diagnostics(cfg) -> list[Diagnostic]:
+    """E009 for a `single` property that names more than one record, at the field's line.
+
+    Reads the same files as `xref_refs`; unreadable files and schemas are reported
+    elsewhere. Values that are not strings are the schema's to report.
+    """
+    found_errors: list[Diagnostic] = []
+    for spec in cfg.schemas:
+        try:
+            found = [a for a in _annotations(cfg.root, spec.schema) if a.ref.single]
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError, yaml.YAMLError, RecursionError):
+            continue
+        if not found or spec.format != "frontmatter":
+            continue
+        paths: set[Path] = set()
+        for pattern in spec.files:
+            try:
+                paths.update(p for p in pattern.walk(cfg.ignore)
+                             if not any(g.matches(p) for g in cfg.ignore))
+            except GlobError:
+                continue
+        for path in sorted(paths):
+            try:
+                data = load_data(path, frontmatter=True)
+                match = FRONTMATTER_RE.match(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, RecursionError):
+                continue
+            text = match.group(1) if match else ""
+            for annotation in found:
+                for keys, names in xref.groups(data, annotation.steps):
+                    if len(names) > 1:
+                        found_errors.append(Diagnostic(
+                            "E009", f"{'.'.join(keys)}: {annotation.ref.edge} names {len(names)} "
+                            f"records ({', '.join(names)}); at most one is allowed",
+                            path, xref.line_of(text, keys)))
+    return found_errors
 
 
 @dataclass
@@ -192,6 +366,7 @@ def assess_schemas(cfg, glossary, *, retain_scan_errors: bool = False) -> list[B
             if isinstance(schema, dict) and "x-ubiq" in schema:
                 validate_spec(schema["x-ubiq"])
                 binding.extension = schema["x-ubiq"]
+            _annotations(cfg.root, spec.schema)
         except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, SchemaError,
                 Unresolvable, RecursionError) as exc:
             binding.error = str(exc)

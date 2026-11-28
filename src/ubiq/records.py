@@ -14,8 +14,10 @@ A glossary record is a markdown file with YAML frontmatter defining exactly one 
 
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -184,6 +186,57 @@ def overlay_onto(term: Term, meta: dict) -> Term:
     spellings += extra
     return Term(term=term_name, ns=ns, file=term.file, aliases=aliases,
                 id=id_, definition=term.definition, spellings=spellings)
+
+
+def stamp(path: Path) -> tuple[int, int] | None:
+    """A file's modification time and size, for caches; None when it is missing."""
+    try:
+        status = path.stat()
+    except OSError:
+        return None
+    return status.st_mtime_ns, status.st_size
+
+
+@lru_cache(maxsize=4096)
+def _read_fields(path: Path, version, sidecar: Path | None, sidecar_version,
+                 lenient: bool) -> tuple[dict | None, str]:
+    """Merged frontmatter, or None and the reason. Keyed on file versions, so a
+    changed file is read again."""
+    try:
+        meta, _ = parse_frontmatter(path, lenient)
+        if sidecar is not None:
+            extra, _ = parse_frontmatter(sidecar, lenient)
+            for key, value in extra.items():
+                if value is not None and key not in ("source", "on"):
+                    meta[key] = (list(dict.fromkeys([*_aliases(meta), *_aliases(extra)]))
+                                 if key == "aliases" else value)
+    except InvalidRecord as exc:
+        return None, str(exc)
+    return meta, ""
+
+
+def shared_fields(path: Path, glossary: Glossary | None = None,
+                  lenient: bool = False) -> dict:
+    """`frontmatter_fields` without the copy: the cached mapping, which callers
+    must not mutate."""
+    sidecar = (glossary.overlay_sources.get(path.resolve())
+               if glossary and glossary.overlay_sources else None)
+    meta, error = _read_fields(path, stamp(path), sidecar,
+                               stamp(sidecar) if sidecar else None, lenient)
+    if meta is None:
+        raise InvalidRecord(error)
+    return meta
+
+
+def frontmatter_fields(path: Path, glossary: Glossary | None = None,
+                       lenient: bool = False) -> dict:
+    """The frontmatter of the file at `path`, as written.
+
+    Non-null overlay sidecar fields win over the record's own; `aliases` union,
+    as in `overlay_onto`. Raises InvalidRecord when the frontmatter cannot be read.
+    Reads are cached per file version; each call returns a deep copy.
+    """
+    return copy.deepcopy(shared_fields(path, glossary, lenient))
 
 
 @dataclass
