@@ -114,6 +114,12 @@ DEFAULT_CONFIG: dict = {
     # create: which open goal criteria get a new issue: `always` (default), or
     # `prioritized`, only those whose criterion or goal sets a `priority`.
     "sync": None,
+    # Support matrix as records (E017, W010, `ubiq support`). `records` globs one
+    # record per runtime version; `pyproject` and `workflow` (with its test `job`
+    # and matrix key `matrix`) are the views checked against them; `table` is the
+    # document holding the generated support table; `features` optionally globs
+    # feature records whose `runtime` and `extra` fields are checked.
+    "support": None,
 }
 
 
@@ -177,6 +183,17 @@ SYNC_CREATE = ("always", "prioritized")
 
 
 @dataclass(frozen=True)
+class SupportSpec:
+    records: Glob
+    pyproject: str
+    workflow: str
+    job: str
+    matrix: str
+    table: str | None
+    features: tuple[Glob, ...]
+
+
+@dataclass(frozen=True)
 class Config:
     root: Path
     glossary: tuple[GlossaryRule, ...]
@@ -200,6 +217,7 @@ class Config:
     coverage: CoverageSpec | None = None
     readme_field: str = "readme"
     sync: SyncSpec | None = None
+    support: SupportSpec | None = None
 
     @property
     def part_rules(self) -> tuple[GlossaryRule, ...]:
@@ -387,6 +405,31 @@ def _coverage(raw, root: Path) -> CoverageSpec | None:
         raise InvalidConfig("coverage.no_regression: expected true or false")
     return CoverageSpec(tuple(Glob.parse(_relative(f, "coverage.files"), root) for f in files),
                         tuple(exclusions), floor, no_regression)
+
+
+def _support(raw, root: Path) -> SupportSpec | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise InvalidConfig("support: expected a mapping")
+    _known(raw, "support", ("records", "pyproject", "workflow", "job", "matrix", "table",
+                            "features"))
+    if "records" not in raw:
+        raise InvalidConfig("support.records: give the glob of support records")
+    table = raw.get("table")
+    if table is not None:
+        table = _relative(_string(table, "support.table"), "support.table")
+    features = _strings(raw.get("features", []), "support.features", scalar=True)
+    return SupportSpec(
+        Glob.parse(_relative(_string(raw["records"], "support.records"), "support.records"), root),
+        _relative(_string(raw.get("pyproject", "pyproject.toml"), "support.pyproject"),
+                  "support.pyproject"),
+        _relative(_string(raw.get("workflow", ".github/workflows/ci.yml"), "support.workflow"),
+                  "support.workflow"),
+        _string(raw.get("job", "test"), "support.job"),
+        _string(raw.get("matrix", "python-version"), "support.matrix"),
+        table,
+        tuple(Glob.parse(_relative(f, "support.features"), root) for f in features))
 
 
 def _strings(value, field: str, scalar: bool = False) -> list[str]:
@@ -592,6 +635,7 @@ def load_config(root: Path) -> Config:
         coverage=_coverage(cfg["coverage"], root),
         readme_field=_string(cfg["readme_field"], "readme_field"),
         sync=_sync(cfg["sync"], root),
+        support=_support(cfg["support"], root),
     )
     broken = broken_guarantees(config)
     if broken:

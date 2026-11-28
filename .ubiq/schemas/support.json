@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Support record frontmatter",
+  "description": "One runtime version Ubiq supports, deprecates, or does not support.",
+  "type": "object",
+  "required": ["name", "runtime", "version", "status", "eol", "reason"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9]*-[0-9]+\\.[0-9]+$"},
+    "runtime": {"enum": ["python"]},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+    "status": {"enum": ["supported", "deprecated", "unsupported"]},
+    "eol": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"},
+    "reason": {"type": "string", "pattern": "\\S"}
+  },
+  "additionalProperties": false
+}
