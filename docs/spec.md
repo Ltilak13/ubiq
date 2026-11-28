@@ -234,7 +234,8 @@ membership. `ubiq check` reports discrepancies without editing the README.
   The message names the loop (`requires cycle: a -> b -> a`) at the first record's
   field. Only a top-level annotated field of a frontmatter-bound record is a node,
   because a nested field (a goal criterion's `requires`) has a source that is not a
-  record of the namespace.
+  record of the namespace. A `within` annotation (plan step `requires`) is checked per
+  file and the message gives each step's line.
 - `W003` blocked invoke — an invoke edge targets a record whose
   `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
 - `W004` install layout — a link that leaves an `edges.install` directory resolves
@@ -714,8 +715,10 @@ pull request number or a list. The schema annotates `requires` with
 keys of a mapping, not records, so `within` makes each value resolve against the keys
 of the file's top-level `steps` mapping instead of the glossary; a qualified name
 resolves against the `steps` of the other file, bound to the same schema, whose `name`
-is `<plan>`. A name that is no step is E006 at the line of the field. These links make no composition edge. `acyclic` is not
-yet enforced here either.
+is `<plan>`. A name that is no step is E006 at the line of the field. These links make no composition edge. `acyclic` is enforced per plan file: a loop
+between steps is E014 (`requires cycle: a (line 9) -> b (line 12) -> a`) at the first
+step. Qualified names to another plan's steps make no edge for this check, so steps of
+different plans never join a loop.
 
 `ubiq sync github` mirrors steps with `sync.records` entries of kind `plan`; see
 [plan behavior](github-sync.md#plan-behavior).
