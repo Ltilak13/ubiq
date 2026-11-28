@@ -221,16 +221,58 @@ def xref_refs(cfg) -> list[Ref]:
                 continue
             text = match.group(1) if match else ""
             for annotation in found:
+                if annotation.ref.within:
+                    continue  # names in the same file: step_refs.py checks them
                 for keys, value in xref.values(data, annotation.steps):
                     value = value.strip().strip("'\"")
                     if (not value or value.lower() in SKIP_FIELD_VALUES
                             or (len(keys) == 1 and keys[0] in cfg.ref_fields)):
                         continue
                     ref = annotation.ref
+                    if ref.edge == "requires" and xref.pr_entry(value) is not None:
+                        continue  # `pr: <n>` names a pull request, not a record
                     field_name = keys[-1] if keys else ref.edge
                     refs.append(Ref(policy, f"{field_name}: {value}", normalize(value), ref.ns,
                                     path, xref.line_of(text, keys), target=value, edge=ref.edge))
     return refs
+
+
+def single_diagnostics(cfg) -> list[Diagnostic]:
+    """E009 for a `single` property that names more than one record, at the field's line.
+
+    Reads the same files as `xref_refs`; unreadable files and schemas are reported
+    elsewhere. Values that are not strings are the schema's to report.
+    """
+    found_errors: list[Diagnostic] = []
+    for spec in cfg.schemas:
+        try:
+            found = [a for a in _annotations(cfg.root, spec.schema) if a.ref.single]
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError, yaml.YAMLError, RecursionError):
+            continue
+        if not found or spec.format != "frontmatter":
+            continue
+        paths: set[Path] = set()
+        for pattern in spec.files:
+            try:
+                paths.update(p for p in pattern.walk(cfg.ignore)
+                             if not any(g.matches(p) for g in cfg.ignore))
+            except GlobError:
+                continue
+        for path in sorted(paths):
+            try:
+                data = load_data(path, frontmatter=True)
+                match = FRONTMATTER_RE.match(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, RecursionError):
+                continue
+            text = match.group(1) if match else ""
+            for annotation in found:
+                for keys, names in xref.groups(data, annotation.steps):
+                    if len(names) > 1:
+                        found_errors.append(Diagnostic(
+                            "E009", f"{'.'.join(keys)}: {annotation.ref.edge} names {len(names)} "
+                            f"records ({', '.join(names)}); at most one is allowed",
+                            path, xref.line_of(text, keys)))
+    return found_errors
 
 
 @dataclass

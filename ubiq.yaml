@@ -15,6 +15,9 @@ glossary:
   - glob: "src/ubiq/features/*.md"
     term_field: name
     ns: feature
+  - glob: "docs/plans/*.md"
+    term_field: name
+    ns: plan
 docs:
   - "README.md"
   - "docs/**/*.md"
@@ -38,6 +41,8 @@ sync:
   records:
     - glob: "docs/goals/*-goal.md"
       kind: goal
+    - glob: "docs/plans/*.md"
+      kind: plan
     - glob: "src/ubiq/features/*.md"
       kind: feature
 
@@ -65,6 +70,9 @@ schemas:
     format: frontmatter
   - schema: ".ubiq/schemas/feature.json"
     files: ["src/ubiq/features/*.md"]
+    format: frontmatter
+  - schema: ".ubiq/schemas/plan.json"
+    files: ["docs/plans/*.md"]
     format: frontmatter
   - schema: ".ubiq/schemas/skill.json"
     files: ["skills/*/SKILL.md"]
@@ -98,6 +106,7 @@ coverage:
     - "skills/*/agents/*.yaml"
     - "glossary/*.md"
     - "src/ubiq/features/*.md"
+    - "docs/plans/*.md"
     - ".ubiq/glossary/*.md"
     - ".ubiq/overlays/*.md"
     - ".ubiq/catalogs/*.json"

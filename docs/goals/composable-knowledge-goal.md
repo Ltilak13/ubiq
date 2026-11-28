@@ -74,6 +74,11 @@ criteria:
     assessment: unassessed
     support: []
     gap: Broader composition needs implementation evidence and a recorded review.
+  AC10:
+    assessment: unassessed
+    support: []
+    gap: Forward and inverse lookup checks and generated-view drift checks are pending.
+    issues: [174]
 ---
 
 # Goal: composable knowledge
@@ -98,7 +103,7 @@ and repeated text. Maintainers decide what becomes a shared part.
 
 The skill examples and AC1–AC6 retain their original scope and evidence.
 They establish a concrete foundation, not proof of support for every record type.
-AC7–AC9 define the broader outcomes and remain unassessed.
+AC7–AC10 define the broader outcomes and remain unassessed.
 
 A [[composition edge]] must define its meaning and which constraints apply. Other relationships can organize knowledge without implying reuse or execution.
 The following relationships are proposed domain semantics, not new built-in edge kinds:
@@ -382,6 +387,7 @@ The goal is achieved when:
 7. AC7: A representative repository composes non-skill records through typed relationships with checked targets and declaration locations.
 8. AC8: Examples distinguish subgoal decomposition, principle constraints, required qualities, motivation, evidence, and procedural contribution without treating them as equivalent dependencies.
 9. AC9: Tests enforce declared relationship semantics, including cycle rules and parent completion conditions, without inferring completion from links alone.
+10. AC10: A declared relationship is navigable from both records with its inverse named correctly. Tests verify both lookups, a moved relationship, and an unresolved target. A separate check catches a stale generated view.
 
 Criteria 1, 2, 4, and 6 have tests in `tests/test_graph.py`. Criterion 3 has
 pinned results in `tests/test_survey.py`: the public collection is vendored at the

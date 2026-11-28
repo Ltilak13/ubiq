@@ -61,6 +61,7 @@ resolves, what it reports, and whether it links its term for W002.
 | `id` | id | id | E004 | comment | inline_code, address, comment |
 | `field` | field | id, then name | E006 | frontmatter only | nothing |
 | `catalog` | catalog | id, then name | E006, E007 | inventory only | nothing |
+| `value` | value | destination | E013 | prose only | comment |
 | `mention` | mention | name | W002 | prose only | inline_code, address, comment |
 | `link` | link | nothing | W007 | prose only | comment |
 
@@ -81,11 +82,85 @@ resolve only after installation, or target an external installed directory.
 Other missing destinations still report W007. A path-shaped wiki-link to
 a missing file (`[[MISSION.md]]`) is not a reference of any kind.
 
+A `value` ref names a frontmatter field instead of copying its value into prose,
+so the value keeps one home. It is an ordinary Markdown link whose fragment is a
+top-level frontmatter field name of the link's target, and whose label is the
+field's value:
+
+```markdown
+Takes [10](#pct) percent off.                  pct of the file it is written in
+Orders save [10](glossary/discount.md#pct)%.   pct of another record's file
+```
+
+In a link to an existing local Markdown file that has frontmatter, a fragment
+names either an anchor or a field. Anchors are the file's GitHub-style heading
+slugs and the HTML `id` and `name` attributes in its prose, the same set W004
+uses. Slugs come from ATX headings, also after block quote or list markers, and
+from setext headings over a whole paragraph, with `-1` suffixes for duplicates.
+Heading text drops HTML tags after decoding entities, emphasis markers, and
+link brackets and destinations. Frontmatter is never a heading, and anchors in
+code or HTML comments do not count. Known gaps: no other inline markup is
+interpreted, and container nesting beyond a marker prefix is not tracked.
+
+A fragment that names an anchor is an ordinary link, so an anchor wins over a
+same-named field: to value-link that field, rename the heading. Any other
+fragment is a `value` ref for a top-level field of the file or of an overlay on
+it, whose non-null fields win. Field names are case-sensitive; headings are not.
+A fragment that names no such field reports E013, so a misspelled field fails;
+W004 leaves those fragments to E013. Fragments into files without frontmatter
+stay unchecked, and so do links with a query. A repository whose anchors ubiq
+cannot slug sets `references.value.severity: warn` (or `off`).
+
+The label must equal the field's value as plain text: one enclosing emphasis is
+dropped, one enclosing code span is literal, other backslash escapes are undone, and whitespace runs, including
+a line break in the value, compare as one space on both sides. A label that
+wraps across lines is a known gap: it is not read as a link, so it is not checked. A list of strings reads as
+its items joined by `, `. A null field, a mapping or other non-text value, or a
+label that differs reports E013, which names the current value. A link to
+another record still counts as its Markdown reference, and the restated-value
+warning (W008) masks link labels, so the label is not a restated value.
+`scan.value_of` returns the text a ref names, so a renderer and the check read
+fields the same way; another repository's record reads that repository's
+overlays.
+
 No configuration can contradict a guarantee: a setting that would is E008, and a
 test fails if this spec stops stating one. The guarantees are that fenced code
 blocks are never scanned, frontmatter is never scanned as prose, definition lines
 produce no references, a plain-prose mention can never fail the build, and an
 include link that resolves nowhere always fails it (see Composition edges).
+
+## README composition
+
+A registered record can declare which READMEs list it with a frontmatter string
+or list of strings. The field is `readme` by default. Set `readme_field` in
+`ubiq.yaml` to use a different key. A non-null declaration in an overlay takes
+precedence over the record's own field. An empty list declares no memberships.
+
+| Value | README |
+|---|---|
+| `root` | The repository's top-level `README.md` |
+| `parent` | The nearest `README.md` above the record's containing folder, looking up to the repository root |
+| A path | An existing Markdown file at that repository-relative path, such as `skills/README.md` |
+
+Declared targets are scanned even when the `docs` globs do not select them.
+Paths that are missing, ignored, or outside the repository report E015.
+
+In each README, mark the entries that ubiq should check for membership with
+standalone comments. Authors choose which field each link displays.
+
+```markdown
+<!-- ubiq:readme:start -->
+- [Runs the close-out audit.](skills/closeout/SKILL.md#summary)
+<!-- ubiq:readme:end -->
+```
+
+Every declared membership in a live README needs a field link in a managed section.
+Historical READMEs are exempt from membership checks. A field
+link to a registered record inside a managed section must have a corresponding
+declaration. Reverse checks apply wherever scanned Markdown contains the
+explicit markers. Links in examples and other prose outside
+the markers still get normal field-value checks (E013). They do not count toward
+membership. `ubiq check` reports discrepancies without editing the README.
 
 ## Diagnostics
 
@@ -116,6 +191,13 @@ include link that resolves nowhere always fails it (see Composition edges).
   that contradicts a guarantee. The message names the field or rules.
 - `E009` schema conformance failure — selected frontmatter or structured data violates its declared JSON Schema, or a target is missing.
 - `E010` graph integrity failure — declared record coverage, relationships, or source evidence is invalid.
+- `E013` field value — a link into a file with frontmatter whose fragment names no
+  anchor of that file, and whose field is absent, null, or not text, or differs
+  from the label. The message names the value to use.
+- `E015` README membership — a declaration is invalid or names an unavailable README,
+  a record is missing its field link in a declared README, or a managed field
+  link points to a record that does not declare that README. The report points
+  to the declaration field or the unexpected link.
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 - `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,
@@ -138,6 +220,12 @@ include link that resolves nowhere always fails it (see Composition edges).
 - `E012` part input — an include names no value, or an undeclared value, for an
   input its part declares; or a part's `edges.include.inputs` field is not a
   mapping of input names to lists of values.
+- `E014` edge cycle — records form a loop through an `x-ubiq-ref` edge whose
+  annotation sets `acyclic: true`, for example features that `requires` each other.
+  The message names the loop (`requires cycle: a -> b -> a`) at the first record's
+  field. Only a top-level annotated field of a frontmatter-bound record is a node,
+  because a nested field (a goal criterion's `requires`) has a source that is not a
+  record of the namespace.
 - `W003` blocked invoke — an invoke edge targets a record whose
   `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
 - `W004` install layout — a link that leaves an `edges.install` directory resolves
@@ -343,8 +431,8 @@ a terminating semicolon stay literal. This also applies to destinations from
 reference definitions. Path-shaped wiki-links retain their literal entity text.
 The [navigation regression tests](../tests/test_markdown_navigation.py) compare
 a bounded synthetic sample with captured GitHub Markdown API output. That sample
-does not establish full renderer compatibility or heading-fragment validation
-outside W004's installed-layout checks.
+does not establish full renderer compatibility. Fragments are validated by
+W004 in installed layouts and by E013 in links to files with frontmatter.
 
 Checks, orphan detection, and `ubiq refs` use the same resolution rules. A
 qualified reference credits only the selected namespace. Markdown vocabulary
@@ -505,9 +593,14 @@ reference another file, and a test keeps the copies equal) and point each proper
 | `part_of` | the name of the record this one belongs to |
 | `pr` | numbers of the pull requests that implement the record |
 
+A goal also takes an optional top-level `priority`, and a plan step an optional
+`priority`. An item without its own value inherits its container's (the goal's or the
+plan's); an explicit item value wins.
+
 On a goal, they are optional properties of a criterion (`criteria.AC1.issue`), next to the
 existing `issues:` list, which keeps working; a criterion's `issue` is tracked like each
-number in `issues`. On a feature they are optional properties of the record, and the
+number in `issues`. A goal also takes `issue` at its top level: the issue of the goal
+itself, which its criteria's issues become sub-issues of. On a feature they are optional properties of the record, and the
 feature's own `requires` stays required.
 
 A feature also has a `status`, `planned` or `shipped` (the default), which `ubiq plan` and
@@ -529,6 +622,7 @@ names:
 | `edge` | required; the [[edge name]]: lowercase words joined by `-` or `_`, and not `invoke`, `include`, `route`, or `reference` |
 | `acyclic` | optional boolean; the edge must have no cycle |
 | `single` | optional boolean; at most one value |
+| `within` | optional; the name of a top-level property whose keys are the valid values, so the values resolve inside the file, not through the glossary (see [plan records](#plan-records)) |
 
 `x-ubiq-ref` sits on a property whose value is a string or a list of strings, anywhere
 a schema reaches (nested properties, `patternProperties`, `items`, `allOf`, `$ref`
@@ -540,8 +634,47 @@ is `edge`, so `ubiq graph --kind requires` selects it.
 
 `ref_fields` and `edges.*.fields` keep working unchanged. A top-level field that is in
 `ref_fields` is resolved once, as before (an `invoke` edge, any namespace); annotating
-it only adds the rules. `acyclic` and `single` are parsed and validated but not yet
-enforced: cycle and one-parent checks come with the `requires` and `part_of` work.
+it only adds the rules. `acyclic` is enforced (E014, below).
+
+`single` is enforced. A property that names more than one record is E009, at the
+field's line: `criteria.AC1.part_of: ["a", "b"]` fails, and each property is counted on
+its own, so two criteria may each name one parent. On a goal, a criterion's `part_of`
+names a goal (`ns: goal`), and a goal's own `issue` is the GitHub issue that its
+criteria's issues become sub-issues of (see [GitHub sync](github-sync.md#sub-issues)).
+
+`requires` is a list of record names. An entry `"pr: <n>"` (quote it, or YAML reads a
+mapping) names a pull request, not a record, so it is exempt from E006. `ubiq sync
+github` mirrors `requires` as blocked-by links and the `pr:` entries as a generated line
+(see [GitHub sync](github-sync.md)). A record's `pr` lists its pull requests: the sync
+reports a pull request that is not based on the head ref of a required record's open pull
+request, and derives the `status: in review` label (see [GitHub sync](github-sync.md)).
+
+### Plan records
+
+A *plan record* sequences coordination work: `docs/plans/*.md`, bound to
+`.ubiq/schemas/plan.json`, glossary namespace `plan` (`term_field: name`). Its
+frontmatter is the source for the order, branches, and pull requests of each step.
+[[plan:frontmatter-tracking]] and [[plan:no-code-dogfood]] are the records here.
+
+| Field | Value |
+| --- | --- |
+| `name` | the plan's name (lowercase words joined by `-`) |
+| `status` | `proposed`, `active`, `done`, or `abandoned` |
+| `issue` | the issue the plan coordinates; each step's issue is a sub-issue of it |
+| `priority` | optional `P1`, `P2`, or `P3`; the default for steps without their own |
+| `trunk` | the branch the work lands on |
+| `steps` | a mapping from step name to `requires` (required), `issue`, `priority`, `branch`, `base`, `pr` |
+
+A step's `requires` lists other step names of the same plan. The schema annotates it with
+`x-ubiq-ref` and the `within` member:
+`{"ns": "plan-step", "edge": "requires", "acyclic": true, "within": "steps"}`. Steps are
+keys of a mapping, not records, so `within` makes each value resolve against the keys
+of the file's top-level `steps` mapping instead of the glossary. A name that is no step
+is E006 at the line of the field. These links make no composition edge. `acyclic` is not
+yet enforced here either.
+
+`ubiq sync github` mirrors steps with `sync.records` entries of kind `plan`; see
+[plan behavior](github-sync.md#plan-behavior).
 
 ## Coverage
 

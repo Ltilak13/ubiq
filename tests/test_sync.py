@@ -1,11 +1,14 @@
 """Plan and apply the GitHub issue mirror without touching GitHub (`ubiq sync github`)."""
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from ubiq.cli import main
 from ubiq.config import InvalidConfig, load_config
@@ -253,7 +256,7 @@ def test_repository_comes_from_the_flag_then_config_then_environment(tmp_path, m
     urls = []
 
     def spy(method, url, token, payload=None):
-        urls.append(url.split('/issues')[0].rsplit('repos/', 1)[-1])
+        urls.append(url.split('/issues')[0].split('/pulls')[0].rsplit('repos/', 1)[-1])
         return []
     (tmp_path / 'a').mkdir()
     (tmp_path / 'b').mkdir()
@@ -262,7 +265,7 @@ def test_repository_comes_from_the_flag_then_config_then_environment(tmp_path, m
     cmd_sync(flags(configured), spy, 0)
     cmd_sync(flags(configured, repo='flag/repo'), spy, 0)
     cmd_sync(flags(bare), spy, 0)
-    assert urls == ['o/r', 'flag/repo', 'env/repo']
+    assert urls == ['o/r', 'o/r', 'flag/repo', 'flag/repo', 'env/repo', 'env/repo']  # issues, pulls
     capsys.readouterr()
     monkeypatch.delenv('GITHUB_REPOSITORY')
     assert cmd_sync(flags(bare), spy, 0) == 2
@@ -349,6 +352,113 @@ def test_pull_request_that_meets_a_criterion_is_pending_not_drift(tmp_path, monk
     capsys.readouterr()
     assert cmd_sync(flags(root, check=True, ref='nope'), remote, 0) == 2
     assert 'nope' in capsys.readouterr().err
+
+
+def test_pull_request_workflow_checks_base_code_and_previews_head_code(tmp_path):
+    workflow = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())['jobs']
+    preview = workflow['sync-preview']
+    prepare, check = workflow['sync-check']['steps'][-2:]
+    assert preview['steps'][0]['with']['ref'] == '${{ github.event.pull_request.head.sha }}'
+    assert prepare['env']['BASE_SHA'] == '${{ github.event.pull_request.base.sha }}'
+
+    root = tmp_path / 'repo'
+    root.mkdir()
+    write_repo(root)
+    shutil.copytree(ROOT / 'src/ubiq', root / 'src/ubiq', ignore=shutil.ignore_patterns('__pycache__'))
+
+    def git(*args):
+        return subprocess.check_output(
+            ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *args],
+            cwd=root, text=True,
+        ).strip()
+
+    git('init', '-q', '-b', 'main')
+    git('commit', '-q', '--allow-empty', '-m', 'pre-sync')
+    before_sync = git('rev-parse', 'HEAD')
+    git('add', '.')
+    git('commit', '-q', '-m', 'base')
+    base_sha = git('rev-parse', 'HEAD')
+    with (root / 'src/ubiq/sync.py').open('a') as planner:
+        planner.write("""
+
+def extra_label(item, tracked, issues):
+    return [{'action': 'label', **item.ident, 'issue': number} for number in tracked]
+
+FACTS = (*FACTS, extra_label)
+""")
+    git('commit', '-qam', 'add a mirrored fact')
+
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    (stubs / 'sitecustomize.py').write_text("""
+import io
+import os
+import urllib.request
+
+def snapshot(request, timeout):
+    assert request.get_method() == 'GET'
+    if '/pulls?' in request.full_url:
+        return io.BytesIO(b'[]')
+    assert '/issues?' in request.full_url
+    return io.BytesIO(os.environ['ISSUE_SNAPSHOT'].encode())
+
+urllib.request.urlopen = snapshot
+""")
+    python = stubs / 'python'
+    python.write_text("""#!/usr/bin/env bash
+if [[ "$1" == "-m" && "$2" == "pip" ]]; then
+  printf '%s\n' "$PWD" >> "$INSTALL_LOG"
+  exit 0
+fi
+PYTHONPATH="$PYTHONPATH:$STUBS" exec "$TEST_PYTHON" "$@"
+""")
+    python.chmod(0o755)
+    summary = tmp_path / 'summary.md'
+    install_log = tmp_path / 'install.txt'
+    env = {
+        **os.environ,
+        'FENCE': '```',
+        'GITHUB_SHA': 'synthetic-merge',
+        'GITHUB_STEP_SUMMARY': str(summary),
+        'GITHUB_TOKEN': 'test',
+        'HEAD_SHA': git('rev-parse', 'HEAD'),
+        'INSTALL_LOG': str(install_log),
+        'ISSUE_SNAPSHOT': json.dumps([issue(5, marker='AC1')]),
+        'PATH': f"{stubs}{os.pathsep}{os.environ['PATH']}",
+        'PYTHONPATH': str(root / 'src'),
+        'STUBS': str(stubs),
+        'TEST_PYTHON': sys.executable,
+    }
+
+    def step(script, cwd, env):
+        return subprocess.run(['bash', '-eo', 'pipefail', '-c', script],
+                              cwd=cwd, env=env, text=True, capture_output=True, check=False)
+
+    result = step(preview['steps'][-1]['run'], root, env)
+    assert result.returncode == 0, result.stderr
+    pending = json.loads(summary.read_text().split('```json\n', 1)[1].split('```', 1)[0])
+    assert [(action['action'], action['issue']) for action in pending] == [('label', 5)]
+
+    runner_temp = tmp_path / 'runner'
+    runner_temp.mkdir()
+    base_tree = runner_temp / 'ubiq-sync-base'
+    env.update(BASE_SHA=base_sha, RUNNER_TEMP=str(runner_temp))
+    prepared = step(prepare['run'], root, env)
+    assert prepared.returncode == 0, prepared.stderr
+    assert install_log.read_text().splitlines() == [str(base_tree)]
+
+    result = step(check['run'], base_tree, env)
+    assert result.returncode == 0 and json.loads(result.stdout) == [], result
+    result = step(check['run'], base_tree, {**env, 'ISSUE_SNAPSHOT': '[]'})
+    assert result.returncode == 1 and json.loads(result.stdout)[0]['action'] == 'create', result
+
+    runner_temp = tmp_path / 'before-sync'
+    runner_temp.mkdir()
+    env.update(BASE_SHA=before_sync, RUNNER_TEMP=str(runner_temp))
+    prepared = step(prepare['run'], root, env)
+    assert prepared.returncode == 0, prepared.stderr
+    result = step(check['run'], runner_temp / 'ubiq-sync-base', env)
+    assert result.returncode == 0 and 'does not mirror GitHub issues' in result.stdout, result
 
 
 def test_ref_reads_only_the_records_and_ignores_symlinks(tmp_path, monkeypatch, capsys):

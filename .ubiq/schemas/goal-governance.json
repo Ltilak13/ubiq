@@ -33,7 +33,15 @@
       "glossary": true,
       "exclude": [
         {
+          "source": "skills/references/domain-review.md",
+          "reason": "Shared skill procedure outside the policy/domain-schema-goal example."
+        },
+        {
           "source": "skills/references/schema-workflow.md",
+          "reason": "Shared skill procedure outside the policy/domain-schema-goal example."
+        },
+        {
+          "source": "skills/references/validate-changes.md",
           "reason": "Shared skill procedure outside the policy/domain-schema-goal example."
         },
         {
@@ -46,6 +54,10 @@
         },
         {
           "source": "docs/goals/checkable-contracts-evidence-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/goals/code-records-goal.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
@@ -62,6 +74,14 @@
         },
         {
           "source": "docs/goals/safe-adoption-evolution-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/contract.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/registry.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
@@ -114,6 +134,10 @@
         },
         {
           "source": "glossary/term.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/x-ubiq.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
@@ -194,6 +218,18 @@
         },
         {
           "source": "src/ubiq/features/tracking-fields.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/plans/frontmatter-tracking.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/plans/no-code-dogfood.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/plan-records.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {

@@ -1,0 +1,29 @@
+# Copy this file to the root of your repository. See docs/no-code-checks.md.
+# Each hook runs one check. None of them needs an agent or a network call,
+# apart from the one-time install of the tools.
+repos:
+  - repo: https://github.com/Ltilak13/ubiq
+    rev: v0.13.0
+    hooks:
+      - id: ubiq-check
+
+  - repo: local
+    hooks:
+      - id: cue-vet
+        name: cue vet (cross-field rules)
+        entry: cue vet -d '#Limits' limits/limits.cue limits/limits.yaml
+        language: system
+        pass_filenames: false
+        files: ^limits/
+      - id: vale
+        name: vale (writing rules)
+        entry: vale --config .vale.ini specs
+        language: system
+        pass_filenames: false
+        types: [markdown]
+      - id: cucumber
+        name: cucumber (scenarios)
+        entry: npm run --silent cucumber
+        language: system
+        pass_filenames: false
+        files: ^(features/|specs/|package)
