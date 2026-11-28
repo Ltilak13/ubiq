@@ -125,7 +125,7 @@ overlays.
 
 No configuration can contradict a guarantee: a setting that would is E008, and a
 test fails if this spec stops stating one. The guarantees are that fenced code
-blocks are never scanned, frontmatter is never scanned as prose, definition lines
+blocks are excluded from prose scanning, frontmatter is never scanned as prose, definition lines
 produce no references, a plain-prose mention can never fail the build, and an
 include link that resolves nowhere always fails it (see Composition edges).
 
@@ -326,8 +326,11 @@ and never writes files.
 
 Use `fences:` to opt a language into field-name and vocabulary checks. The
 language key matches the first token after the opening fence, case-sensitively.
+Include the spec files in your `docs` globs if they are outside the existing
+document scan. Fences inside HTML comments are ignored.
 
 ```yaml
+docs: ["README.md", "specs/**/*.feature.md"]
 fences:
   gherkin:
     value_refs: ["the record's (\\w+)", '<(\w+)>']

@@ -82,6 +82,42 @@ references:
     assert "'pct'" in diags[0]["message"]
 
 
+def test_docs_glob_selects_registered_feature_record(tmp_path, capsys):
+    make_repo(tmp_path, {"checkout.feature.md": """---
+term: checkout
+---
+~~~gherkin
+Then use <missing>
+~~~
+"""}, {}, 'docs: ["glossary/**/*.feature.md"]\n' + FENCES)
+    status, diags = check(tmp_path, capsys)
+    assert status == 1
+    assert [(d["file"], d["line"]) for d in diags if d["code"] == "E013"] == [
+        ("glossary/checkout.feature.md", 5)]
+
+
+def test_commented_fences_do_not_report_fields_or_count_terms(tmp_path, capsys):
+    make_repo(tmp_path, {"discount.md": "---\nterm: discount\n---\n"},
+              {"checkout.feature.md": """<!--
+~~~gherkin
+Given a discount using <commented>
+-->
+~~~
+~~~gherkin
+# literal <!-- inside the fence
+Then use <actual>
+~~~
+~~~gherkin
+Then use <later>
+~~~
+"""}, BASE + FENCES)
+    status, diags = check(tmp_path, capsys)
+    assert status == 1
+    assert [(d["code"], d.get("line", 0)) for d in diags if d["code"] == "E013"] == [
+        ("E013", 8), ("E013", 11)]
+    assert [d["code"] for d in diags].count("W001") == 1
+
+
 @pytest.mark.parametrize(("setting", "message"), [
     ("[]", "fences: expected a mapping"),
     ("{gherkin: {terms: 'true'}}", "fences.gherkin.terms: expected a boolean"),

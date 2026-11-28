@@ -482,6 +482,20 @@ def _interpret_markdown(text: str, languages: Container[str] = (),
     addresses = (destinations + [m.span() for m in URL_RE.finditer(delimiters)]
                  + [m.span() for m in HTML_TAG_RE.finditer(delimiters)])
     comments = [m.span() for m in HTML_COMMENT_RE.finditer(prose)]
+    if blocks:
+        # Locate openers in prose so a comment marker inside real code cannot
+        # hide a later block. Look for its closer in the source since the
+        # fences may have masked a closer inside a commented-out example.
+        comment_spans = []
+        end = 0
+        for opener in re.finditer("<!--", prose):
+            if opener.start() >= end:
+                closer = text.find("-->", opener.end())
+                end = len(text) if closer == -1 else closer + 3
+                comment_spans.append((opener.start(), end))
+        in_comment = _covers(comment_spans)
+        blocks[:] = [block for block in blocks
+                     if not in_comment(text.rfind("\n", 0, block[1] - 1) + 1)]
     return _Markdown(prose, delimiters, links, addresses, comments)
 
 
