@@ -8,7 +8,7 @@ from ubiq.scan import file_link_targets
 def repo(tmp_path, text, *, historical=False):
     (tmp_path / "glossary").mkdir(exist_ok=True)
     (tmp_path / "glossary/session.md").write_text(
-        "---\nterm: session\nid: T1\n---\nA period of play.\n")
+        "---\nterm: session\nid: T1\n---\nA period of play.\n\n## Definition\n")
     (tmp_path / "README.md").write_text(text)
     (tmp_path / "ubiq.yaml").write_text(
         'glossary: ["glossary/**/*.md"]\ndocs: [README.md]\n'
@@ -124,7 +124,7 @@ def test_named_missing_glossary_destination_and_historical(tmp_path):
 def test_named_links_support_encoded_paths_and_select_namespace(tmp_path):
     root = repo(tmp_path, "[playing][game]\n[game]: glossary/play%20%28one%29.md#x \"Title\"\n")
     (root / "glossary/play (one).md").write_text(
-        "---\nterm: session\nns: game\n---\nPlay.\n")
+        "---\nterm: session\nns: game\n---\n# X\n")
     built = build(root)
     assert not built.diagnostics
     assert len(built.refs) == 1

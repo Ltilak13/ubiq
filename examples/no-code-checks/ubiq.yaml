@@ -1,0 +1,10 @@
+glossary:
+  - specs/*.md
+docs:
+  - README.md
+  - specs/*.md
+schemas:
+  - schema: .ubiq/schemas/spec.json
+    files: ["specs/*.md"]
+    format: frontmatter
+ignore: [node_modules/**]
