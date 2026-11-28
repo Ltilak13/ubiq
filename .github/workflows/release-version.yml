@@ -31,8 +31,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
       - uses: actions/checkout@v4
@@ -139,6 +137,18 @@ jobs:
           ubiq check
           python -m build
           python -m twine check --strict dist/*
+      - name: Smoke-test incremental adoption from the release wheel
+        if: steps.version.outputs.release == 'true'
+        id: wheel
+        run: |
+          set -- dist/*.whl
+          if [[ $# -ne 1 || ! -f "$1" ]]; then
+            echo "Expected exactly one wheel in dist/" >&2
+            exit 1
+          fi
+          wheel="$(realpath "$1")"
+          python -I scripts/smoke_release_wheel.py "$wheel"
+          printf 'path=%s\n' "$wheel" >> "$GITHUB_OUTPUT"
       - name: Commit and push the version and tag
         if: steps.version.outputs.release == 'true' && steps.version.outputs.existing == 'false'
         env:
@@ -156,12 +166,17 @@ jobs:
       - name: Publish GitHub release
         if: steps.version.outputs.release == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_WHEEL: ${{ steps.wheel.outputs.path }}
         run: |
+          test -f "$RELEASE_WHEEL"
           if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > "$RUNNER_TEMP/release-draft"; then
             if [ "$(cat "$RUNNER_TEMP/release-draft")" = true ]; then
+              gh release upload "$RELEASE_TAG" "$RELEASE_WHEEL" --clobber
               gh release edit "$RELEASE_TAG" --draft=false
             fi
           else
-            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes
+            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes "$RELEASE_WHEEL"
           fi

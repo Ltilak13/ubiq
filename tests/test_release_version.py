@@ -74,10 +74,15 @@ def _release_repo(tmp_path):
     gh = binaries / 'gh'
     gh.write_text('#!/bin/sh\n'
                   'if [ "$1" = api ]; then echo 1; exit 0; fi\n'
-                  'if [ "$2" = view ]; then exit 1; fi\n'
+                  'if [ "$2" = view ]; then\n'
+                  '  [ -n "$GH_DRAFT_STATE" ] || exit 1\n'
+                  '  echo "$GH_DRAFT_STATE"; exit 0\n'
+                  'fi\n'
                   'printf "%s\\n" "$*" >> "$GH_LOG"\n')
     gh.chmod(0o755)
-    env = {**os.environ, 'PATH': f'{binaries}{os.pathsep}{os.environ["PATH"]}',
+    wheel = tmp_path / 'ubiq-0.7.4-py3-none-any.whl'
+    wheel.touch()
+    env = {**os.environ, 'RELEASE_WHEEL': str(wheel), 'PATH': f'{binaries}{os.pathsep}{os.environ["PATH"]}',
            'RELEASE_TAG': 'v0.7.4', 'RELEASE_BUMP': 'patch',
            'RELEASE_BASE_SHA': _git(repo, 'rev-parse', 'HEAD'), 'DEFAULT_BRANCH': 'main',
            'GH_REPO': 'example/ubiq', 'GH_LOG': str(tmp_path / 'gh.log'),
@@ -108,7 +113,25 @@ def test_release_tags_the_version_commit_before_publication(tmp_path):
     assert 'version = "0.7.4"' in _git(remote, 'show', f'{tagged}:pyproject.toml')
     result = _release_step(repo, env, 'Publish GitHub release')
     assert result.returncode == 0, result.stderr
-    assert 'release create v0.7.4 --verify-tag' in Path(env['GH_LOG']).read_text()
+    assert Path(env['GH_LOG']).read_text().splitlines() == [
+        f"release create v0.7.4 --verify-tag --title v0.7.4 --generate-notes {env['RELEASE_WHEEL']}",
+    ]
+
+
+@pytest.mark.parametrize("draft_state", ["true", "false"])
+def test_release_handles_existing_draft_or_published_release(tmp_path, draft_state):
+    repo, _, env = _release_repo(tmp_path)
+    env["GH_DRAFT_STATE"] = draft_state
+    result = _release_step(repo, env, "Publish GitHub release")
+    assert result.returncode == 0, result.stderr
+    log = Path(env["GH_LOG"])
+    if draft_state == "true":
+        assert log.read_text().splitlines() == [
+            f"release upload v0.7.4 {env['RELEASE_WHEEL']} --clobber",
+            "release edit v0.7.4 --draft=false",
+        ]
+    else:
+        assert not log.exists()
 
 
 @pytest.mark.skipif(sys.version_info < (3, 11), reason='The workflow uses Python 3.12 and tomllib.')
@@ -243,6 +266,10 @@ def test_release_inputs_and_skip_conditions():
     assert inputs["bump"]["default"] == "auto"
     assert inputs["bump"]["options"] == ["auto", "patch", "minor", "major"]
     steps = config["jobs"]["release"]["steps"]
-    for name in ("Validate the release", "Commit and push", "Publish GitHub release"):
-        step = next(step for step in steps if step.get("name", "").startswith(name))
+    names = ("Validate the release", "Smoke-test incremental adoption", "Commit and push", "Publish GitHub release")
+    release_steps = [step for step in steps if step.get("name", "").startswith(names)]
+    assert len(release_steps) == len(names)
+    for name, step in zip(names, release_steps):
+        assert step["name"].startswith(name)
         assert "steps.version.outputs.release == 'true'" in step["if"]
+    assert release_steps[-1]["env"]["RELEASE_WHEEL"] == "${{ steps.wheel.outputs.path }}"
