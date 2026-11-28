@@ -61,3 +61,10 @@ def test_a_review_commit_missing_from_history_is_unknown(tmp_path):
     goal.write_text(GOAL.format(at="b" * 40))
     [(_, _, state, _)] = review_freshness.findings(root)
     assert state == "unknown"
+
+
+def test_scenario_criteria_carry_no_review_and_are_skipped(tmp_path):
+    root = repo(tmp_path)
+    goal = root / "docs/goals/demo-goal.md"
+    goal.write_text(goal.read_text().replace("criteria:\n", "criteria:\n  AC0:\n    scenario: true\n"))
+    assert review_freshness.findings(root) == [("demo-goal", "AC1", "fresh", [])]

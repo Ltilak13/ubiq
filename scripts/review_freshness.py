@@ -31,7 +31,7 @@ def findings(root: Path) -> list[tuple[str, str, str, list[str]]]:
         goal = load_data(path, frontmatter=True)
         for ac, criterion in goal["criteria"].items():
             review = criterion.get("review")
-            if criterion["assessment"] != "met" or not review:
+            if criterion.get("assessment") != "met" or not review:
                 continue
             cited = sorted({s[kind]["path"] for s in criterion["support"] for kind in ("implementation", "check")})
             if _git(root, "cat-file", "-e", f"{review['at']}^{{commit}}").returncode:
