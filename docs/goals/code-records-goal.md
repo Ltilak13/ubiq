@@ -19,6 +19,9 @@ This goal defines outcomes and acceptance evidence. It does not claim that Ubiq
 supports these outcomes today. It extends the [no-code specs goal](no-code-spec-goal.md)
 from specs and tests to the code itself.
 
+The [[plan:code-records-decisions]] plan tracks the open design questions.
+The [[plan:feature-interactions]] plan tracks implementation of AC9.
+
 ## Objective
 
 Everything is a schema or data. Types, contracts, functions, commands, and

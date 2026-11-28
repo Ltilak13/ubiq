@@ -229,6 +229,18 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "docs/plans/code-records-decisions.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/plans/feature-interactions.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/plans/no-code-spec-views.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "src/ubiq/features/plan-records.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },

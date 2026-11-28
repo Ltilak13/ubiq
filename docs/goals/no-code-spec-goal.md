@@ -52,6 +52,8 @@ issue #64. It does not claim that Ubiq supports these outcomes today.
 The sequence of work that proves the outcomes, with each step's issue and
 blockers, is in [[plan:no-code-dogfood]] (issue #113).
 
+The [[plan:no-code-spec-views]] plan tracks checked diagrams and tables.
+
 ## Objective
 
 Let a repository use each Markdown record as its spec, its docs, and its tests

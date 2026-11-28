@@ -28,6 +28,13 @@ steps:
     branch: claude/ecstatic-mendel-nkgz6t-tracking-fields
     base: claude/ecstatic-mendel-nkgz6t-sync-github
     pr: 135
+  base-revision-drift-check:
+    issue: 171
+    requires: [sync-github]
+  priority-inheritance:
+    issue: 150
+    requires: [tracking-fields, plan-records]
+    pr: 166
   requires-links:
     issue: 121
     requires: [tracking-fields]
@@ -52,6 +59,10 @@ steps:
     branch: claude/ecstatic-mendel-nkgz6t-plan-records
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
     pr: 147
+  detect-plan-step-cycles:
+    issue: 149
+    requires: [requires-links, plan-records]
+    pr: 165
   pr-stacks:
     issue: 125
     requires: [requires-links]
