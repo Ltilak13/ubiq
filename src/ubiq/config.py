@@ -47,6 +47,8 @@ DEFAULT_CONFIG: dict = {
     # Frontmatter fields in scanned docs whose values are references that must
     # resolve by record id or name (e.g. solves: [T1]) — E006 otherwise.
     "ref_fields": [],
+    # Frontmatter field declaring README membership (E015).
+    "readme_field": "readme",
     # Regexes for ids that are defined outside records (e.g. requirement ids that
     # live as headings in a research doc); matching field refs are accepted.
     "external_id_patterns": [],
@@ -101,6 +103,14 @@ DEFAULT_CONFIG: dict = {
     # setup guidance and exits 2. `files` selects the denominator; each
     # `exclude` entry needs a `reason`.
     "coverage": None,
+    # Mirror records to GitHub issues (`ubiq sync github`). Unset: the command
+    # reports setup guidance and exits 2.
+    # repo: owner/name of the issue tracker (default: $GITHUB_REPOSITORY).
+    # label_prefix: prefix of the labels the sync owns (default "priority: ").
+    # records: the record files to mirror, each a `glob` and its `kind` (goal, plan, feature).
+    # create: which open goal criteria get a new issue: `always` (default), or
+    # `prioritized`, only those whose criterion or goal sets a `priority`.
+    "sync": None,
 }
 
 
@@ -142,6 +152,27 @@ class CoverageSpec:
     no_regression: bool
 
 
+SYNC_KINDS = ("goal", "plan", "feature")
+REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+@dataclass(frozen=True)
+class SyncRecord:
+    glob: Glob
+    kind: str
+
+
+@dataclass(frozen=True)
+class SyncSpec:
+    records: tuple[SyncRecord, ...]
+    repo: str | None = None
+    label_prefix: str = "priority: "
+    create: str = "always"
+
+
+SYNC_CREATE = ("always", "prioritized")
+
+
 @dataclass(frozen=True)
 class Config:
     root: Path
@@ -163,6 +194,8 @@ class Config:
     candidate_shapes: Shape
     edges: EdgeConfig
     coverage: CoverageSpec | None = None
+    readme_field: str = "readme"
+    sync: SyncSpec | None = None
 
     @property
     def part_rules(self) -> tuple[GlossaryRule, ...]:
@@ -277,6 +310,40 @@ def _relative(pattern: str, field: str) -> str:
     if os.path.isabs(pattern) or ".." in Path(pattern).parts:
         raise InvalidConfig(f"{field}: expected a repository-relative pattern")
     return pattern
+
+
+def _sync(raw, root: Path) -> SyncSpec | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise InvalidConfig("sync: expected a mapping")
+    _known(raw, "sync", ("repo", "label_prefix", "records", "create"))
+    repo = raw.get("repo")
+    if repo is not None and (not isinstance(repo, str) or not REPO_RE.match(repo)):
+        raise InvalidConfig("sync.repo: expected owner/name")
+    prefix = raw.get("label_prefix", "priority: ")
+    if not isinstance(prefix, str):
+        raise InvalidConfig("sync.label_prefix: expected a string")
+    if not prefix.strip():
+        raise InvalidConfig("sync.label_prefix: must not be empty (the sync owns every label with it)")
+    entries = raw.get("records")
+    if not isinstance(entries, list) or not entries:
+        raise InvalidConfig("sync.records: list the record files to mirror")
+    records: list[SyncRecord] = []
+    for i, entry in enumerate(entries):
+        field = f"sync.records[{i}]"
+        if not isinstance(entry, dict):
+            raise InvalidConfig(f"{field}: expected a mapping with glob and kind")
+        _known(entry, field, ("glob", "kind"))
+        pattern = _relative(_string(entry.get("glob"), f"{field}.glob"), f"{field}.glob")
+        kind = entry.get("kind")
+        if kind not in SYNC_KINDS:
+            raise InvalidConfig(f"{field}.kind: expected one of {', '.join(SYNC_KINDS)}")
+        records.append(SyncRecord(Glob.parse(pattern, root), kind))
+    create = raw.get("create", "always")
+    if create not in SYNC_CREATE:
+        raise InvalidConfig(f"sync.create: expected one of {', '.join(SYNC_CREATE)}")
+    return SyncSpec(tuple(records), repo, prefix, create)
 
 
 def _coverage(raw, root: Path) -> CoverageSpec | None:
@@ -518,6 +585,8 @@ def load_config(root: Path) -> Config:
         candidate_shapes=shapes,
         edges=_edges(cfg["edges"], tuple(cfg["ref_fields"]), root),
         coverage=_coverage(cfg["coverage"], root),
+        readme_field=_string(cfg["readme_field"], "readme_field"),
+        sync=_sync(cfg["sync"], root),
     )
     broken = broken_guarantees(config)
     if broken:

@@ -1,0 +1,85 @@
+name: github-sync
+# Mirrors records to GitHub issues (`ubiq sync github`). It reads records and
+# writes only to issues; it never commits or opens pull requests. Pull requests
+# are checked by the `sync-check` job in ci.yml, against the base branch.
+on:
+  push:
+    branches: [main]
+  # Opening, editing, or closing a pull request changes the derived `status: in review`
+  # labels. pull_request_target runs this workflow's default-branch version with the
+  # default branch checked out (below), never the pull request's code.
+  pull_request_target:
+    types: [opened, reopened, edited, closed]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  # No `paths:` filter: GitHub cannot read `sync.records` from ubiq.yaml, and
+  # planning with nothing to do is cheap and idempotent.
+  apply:
+    if: github.event_name == 'pull_request_target' || (github.event_name != 'schedule' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency: goal-issues  # share the legacy workflow's lock during rollout
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e '.[dev]'
+      # A criterion with `scenario: true` is met when its tagged scenarios pass on
+      # this commit. A failing scenario must not stop the sync: it opens a regression.
+      - name: Run goal scenarios
+        run: python -m pytest tests/scenarios -q -p ubiq.pytest_plugin --ubiq-results "$RUNNER_TEMP/results.json" || true
+      # Every run syncs every record. The sync is idempotent, so a run that the
+      # concurrency group cancels loses nothing: the next run covers it.
+      - name: Create and close issues
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FENCE: "```"
+        run: |
+          status=0
+          ubiq sync github --apply --results "$RUNNER_TEMP/results.json" > "$RUNNER_TEMP/plan.json" || status=$?
+          { echo "${FENCE}json"; cat "$RUNNER_TEMP/plan.json"; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  # Reports edits made on GitHub (a closed or deleted issue, a stray number).
+  # Read-only: it never applies. A difference fails the run.
+  drift:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Report drift between main and GitHub
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FENCE: "```"
+        run: |
+          status=0
+          ubiq sync github --check > "$RUNNER_TEMP/drift.json" || status=$?
+          { echo "Drift between \`main\` and GitHub issues:"; echo "${FENCE}json"; cat "$RUNNER_TEMP/drift.json"; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"
