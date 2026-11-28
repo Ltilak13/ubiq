@@ -760,6 +760,35 @@ different plans never join a loop.
 `ubiq sync github` mirrors steps with `sync.records` entries of kind `plan`; see
 [plan behavior](github-sync.md#plan-behavior).
 
+### Decision records
+
+A *decision record* holds one decision: `docs/decisions/[0-9]*.md`, bound to
+`.ubiq/schemas/decision.json`, glossary namespace `decision` (`term_field: name`). The
+frontmatter holds the facts and the body the rationale. The fields are listed in
+[docs/decisions/README.md](decisions/README.md).
+
+| Field | Value |
+| --- | --- |
+| `name` | the decision's name (lowercase words joined by `-`) |
+| `question` | the number of the issue the decision answers (required, at least 1) |
+| `status` | `proposed`, `accepted`, or `superseded` |
+| `decided`, `by` | the date (`YYYY-MM-DD`) and who decided |
+| `options`, `outcome` | the options considered; what was decided |
+| `closes` | optional boolean, default `true`; `false` keeps the question issue open (a tracking issue) while its comment is still posted |
+| `supersedes` | optional name of the decision this one replaces; `x-ubiq-ref` (`ns: decision`, edge `supersedes`), so an unknown name is E006 |
+
+Beyond the schema, `ubiq check` reports E009 when a decision with `status: superseded` is
+named by no other decision, when `supersedes` names a decision that is not `superseded`, or
+when two decisions supersede the same one. It also reports E009 when the generated list
+between `<!-- ubiq-decisions:start -->` and `<!-- ubiq-decisions:end -->` in
+`docs/decisions/README.md` differs from the records; `ubiq decisions --write` rewrites it,
+and `ubiq decisions` prints it. `question` is a number, so offline `ubiq check` verifies
+that it is present and valid; that the issue exists is checked by `ubiq sync github`
+(a `warn` action, which is drift).
+
+`ubiq sync github` mirrors decisions with `sync.records` entries of kind `decision`; see
+[decision behavior](github-sync.md#decision-behavior).
+
 ## Coverage
 
 `ubiq coverage` reports how much explicitly selected repository content has
