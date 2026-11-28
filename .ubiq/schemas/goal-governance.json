@@ -205,6 +205,10 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "src/ubiq/features/support-matrix.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "src/ubiq/features/typed-coverage.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },

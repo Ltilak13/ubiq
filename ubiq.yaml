@@ -97,6 +97,9 @@ schemas:
   - schema: ".ubiq/schemas/cursor-rule.json"
     files: [".cursor/rules/*.mdc"]
     format: frontmatter
+  - schema: ".ubiq/schemas/support.json"
+    files: [".ubiq/support/*.md"]
+    format: frontmatter
   - schema: ".ubiq/schemas/schema-document.json"
     files: [".ubiq/schemas/*.json"]
 
@@ -114,6 +117,7 @@ coverage:
     - "**/SKILL.md"
     - "skills/references/*.md"
     - "skills/*/agents/*.yaml"
+    - ".ubiq/support/*.md"
     - "glossary/*.md"
     - "src/ubiq/features/*.md"
     - "docs/plans/*.md"
@@ -128,3 +132,13 @@ coverage:
       reason: "Pinned upstream skill repositories and synthetic test inputs; their metadata belongs to their sources."
   min_typed_percent: 100
   no_regression: true
+
+# Support matrix as records: requires-python, the CI test matrix, and the support
+# table in the guide are views checked against .ubiq/support/*.md (E017).
+support:
+  records: ".ubiq/support/*.md"
+  pyproject: "pyproject.toml"
+  workflow: ".github/workflows/ci.yml"
+  job: test
+  matrix: python-version
+  table: "docs/guide.md"
