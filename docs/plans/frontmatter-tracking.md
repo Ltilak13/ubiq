@@ -84,6 +84,7 @@ steps:
     requires: [requires-links, plan-records]
     branch: claude/ecstatic-mendel-nkgz6t-plan-step-cycles
     base: claude/ecstatic-mendel-nkgz6t-plan-records
+    pr: 165
   priority-inheritance:
     issue: 150
     requires: [plan-records, base-code-drift]
