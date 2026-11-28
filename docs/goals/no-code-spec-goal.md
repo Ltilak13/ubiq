@@ -43,6 +43,14 @@ criteria:
     support: []
     gap: No worked example repository exists (#69).
     issues: [69]
+  AC8:
+    assessment: unassessed
+    support: []
+    gap: No check compares a generated file or section with the output of the command that writes it.
+  AC9:
+    assessment: unassessed
+    support: []
+    gap: No check reports a section that should be its own record file.
 ---
 
 # Goal: no-code specs
@@ -91,3 +99,5 @@ The goal is achieved when:
 5. AC5: Controlled vocabulary lives in checkable records and exports Vale rules, so prose and step definitions use checked terms.
 6. AC6: Ubiq's own features are records, and the adoption order derives from their declared dependencies.
 7. AC7: A worked example repository applies this pattern, and all of its checks pass in CI.
+8. AC8: Each generated file or section names the command that writes it, and pre-commit and CI fail when it is stale.
+9. AC9: A check reports a section that other files link to by name, or that has checked fields, when it is not its own record file.

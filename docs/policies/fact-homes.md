@@ -7,7 +7,8 @@ ns: policy
 
 Each fact has one home. This policy says where a fact lives, when it gets its
 own file, how derived copies stay current, and when a diagram belongs in a doc.
-It applies the rule underneath the [no-code spec goal](../goals/no-code-spec-goal.md).
+This policy governs the [no-code spec goal](../goals/no-code-spec-goal.md)
+and applies its rule.
 
 ## Where a fact lives
 
@@ -62,4 +63,5 @@ Use a diagram only for relationships or sequences that a table or list shows les
 `ubiq check` validates this record's frontmatter and its links. It does not
 enforce the rules above. Schema bindings check frontmatter values. Generator
 freshness and diagram agreement depend on each repository's pre-commit and CI
-setup until Ubiq checks them directly.
+setup until Ubiq checks them directly. The no-code spec goal tracks that work
+in AC1, AC8, and AC9.
