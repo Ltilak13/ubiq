@@ -202,6 +202,14 @@ def test_the_plugin_writes_each_scenario_outcome_with_its_labels(tmp_path):
         "from pytest_bdd import given, scenarios\nscenarios('demo.feature')\n"
         "@given('x')\ndef _x(): pass\n@given('y')\ndef _y(): raise AssertionError\n")
     out = tmp_path / "results.json"
-    subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"--ubiq-results={out}"],
+    subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "-p", "ubiq.pytest_plugin", f"--ubiq-results={out}"],
                    cwd=tmp_path, capture_output=True, check=False)
     assert load_results(out, tmp_path) == {("demo.feature", "AC1"): "passed", ("demo.feature", "AC2"): "failed"}
+
+
+def test_the_plugin_is_not_loaded_unless_named(tmp_path):
+    (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
+    run = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--ubiq-results=r.json"],
+                         cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert run.returncode != 0 and "unrecognized arguments: --ubiq-results" in run.stderr

@@ -147,7 +147,7 @@ def _scenario_body(goal: Mapping[str, Any], ac: str, feature: str, marker: str, 
             f"## Acceptance\n\nThe scenarios tagged `@{ac}` in `{feature}` accept this criterion. "
             "It is met when all of them pass on `main`; nobody marks it by hand.\n\n"
             "## Verify\n\n```sh\nubiq check\n"
-            f"python3 -m pytest --ubiq-results results.json\n"
+            f"python3 -m pytest tests/scenarios -p ubiq.pytest_plugin --ubiq-results results.json\n"
             f"ubiq sync github --dry-run --results results.json\n```\n\n"
             "When the scenarios pass on `main`, the sync closes this issue.\n\n"
             f"<!-- {marker} -->\n")

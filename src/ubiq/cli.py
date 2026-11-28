@@ -1172,7 +1172,7 @@ def main(argv: list[str] | None = None) -> int:
     gh.add_argument("--repo", metavar="OWNER/NAME",
                     help="issue repository (default: sync.repo, then $GITHUB_REPOSITORY)")
     gh.add_argument("--results", metavar="FILE",
-                    help="scenario outcomes from `pytest --ubiq-results FILE`; a criterion with "
+                    help="scenario outcomes from `pytest -p ubiq.pytest_plugin --ubiq-results FILE`; a criterion with "
                          "`scenario: true` is met when its tagged scenarios passed")
     gh.set_defaults(fn=cmd_sync)
 

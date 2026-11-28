@@ -33,7 +33,7 @@ jobs:
       # A criterion with `scenario: true` is met when its tagged scenarios pass on
       # this commit. A failing scenario must not stop the sync: it opens a regression.
       - name: Run goal scenarios
-        run: python -m pytest tests/scenarios -q --ubiq-results "$RUNNER_TEMP/results.json" || true
+        run: python -m pytest tests/scenarios -q -p ubiq.pytest_plugin --ubiq-results "$RUNNER_TEMP/results.json" || true
       # Every run syncs every record. The sync is idempotent, so a run that the
       # concurrency group cancels loses nothing: the next run covers it.
       - name: Create and close issues

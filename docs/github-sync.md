@@ -247,9 +247,10 @@ Scenario: A part registered by configuration alone is a checked reference
 
 - `ubiq check` reports E016 when a `scenario: true` criterion has no tagged scenario,
   and when a tag names no such criterion. A tag on `Feature:` applies to every scenario.
-- `pytest --ubiq-results FILE` writes each scenario's outcome. The ubiq pytest plugin
-  ships with the package and does nothing without the option; scenarios run with
-  pytest-bdd ([decision 0002](decisions/0002-gherkin-binding.md)).
+- `pytest -p ubiq.pytest_plugin --ubiq-results FILE` writes each scenario's outcome.
+  The plugin ships with the package but loads only when named with `-p`, so other
+  test suites never see it; scenarios run with pytest-bdd
+  ([decision 0002](decisions/0002-gherkin-binding.md)).
 - `ubiq sync github --results FILE` treats the criterion as met exactly when every
   scenario tagged with it passed, and closes its issues with a comment naming the
   commit. Without `--results`, or when a scenario did not run, the criterion stays open.
