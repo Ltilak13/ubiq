@@ -82,15 +82,21 @@ source integrity from observed preview access.
 
 Each criterion can list the GitHub issues that track it in `issues:`, as issue
 numbers. When a change to a goal file reaches `main`, the `goal-issues` workflow
-runs `scripts/goal_issues.py --apply` on the changed goals:
+runs `scripts/goal_issues.py --apply` on every goal:
 
 - A criterion that is not `met`, lists no `issues`, and has no issue with the
   marker `<!-- ubiq-goal: <name> <AC> -->` gets a new issue. Its body quotes the
   criterion, its `gap`, and its cited checks, and gives the commands to verify it.
 - A criterion that is `met` closes its listed and marked issues that are still
   open, with a comment that names the review and the commit.
+- A listed number that is not an issue, such as a pull request or a typo, is
+  reported as a warning, and the workflow run fails after the other actions.
 
-The script never reopens an issue, edits a title, or touches other issues. On a
-pull request, the workflow prints the same plan read-only. Run
-`python3 scripts/goal_issues.py --dry-run --repo <owner>/<name> [goal files]` to
-see it locally. A manual run of the workflow syncs every goal.
+Only markers in issues opened by `github-actions[bot]` count, because anyone can
+write a marker into an issue. The script never reopens an issue, edits a title,
+or touches other issues. On a pull request, the workflow prints the same plan
+read-only. Run `python3 scripts/goal_issues.py --dry-run --repo <owner>/<name>`
+to see it locally.
+
+Limits: deleting a goal file leaves its issues open. If someone closes a marked
+issue while its criterion is not `met`, the script does not open a replacement.
