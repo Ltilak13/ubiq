@@ -27,6 +27,7 @@ steps:
     requires: [frontmatter-tracking/feature-records]
   starter:
     issue: 111
+    priority: P1
     requires: [release-adoption-smoke-test]
   cli-spec-slice:
     requires: [readme-membership]

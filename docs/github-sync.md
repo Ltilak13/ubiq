@@ -90,6 +90,10 @@ dry run shows each resulting change as a `label` or `create` action.
 
 A criterion's `issue` number, like each number in `issues`, names an issue the sync tracks.
 
+A plan's own `issue` is checked the same way: it carries the plan's `priority` label, so a
+plan and its umbrella issue cannot disagree. This holds for a `proposed` plan too, though
+its steps mirror nothing. A plan with no `priority` leaves its issue's labels alone.
+
 ## Sub-issues
 
 A criterion is `part_of` one record, and the sync makes the criterion's issues
@@ -184,14 +188,33 @@ Sync recognizes these kinds of evidence:
 - A closing reference on a stacked pull request that targets the branch of another
   open pull request in the repository. GitHub enables automatic closing by keyword
   when the pull request targets the default branch.
-- A record whose tracked issue and `pr` link it to an open implementing pull request.
+- A record, or a plan step, whose tracked issue and `pr` link it to an open implementing pull request.
 
 Sync removes the label when the issue closes or the last evidence of an open
-implementing pull request disappears. It derives the label on every sync.
+implementing pull request disappears. It derives the label on every sync. An issue that
+several records track gets one label action, not one per record.
 
-- Adding it removes `status: in progress` in the same `label` action. Every other
+### Derived status: in progress
+
+An open issue without an open pull request carries `status: in progress` when a branch
+for it exists on GitHub. Two kinds of evidence count:
+
+- The `branch` of the plan step that tracks the issue (`GET repos/{o}/{r}/branches`). A
+  `branch` written in the plan but never pushed is only a plan, so it shows no label.
+- A branch named `issue-<n>`, the same rule as for pull requests. This covers an issue
+  that no record tracks.
+
+The label goes when the issue closes, when the branch is deleted (delete a branch after its pull
+request merges), or when no evidence remains. A hand-added label is drift that `--apply`
+removes, so a stale `status: in progress` cannot outlive the work. The label is never
+stored in a record. It is part of the same `label` action as `status: in review`, which
+replaces it once a pull request opens.
+
+- Pushing a branch triggers no workflow. The label appears at the next sync: a pull request
+  opening, a push to `main`, or a manual run. Until then the daily `--check` reports it as drift.
+- A `status: in review` label always wins; the two are never both present. Every other
   `status: ` label (`blocked`, `ready`, and so on) is left alone.
-- It applies to all issues in the repository. A draft pull request counts. A hand-added or hand-removed label is drift that `--apply` restores.
+- Both labels apply to all issues in the repository. A draft pull request counts. A hand-added or hand-removed label is drift that `--apply` restores.
 - The label name is fixed (`STATUS_PREFIX` in `src/ubiq/sync.py`) and is independent of
   `sync.label_prefix`.
 - The `github-sync` workflow also runs when a pull request opens, reopens, is edited,

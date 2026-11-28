@@ -1,6 +1,7 @@
 ---
 name: code-records-goal
 status: proposed
+priority: P3
 criteria:
   AC4:
     assessment: unassessed
