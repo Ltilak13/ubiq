@@ -188,10 +188,11 @@ Sync recognizes these kinds of evidence:
 - A closing reference on a stacked pull request that targets the branch of another
   open pull request in the repository. GitHub enables automatic closing by keyword
   when the pull request targets the default branch.
-- A record whose tracked issue and `pr` link it to an open implementing pull request.
+- A record, or a plan step, whose tracked issue and `pr` link it to an open implementing pull request.
 
 Sync removes the label when the issue closes or the last evidence of an open
-implementing pull request disappears. It derives the label on every sync.
+implementing pull request disappears. It derives the label on every sync. An issue that
+several records track gets one label action, not one per record.
 
 ### Derived status: in progress
 

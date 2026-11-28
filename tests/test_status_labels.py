@@ -61,3 +61,16 @@ def test_branches_pages():
     names = GitHub("o/r", "t", transport, 0).branches()
     assert len(names) == 101 and names[-1] == "last"
     assert calls == ["per_page=100&page=1", "per_page=100&page=2"]
+
+
+def test_an_issue_two_records_track_gets_one_status_label_action():
+    shared = {"first": {"issue": 7, "branch": BRANCH}, "second": {"issue": 7}}
+    [action] = label_actions(record(**shared), [issue(1), issue(7)], branches=[BRANCH])
+    assert action["issue"] == 7 and action["add"] == ["status: in progress"]
+
+
+def test_a_steps_open_pull_request_puts_its_issue_in_review_not_in_progress():
+    pull = {"number": 30, "head": BRANCH, "base": "main", "closes": ()}
+    steps = {"step": {"issue": 7, "branch": BRANCH, "pr": 30}}
+    [action] = label_actions(record(**steps), [issue(1), issue(7)], pulls=[pull], branches=[BRANCH])
+    assert action["issue"] == 7 and action["add"] == ["status: in review"] and action["remove"] == []

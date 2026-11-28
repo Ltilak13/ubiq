@@ -403,7 +403,7 @@ def plan_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LAB
                                for r in spec.get('requires', [])
                                if r in tracked or '/' in r),
         parent=plan_record['name'], parent_issue=plan_record['issue'],
-        branch=spec.get('branch', '')) for name, spec in tracked.items()]
+        branch=spec.get('branch', ''), prs=xref.pr_numbers(spec.get('pr', []))) for name, spec in tracked.items()]
 
 
 def plan_issue_desired(plan_record: Mapping[str, Any], label_prefix: str = DEFAULT_LABEL_PREFIX) -> list[Desired]:
@@ -1042,11 +1042,12 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
     actions: list[Action] = []
     tracked_issues: set[int] = set()
     for item, tracked in items:
+        labeled = tracked_issues.copy()  # an issue several records track gets one status label action
         tracked_issues.update(tracked)
         actions += [{'action': 'warn', **item.ident, 'issue': n, 'reason': 'listed number is not an issue'}
                     for n in item.listed if n not in by_number]
         found = [a for fact in FACTS for a in fact(item, tracked, by_number)]
-        found += fact_in_review(item.ident, tracked, by_number, in_review, started)
+        found += fact_in_review(item.ident, [n for n in tracked if n not in labeled], by_number, in_review, started)
         found += [a for pr_fact in PR_FACTS for a in pr_fact(item, tracked, by_number, open_pulls)]
         actions += found
         if not found:
