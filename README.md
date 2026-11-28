@@ -41,6 +41,14 @@ Ask your agent:
 
 ### Install the skills
 
+The skills, each described by its own `description` field:
+
+<!-- ubiq:readme:start -->
+- **apply-ubiq**: [Wire ubiq into a repo — glossary, overlays, delimiters, catalogs, and CI — without editing files the repo already owns.](skills/apply-ubiq/SKILL.md#description)
+- **maintain-ubiq**: [Keep a ubiq-wired repo healthy — fix failing references, link unlinked mentions (W002), review orphans, propose new glossary terms, and extract repeated skill text into shared parts.](skills/maintain-ubiq/SKILL.md#description)
+- **upgrade-ubiq**: [Upgrades ubiq pins and installed skills, resolves compatibility changes, and assesses new capabilities against a repository's needs. Use for a requested upgrade, changed version pins, or mismatched CLI, CI, and skill revisions. Not for first-time adoption or routine reference repairs on a consistent version.](skills/upgrade-ubiq/SKILL.md#description)
+<!-- ubiq:readme:end -->
+
 Install `apply-ubiq`, `maintain-ubiq`, `upgrade-ubiq`, and the shared `references` directory together from the same
 Ubiq revision. Copy or link their complete directories from `skills/` into one
 skill root, keeping their names and subdirectories. For example:
