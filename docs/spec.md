@@ -219,6 +219,11 @@ membership. `ubiq check` reports discrepancies without editing the README.
   `coverage.exclude` glob matches no selected file. Only `ubiq coverage` reports it.
 - `W007` broken link — a relative Markdown link to a missing file or directory that
   is not a [[record]] (see the `link` kind). `references.link.severity` tunes it.
+- `W009` graph block — a `<!-- ubiq:graph -->` block (see Mermaid blocks) differs from
+  the `ubiq graph --format mermaid` output for its selection, or cannot be read: an
+  unknown attribute or kind, a target that names no single record, a missing closing
+  marker, or no single fenced `mermaid` block between the markers. Reported at the
+  block's opening fence, or at the marker when the block cannot be read.
 - `E011` include cycle — a [[shared part]] includes itself through Markdown links
   to other parts. The agent would read the same files forever.
 - `E012` part input — an include names no value, or an undeclared value, for an
@@ -229,7 +234,8 @@ membership. `ubiq check` reports discrepancies without editing the README.
   The message names the loop (`requires cycle: a -> b -> a`) at the first record's
   field. Only a top-level annotated field of a frontmatter-bound record is a node,
   because a nested field (a goal criterion's `requires`) has a source that is not a
-  record of the namespace.
+  record of the namespace. A `within` annotation (plan step `requires`) is checked per
+  file and the message gives each step's line.
 - `W003` blocked invoke — an invoke edge targets a record whose
   `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
 - `W004` install layout — a link that leaves an `edges.install` directory resolves
@@ -354,6 +360,38 @@ defined here wins, the way a local directory wins once installed; a name nothing
 here defines resolves in `edges.external` repositories, and `<repository>/<name>`
 names a record there directly. `--callers` from such a record lists the records
 here that include it, then their callers.
+
+### Mermaid blocks
+
+`graph --format mermaid` prints the selected edges as a Mermaid `flowchart LR`
+instead of text, and cannot be combined with `--json`. The selection and walk are
+the ones above. Output is stable: nodes and edges are sorted by qualified name and
+repeated edges print once. A node's id is its record name; when that name is `end`,
+has characters Mermaid ids do not allow, or another selected record already took it,
+the id is the sanitized qualified name and a `id["ns:name"]` line declares it. An
+arrow carries its edge kind (`-->|include|`) only when the selection mixes kinds.
+An empty selection prints `flowchart LR` alone.
+
+A Markdown document keeps a generated diagram between markers, each on its own
+line:
+
+~~~markdown
+<!-- ubiq:graph target=apply-ubiq kind=include -->
+```mermaid
+flowchart LR
+  apply-ubiq --> schema-workflow
+```
+<!-- /ubiq:graph -->
+~~~
+
+The opening marker takes the `graph` selections as `name=value` attributes, all
+optional: `target` (a record, resolved as for `graph`), `kind` (one or more of the
+edge kinds, comma-separated), `depth` (a positive integer), and `callers=true`.
+`ubiq check` reads the marked block in every live document of the repository,
+regenerates it, and reports W009 when the fenced lines differ (trailing whitespace
+aside). Ubiq never rewrites the block: paste the output of the `ubiq graph` command
+the warning names. Markers inside fenced code blocks are examples and are not
+checked, and the code's severity is not configurable.
 
 `overlap --json` returns `unit`, `min_similarity`, `count`, and `clusters`. Live
 documents with an owner split into paragraphs, or lines with `--unit line`,
@@ -677,8 +715,10 @@ pull request number or a list. The schema annotates `requires` with
 keys of a mapping, not records, so `within` makes each value resolve against the keys
 of the file's top-level `steps` mapping instead of the glossary; a qualified name
 resolves against the `steps` of the other file, bound to the same schema, whose `name`
-is `<plan>`. A name that is no step is E006 at the line of the field. These links make no composition edge. `acyclic` is not
-yet enforced here either.
+is `<plan>`. A name that is no step is E006 at the line of the field. These links make no composition edge. `acyclic` is enforced per plan file: a loop
+between steps is E014 (`requires cycle: a (line 9) -> b (line 12) -> a`) at the first
+step. Qualified names to another plan's steps make no edge for this check, so steps of
+different plans never join a loop.
 
 `ubiq sync github` mirrors steps with `sync.records` entries of kind `plan`; see
 [plan behavior](github-sync.md#plan-behavior).
