@@ -89,3 +89,13 @@ def test_overlay_membership_uses_source_location_and_overlay_line(tmp_path, caps
     (tmp_path / "README.md").write_text(START + "[A feature.](glossary/feature.md#summary)\n" + END)
     status, diags = check(tmp_path, capsys)
     assert status == 0, diags
+
+
+
+def test_historical_readmes_are_exempt_from_membership(tmp_path, capsys):
+    make_repo(tmp_path, {"feature.md": "---\nterm: feature\nreadme: root\n---\n"},
+              {"README.md": "# Archived feature list\n"},
+              'historical: ["README.md"]\n')
+    status, diags = check(tmp_path, capsys)
+    assert status == 0, diags
+    assert membership(diags) == []

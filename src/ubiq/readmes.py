@@ -48,6 +48,7 @@ def _declaration_line(path: Path, field: str) -> int:
 
 def _target(cfg: Config, record: Path, scope: str) -> Path | None:
     root = cfg.root
+    candidates: tuple[Path, ...]
     if scope == "root":
         candidates = (root / "README.md",)
     elif scope == "parent":
@@ -104,7 +105,7 @@ def declarations(cfg: Config, glossary: Glossary) -> tuple[list[Membership], lis
 
 
 def check_membership(cfg: Config, glossary: Glossary, declarations: list[Membership],
-                     refs: list[Ref]) -> list[Diagnostic]:
+                     refs: list[Ref], historical: set[Path]) -> list[Diagnostic]:
     expected: dict[Path, dict[Path, Membership]] = defaultdict(dict)
     for declaration in declarations:
         expected[declaration.readme.resolve()][declaration.record] = declaration
@@ -127,6 +128,8 @@ def check_membership(cfg: Config, glossary: Glossary, declarations: list[Members
                 readme, ref.line))
 
     for readme, records in expected.items():
+        if readme in historical:
+            continue
         for record, declaration in records.items():
             if (readme, record) not in linked:
                 name = declaration.readme.relative_to(cfg.root)

@@ -225,7 +225,7 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
             trace.files[_display_path(path, root)]["scanned"] = True
     refs = scan_docs(doc_files, glossary, cfg, historical=hist_set, invalid=glossary.invalid)
 
-    extra.extend(readmes.check_membership(cfg, glossary, memberships, refs))
+    extra.extend(readmes.check_membership(cfg, glossary, memberships, refs, hist_set))
     catalog = cfg.policies["catalog"]
     for spec in cfg.catalogs:
         if trace is not None:

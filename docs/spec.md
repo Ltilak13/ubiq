@@ -154,7 +154,8 @@ standalone comments. Authors choose which field each link displays.
 <!-- ubiq:readme:end -->
 ```
 
-Every declared membership needs a field link in a managed section. A field
+Every declared membership in a live README needs a field link in a managed section.
+Historical READMEs are exempt from membership checks. A field
 link to a registered record inside a managed section must have a corresponding
 declaration. Reverse checks apply wherever scanned Markdown contains the
 explicit markers. Links in examples and other prose outside
