@@ -437,7 +437,7 @@ def test_dangling_path_wiki_link_is_not_an_error(tmp_path):
 
 
 def test_markdown_reference_resolves_by_destination_once(tmp_path, capsys):
-    make_repo(tmp_path, {"s.md": REC_SESSION},
+    make_repo(tmp_path, {"s.md": REC_SESSION + "\n## Definition\n"},
               {"doc.md": "Start [playing](glossary/s.md#definition).\n"})
     assert main(["check", "--root", str(tmp_path)]) == 0
     capsys.readouterr()
@@ -480,7 +480,7 @@ def test_markdown_paths_titles_and_code_exclusions(tmp_path):
            '![image](glossary/missing.md)\n'
            '[web](https://example.com/glossary/missing.md)\n'
            '[other](missing.md)\n[anchor](#missing.md)\n')
-    make_repo(tmp_path, {"play (one).md": REC_SESSION}, {"doc.md": doc})
+    make_repo(tmp_path, {"play (one).md": REC_SESSION + "\n## Definition\n"}, {"doc.md": doc})
     built = build(tmp_path)
     assert built.diagnostics == []
     assert [r.line for r in built.refs if r.kind == "markdown"] == [1, 2, 3, 4]

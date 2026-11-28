@@ -21,6 +21,9 @@
     "issue": {
       "$ref": "#/$defs/tracking/properties/issue"
     },
+    "priority": {
+      "$ref": "#/$defs/tracking/properties/priority"
+    },
     "criteria": {
       "type": "object",
       "minProperties": 1,

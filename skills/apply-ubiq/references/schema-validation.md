@@ -101,6 +101,8 @@ record in `ns` (E006 otherwise, at the field's line) and makes an edge named `ed
 that `ubiq graph --kind requires` selects. An invalid annotation is E008. It applies
 to files bound with `format: frontmatter`. `ref_fields` keeps working; a top-level
 field that `ref_fields` already names is resolved once, by `ref_fields`.
+With `"within": "steps"` the values are instead keys of the file's top-level `steps`
+mapping (plan step `requires`); no edge is made.
 
 ## Errors and maintenance
 

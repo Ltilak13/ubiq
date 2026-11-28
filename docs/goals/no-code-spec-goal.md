@@ -8,9 +8,16 @@ criteria:
     gap: No implementation is merged. Diagrams have no checked home yet (#59).
     issues: [59]
   AC2:
-    assessment: unassessed
-    support: []
-    gap: No recipe documents the pre-commit and CI setup for ubiq check, cue vet, vale, and cucumber.
+    assessment: partial
+    support:
+    - feature: No-code checks recipe
+      implementation:
+        path: docs/no-code-checks.md
+        anchor: '## Pre-commit'
+      check:
+        path: tests/test_no_code_checks.py
+        anchor: def test_sample_passes_ubiq_check(
+    gap: The test runs only ubiq check. The no-code-checks workflow runs cue vet, vale, and cucumber on the sample in CI. The pre-commit config is not executed in CI. A reviewer must confirm the workflow run passes and the recipe matches the sample.
   AC3:
     assessment: unassessed
     support: []
@@ -42,6 +49,8 @@ criteria:
 
 This goal defines outcomes and acceptance evidence. It replaces the tracking
 issue #64. It does not claim that Ubiq supports these outcomes today.
+The sequence of work that proves the outcomes, with each step's issue and
+blockers, is in [[plan:no-code-dogfood]] (issue #113).
 
 ## Objective
 
@@ -81,3 +90,25 @@ The goal is achieved when:
 5. AC5: Controlled vocabulary lives in checkable records and exports Vale rules, so prose and step definitions use checked terms.
 6. AC6: Ubiq's own features are records, and the adoption order derives from their declared dependencies.
 7. AC7: A worked example repository applies this pattern, and all of its checks pass in CI.
+
+<details>
+<summary>AC6 evidence diagram</summary>
+
+The view shows what AC6 tracks and what evidence its record cites. The issue
+link tracks the work. The criterion's assessment records whether it holds.
+
+<!-- ubiq:dogfood-diagram -->
+```mermaid
+flowchart TD
+  goal["no-code-spec-goal"]
+  ac6["AC6 (unassessed)"]
+  goal -->|criterion| ac6
+  issue_70["Tracking issue #35;70"]
+  ac6 -->|tracked by| issue_70
+  click issue_70 "https://github.com/Ltilak13/ubiq/issues/70"
+  evidence["No evidence recorded"]
+  ac6 -.-> evidence
+```
+<!-- /ubiq:dogfood-diagram -->
+
+</details>

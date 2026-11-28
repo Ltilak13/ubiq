@@ -221,12 +221,16 @@ def xref_refs(cfg) -> list[Ref]:
                 continue
             text = match.group(1) if match else ""
             for annotation in found:
+                if annotation.ref.within:
+                    continue  # names in the same file: step_refs.py checks them
                 for keys, value in xref.values(data, annotation.steps):
                     value = value.strip().strip("'\"")
                     if (not value or value.lower() in SKIP_FIELD_VALUES
                             or (len(keys) == 1 and keys[0] in cfg.ref_fields)):
                         continue
                     ref = annotation.ref
+                    if ref.edge == "requires" and xref.pr_entry(value) is not None:
+                        continue  # `pr: <n>` names a pull request, not a record
                     field_name = keys[-1] if keys else ref.edge
                     refs.append(Ref(policy, f"{field_name}: {value}", normalize(value), ref.ns,
                                     path, xref.line_of(text, keys), target=value, edge=ref.edge))
