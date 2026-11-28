@@ -12,7 +12,7 @@ steps:
     requires: []
   test-migration-order:
     issue: 143
-    requires: []
+    requires: [identifier-vocabulary]
   skill-procedures:
     issue: 151
     requires: []

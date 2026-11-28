@@ -33,7 +33,7 @@ steps:
     requires: [sync-github]
   priority-inheritance:
     issue: 150
-    requires: [tracking-fields, plan-records]
+    requires: [tracking-fields, plan-records, base-revision-drift-check]
     pr: 166
   requires-links:
     issue: 121
@@ -96,7 +96,7 @@ steps:
   backfill:
     issue: 127
     priority: P1
-    requires: [feature-lifecycle, plan-records, pr-stacks, part-of-sub-issues]
+    requires: [feature-lifecycle, plan-records, pr-stacks, part-of-sub-issues, detect-plan-step-cycles, priority-inheritance]
     branch: claude/loving-planck-3uzfaq-backed-issues
     base: claude/loving-planck-3uzfaq-criteria-backfill
     pr: 196
