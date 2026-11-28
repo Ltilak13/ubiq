@@ -84,16 +84,20 @@ bot author, so list its number in `issues:` to track it.
 
 The sync never writes to git: no commits, no branches, no pull requests. It
 reads records (from the working tree, or from a revision with `--ref`, through a
-read-only `git archive`) and writes only to GitHub issues, and only with
+read-only `git show`) and writes only to GitHub issues, and only with
 `--apply`. Changing a fact means a pull request that edits the record.
 
 ## Drift and pending changes
 
-Drift is GitHub disagreeing with the records on the base branch. On a pull
-request, CI therefore runs `--check --ref origin/<base>` and fails only on that.
-What the pull request itself changes (a criterion set to `met` whose issue is
-still open) is not drift; CI prints the head's plan as "Pending on merge" in the
-step summary, read-only, and never fails on it.
+Drift is GitHub disagreeing with the plan produced by the base revision's code
+and records. On a pull request, CI runs the drift check in a separate worktree
+at the event's base commit. If the base uses the older goal-issue script, CI
+checks its dry-run plan for drift. A base revision without an issue mirror
+skips the check.
+
+The preview job uses the pull request's exact head commit and prints its plan
+as "Pending on merge" in the job summary. The preview is read-only and does
+not block the pull request.
 
 ## Workflow
 
