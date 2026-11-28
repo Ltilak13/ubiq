@@ -24,6 +24,7 @@ import os
 import re
 from bisect import bisect_left, bisect_right
 from collections import Counter
+from collections.abc import Container
 from dataclasses import dataclass
 from functools import lru_cache
 from html import unescape
@@ -234,7 +235,8 @@ class Ref:
     heading: bool = False  # the reference sits on a heading line
     linked: bool = False  # mention inside a non-vocabulary link label (author linked it)
     edge: str = ""  # edge name from an `x-ubiq-ref` schema annotation; empty for other refs
-    field: str = ""  # value refs: the frontmatter field the fragment names
+    field: str = ""  # value refs: the frontmatter field the fragment or fence pattern names
+    fenced: bool = False  # a configured fence use, independent of prose checks
     readme_entry: bool = False  # value refs inside a managed README section
 
     @property
@@ -323,9 +325,12 @@ def _escaped(text: str, pos: int) -> bool:
     return (pos - start) % 2 == 1
 
 
-def _blank_fences(text: str) -> str:
-    """Mask fenced blocks, including unmatched openers through EOF."""
+def _blank_fences(text: str, languages: Container[str] = (),
+                  blocks: list[tuple[str, int, int]] | None = None) -> str:
+    """Mask fences and optionally collect the body offsets of selected languages."""
     fence = ""
+    language = ""
+    offset = start = 0
     lines: list[str] = []
     for line in text.splitlines(keepends=True):
         match = FENCE_RE.match(line.rstrip("\r\n"))
@@ -333,12 +338,21 @@ def _blank_fences(text: str) -> str:
             lines.append(_blank(line))
             if (match and match[1][0] == fence[0] and len(match[1]) >= len(fence)
                     and not match[2].strip()):
+                if blocks is not None and language in languages:
+                    blocks.append((language, start, offset))
                 fence = ""
         elif match and not (match[1][0] == "`" and "`" in match[2]):
             fence = match[1]
+            if blocks is not None:
+                tokens = match[2].split(maxsplit=1)
+                language = tokens[0] if tokens else ""
+                start = offset + len(line)
             lines.append(_blank(line))
         else:
             lines.append(line)
+        offset += len(line)
+    if fence and blocks is not None and language in languages:
+        blocks.append((language, start, offset))
     return "".join(lines)
 
 
@@ -420,12 +434,13 @@ class _Markdown:
     comments: list[tuple[int, int]]
 
 
-def _interpret_markdown(text: str) -> _Markdown:
+def _interpret_markdown(text: str, languages: Container[str] = (),
+                        blocks: list[tuple[str, int, int]] | None = None) -> _Markdown:
     """Interpret the supported Markdown subset once for both scan consumers."""
     fm = FRONTMATTER_RE.match(text)
     if fm:
         text = _blank(fm.group()) + text[fm.end():]
-    fenced = _blank_fences(text)
+    fenced = _blank_fences(text, languages, blocks)
     outside_inline = _blank_inline(fenced)
     definitions: dict[str, str] = {}
     definition_spans: list[tuple[int, int]] = []
@@ -469,6 +484,20 @@ def _interpret_markdown(text: str) -> _Markdown:
     addresses = (destinations + [m.span() for m in URL_RE.finditer(delimiters)]
                  + [m.span() for m in HTML_TAG_RE.finditer(delimiters)])
     comments = [m.span() for m in HTML_COMMENT_RE.finditer(prose)]
+    if blocks:
+        # Locate openers in prose so a comment marker inside real code cannot
+        # hide a later block. Look for its closer in the source since the
+        # fences may have masked a closer inside a commented-out example.
+        comment_spans = []
+        end = 0
+        for opener in re.finditer("<!--", prose):
+            if opener.start() >= end:
+                closer = text.find("-->", opener.end())
+                end = len(text) if closer == -1 else closer + 3
+                comment_spans.append((opener.start(), end))
+        in_comment = _covers(comment_spans)
+        blocks[:] = [block for block in blocks
+                     if not in_comment(text.rfind("\n", 0, block[1] - 1) + 1)]
     return _Markdown(prose, delimiters, links, addresses, comments)
 
 
@@ -622,7 +651,8 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
             # A record's own parse error is already reported once.
             reported = {(p.resolve(), msg) for p, msg in invalid}
             invalid += [(path, msg) for msg in errors if (path.resolve(), msg) not in reported]
-    document = _interpret_markdown(text)
+    blocks: list[tuple[str, int, int]] = []
+    document = _interpret_markdown(text, cfg.fences, blocks if cfg.fences else None)
     line_of = _line_index(document.prose)
 
     def view(policy: Policy, claimed: list[tuple[int, int]]):
@@ -726,9 +756,10 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
     names = sorted({_mention_pattern(n) for t in glossary.terms
                     for n in t.spellings or t.names()},
                    key=len, reverse=True)
-    if names:
-        mention = policies["mention"]
-        mention_re = re.compile(r"(?<!\w)(" + "|".join(names) + r")(?!\w)", re.IGNORECASE)
+    mention = policies["mention"]
+    mention_re = (re.compile(r"(?<!\w)(" + "|".join(names) + r")(?!\w)", re.IGNORECASE)
+                  if names else None)
+    if mention_re is not None:
         source, admits = view(mention, link_spans)
         explicit_spans = [(m.start(), m.end()) for m in EXPLICIT_RE.finditer(source)]
         claimed = _covers(explicit_spans + delim_spans + link_spans)
@@ -741,6 +772,20 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
                 continue
             refs.append(Ref(mention, m.group(0), normalize(m.group(0)), None,
                             path, line_of(m.start()), linked=in_label(m.start())))
+
+    for language, start, end in blocks:
+        rule = cfg.fences[language]
+        body = text[start:end]
+        for pattern in rule.value_refs:
+            for match in pattern.finditer(body):
+                if field := match.group(1):
+                    refs.append(Ref(value, match[0], "", None, path,
+                                    line_of(start + match.start(1)), field=field,
+                                    destination=path.resolve(), fenced=True))
+        if rule.terms and mention_re is not None:
+            for match in mention_re.finditer(body):
+                refs.append(Ref(mention, match[0], normalize(match[0]), None, path,
+                                line_of(start + match.start()), fenced=True))
 
     # Fences, inline code, and frontmatter are already blank in `prose`.
     heading_lines = [line_of(m.start()) for m in HEADING_RE.finditer(document.prose)]

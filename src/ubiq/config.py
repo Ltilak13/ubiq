@@ -57,6 +57,7 @@ DEFAULT_CONFIG: dict = {
     # like refs but aren't vocabulary (`/plugin` colliding with a term named plugin)
     # and `only_known: true` to match only glossary names (quieter; typos invisible).
     "delimiters": [],
+    "fences": {},
     # Sidecar records that attach frontmatter to a source file they do not own.
     # Each overlay is markdown with `source: path/to/source.md` plus optional ns,
     # aliases, id, and any ref_fields. The source file is not edited.
@@ -185,6 +186,12 @@ SYNC_CREATE = ("always", "prioritized")
 
 
 @dataclass(frozen=True)
+class FenceRule:
+    value_refs: tuple[re.Pattern, ...]
+    terms: bool
+
+
+@dataclass(frozen=True)
 class SupportSpec:
     records: Glob
     pyproject: str
@@ -209,6 +216,7 @@ class Config:
     id_patterns: tuple[re.Pattern, ...]
     external_id_patterns: tuple[re.Pattern, ...]
     delimiters: tuple[Delimiter, ...]
+    fences: Mapping[str, FenceRule]
     catalogs: tuple[CatalogSpec, ...]
     schemas: tuple[SchemaSpec, ...]
     policies: Policies
@@ -479,6 +487,29 @@ def _regexes(values: list[str], field: str) -> tuple[re.Pattern, ...]:
     return tuple(compiled)
 
 
+def _fences(raw) -> dict[str, FenceRule]:
+    if not isinstance(raw, dict):
+        raise InvalidConfig("fences: expected a mapping of language to settings")
+    rules: dict[str, FenceRule] = {}
+    for language, settings in raw.items():
+        field = f"fences.{language}"
+        if not isinstance(language, str) or not re.fullmatch(r"[^\s]+", language):
+            raise InvalidConfig(f"{field}: expected a single language token")
+        if not isinstance(settings, dict):
+            raise InvalidConfig(f"{field}: expected a mapping")
+        _known(settings, field, ("value_refs", "terms"))
+        path = f"{field}.value_refs"
+        patterns = _regexes(_strings(settings.get("value_refs", []), path), path)
+        for i, pattern in enumerate(patterns):
+            if pattern.groups != 1:
+                raise InvalidConfig(f"{path}[{i}]: expected exactly one capturing group")
+        terms = settings.get("terms", False)
+        if not isinstance(terms, bool):
+            raise InvalidConfig(f"{field}.terms: expected a boolean")
+        rules[language] = FenceRule(patterns, terms)
+    return rules
+
+
 def _policies(raw, unlinked) -> Policies:
     """Compose `references:` overrides onto the default policy table."""
     if not isinstance(raw, dict):
@@ -636,6 +667,7 @@ def load_config(root: Path) -> Config:
         id_patterns=_regexes(cfg["id_patterns"], "id_patterns"),
         external_id_patterns=_regexes(cfg["external_id_patterns"], "external_id_patterns"),
         delimiters=tuple(delimiters),
+        fences=_fences(cfg["fences"]),
         catalogs=tuple(catalogs),
         schemas=tuple(schemas),
         policies=_policies(cfg["references"], cfg["unlinked_mentions"]),

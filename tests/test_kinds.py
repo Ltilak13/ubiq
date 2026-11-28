@@ -30,7 +30,7 @@ def test_every_guarantee_is_quoted_from_the_spec():
         assert guarantee.spec in spec, guarantee.spec
 
 
-def test_no_configuration_scans_fences_frontmatter_or_definitions(tmp_path):
+def test_prose_policies_skip_fences_frontmatter_and_definitions(tmp_path):
     """Every scannable region, for every kind, still leaves guarded lines alone."""
     everything = ("[[session]] /session `/session` UB-1 session [s](glossary/s.md) [g](gone.md)"
                   " [x](#uses)")
