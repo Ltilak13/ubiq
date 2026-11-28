@@ -85,6 +85,11 @@ commit SHA they checked), and `date`. Only a `met` criterion can carry `review`.
 `python scripts/review_freshness.py` reports a review as stale when a file its
 criterion cites changed after `at`; CI prints the report on every run.
 
+`deferred` records that the owner deliberately does not schedule the criterion. Its
+`gap` states why, and what would bring it back; it needs no support and carries no
+`review`. It is not `met`, so its goal's issue stays open. To schedule it again, set
+another assessment and reopen its issue by hand.
+
 A criterion that restates another goal's criterion sets `assessed_in` to it
 (`goal` and `criterion`). It keeps its label, stays `unassessed` with no support,
 and the sync opens no issue for it.
@@ -112,13 +117,17 @@ Each criterion can list the GitHub issues that track it in `issues:`, as issue
 numbers. When a change reaches `main`, the `github-sync` workflow
 runs `ubiq sync github --apply` on every goal ([GitHub sync](../github-sync.md)):
 
-- A criterion that is not `met`, lists no `issues`, has no issue with the
+- A criterion that is neither `met` nor `deferred`, lists no `issues`, has no issue with the
   marker `<!-- ubiq-goal: <name> <AC> -->`, and has a `priority` (its own or its
   goal's) gets a new issue. This repository sets `sync.create: prioritized`, so a
   criterion without a priority waits until someone decides to schedule it. Its body quotes the
   criterion, its `gap`, and its cited checks, and gives the commands to verify it.
 - A criterion that is `met` closes its listed and marked issues that are still
   open, with a comment that names the review and the commit.
+- A criterion that is `deferred` closes its listed and marked issues that are still
+  open as not planned, with a comment that quotes its `gap`, and never opens one. A
+  criterion issue that someone closed as not planned while its record is not
+  `deferred` is reported as drift: defer the criterion or reopen the issue.
 - A listed number that is not an issue, such as a pull request or a typo, is
   reported as a warning, and the workflow run fails after the other actions.
 
