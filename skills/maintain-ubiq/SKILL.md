@@ -139,9 +139,10 @@ Report overlap and drift in each pass. Change skill text only when the owner ask
      - The text is one line, and an include costs one more file read.
      - No directory that all callers install can hold the part.
      - The author wants the repetition.
-4. Put each new part in `parts/` inside the skill directory that owns its subject.
-   Installers copy or link only skill directories.
-   A top-level `_shared/` folder resolves only in the source tree (W004).
+4. Put each new part where every caller can reach it after installation.
+   Use an installed shared directory when the repository has one. Otherwise put
+   it in `parts/` inside the skill directory that owns its subject.
+   A top-level `_shared/` folder omitted from installation resolves only in the source tree (W004).
 5. Give the part a naming field. If callers use the part in different modes, list the modes in `inputs`.
    Register its path with a glossary rule in a namespace from `edges.include.ns` (default: `part`).
    Use the repository's schema workflow if registration needs a schema change.
