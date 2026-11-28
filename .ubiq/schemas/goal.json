@@ -18,6 +18,9 @@
         "in-progress"
       ]
     },
+    "priority": {
+      "$ref": "#/$defs/tracking/properties/priority"
+    },
     "criteria": {
       "type": "object",
       "minProperties": 1,
