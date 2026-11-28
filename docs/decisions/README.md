@@ -21,3 +21,4 @@ earlier record's `status` becomes `superseded`.
 | `options` | The options considered |
 | `outcome` | What was decided, as short statements |
 | `supersedes` | The decision this one replaces, if any |
+| `closes` | Whether accepting it closes the question issue (default `true`; `false` for tracking issues) |

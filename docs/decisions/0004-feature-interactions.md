@@ -1,6 +1,7 @@
 ---
 name: feature-interactions
 question: 156
+closes: false
 status: accepted
 decided: 2026-11-27
 by: Ltilak13
