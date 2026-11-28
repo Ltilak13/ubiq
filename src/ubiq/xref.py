@@ -3,8 +3,7 @@
 A property annotated `{"x-ubiq-ref": {"ns": "feature", "edge": "requires"}}` holds a
 record name (or a list of them) that must resolve to a record in `ns` (E006). The
 resolved link is a composition edge named `edge`, so `ubiq graph --kind requires`
-selects it. `acyclic` is enforced by cycles.py (E014); `single` is parsed and kept for
-the one-parent check, which nothing enforces yet.
+selects it. cycles.py enforces `acyclic` (E014), and schemas.py enforces `single` (E009).
 
 This module reads schemas and walks instance data. It does not touch the glossary.
 """
@@ -149,6 +148,30 @@ def line_of(frontmatter: str, keys: tuple[str, ...]) -> int:
         if found is not None:
             at = found
     return at + 2
+
+
+def groups(data: Any, steps: tuple[Step, ...], keys: tuple[str, ...] = ()
+           ) -> Iterator[tuple[tuple[str, ...], list[str]]]:
+    """The values of each annotated property in `data`, one list per property.
+
+    `single` is checked on these lists: `criteria.AC1.part_of` is one group, and
+    `criteria.AC2.part_of` is another. Items of an array on the way stay separate
+    groups even though their keys match.
+    """
+    if not steps:
+        if isinstance(data, str):
+            yield keys, [data]
+        elif isinstance(data, list):
+            yield keys, [item for item in data if isinstance(item, str)]
+        return
+    (kind, name), rest = steps[0], steps[1:]
+    if kind == "items":
+        for item in data if isinstance(data, list) else []:
+            yield from groups(item, rest, keys)
+    elif isinstance(data, Mapping):
+        for key, item in data.items():
+            if (kind == "key" and key == name) or (kind == "pattern" and re.search(name, key)):
+                yield from groups(item, rest, (*keys, key))
 
 
 # A `requires` entry that names a pull request, not a record: `pr: 12`.

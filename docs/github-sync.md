@@ -10,9 +10,11 @@ sync:
   label_prefix: "priority: " # the sync owns labels that start with this; never empty
   records:
     - glob: "docs/goals/*-goal.md"
-      kind: goal             # goal or plan
+      kind: goal             # goal, plan, or feature
     - glob: "docs/plans/*.md"
       kind: plan
+    - glob: "src/ubiq/features/*.md"
+      kind: feature
 ```
 
 ```bash
@@ -37,8 +39,8 @@ pure function that returns actions:
 | --- | --- |
 | `create` | A record that is not done has no issue; open one (with its priority label). |
 | `label` | An open issue's priority label differs from the record; add and remove labels. |
-| `link` | A required issue is not yet a blocker; add the blocked-by link. |
-| `unlink` | An issue blocks this one but `requires` does not name it; remove the link. |
+| `link` | Add a missing blocked-by or sub-issue link. |
+| `unlink` | Remove an unexpected blocked-by or sub-issue link. |
 | `body` | The generated "Blocked by" section differs; rewrite it between its markers. |
 | `stack` | A pull request is not based on the branch of its required record's pull request. Report only. |
 | `close` | A record that is done still has an open issue; close it with a comment. |
@@ -83,6 +85,36 @@ dry run shows each resulting change as a `label` or `create` action.
 - A container with no `priority` changes nothing: items without their own value stay unmanaged.
 
 A criterion's `issue` number, like each number in `issues`, names an issue the sync tracks.
+
+## Sub-issues
+
+A criterion is `part_of` one record, and the sync makes the criterion's issues
+sub-issues of that record's issue. By default a criterion is part of its own goal.
+An explicit `part_of` names the parent instead. A schema-bound record with an
+`issue` can also declare `part_of` to link that issue to its parent.
+`ubiq check` rejects more than one name for a field annotated with `single` (E009). `fact_part_of` in `FACTS` plans it, and two `GitHub`
+handlers perform it.
+
+- **The goal's issue.** A goal gets its own issue through a goal-level `issue` field
+  (`issue: 118` beside `name` and `status` in the goal's frontmatter). This is the
+  smallest design that works: the sync does not create goal issues, so a goal is
+  opened by hand (or by an earlier tool) and named once. A goal with no `issue` has no
+  parent issue, and its criteria's issues are not nested; nothing is planned or
+  reported for them.
+- **Which issues.** Every issue that tracks the criterion (its `issue`, its `issues`,
+  and the marked issue), open or closed, except the parent itself.
+- **`link`.** An issue missing from the parent's sub-issues is added with
+  `POST repos/{o}/{r}/issues/{parent}/sub_issues` and the issue's numeric `id` as
+  `sub_issue_id`. GitHub allows one parent per issue, so the request sets
+  `replace_parent` and moves an issue that has another parent. A new issue is created
+  and then attached in the same `--apply`.
+- **`unlink`.** A sub-issue of the parent that no record asks for was added on GitHub.
+  `--check` reports it as drift, and `--apply` removes it with
+  `DELETE repos/{o}/{r}/issues/{parent}/sub_issue` and the `sub_issue_id` in the body.
+  An issue that a record moves to a different parent is a `link`, not an `unlink`.
+- **`warn`.** A parent `issue` that is not an issue in the repository.
+- **Reading.** The snapshot reads `GET repos/{o}/{r}/issues/{parent}/sub_issues` for each
+  parent issue, so the token needs `issues: read`, as before.
 
 ## Pull requests
 
@@ -205,14 +237,26 @@ item, with the marker `<!-- ubiq-plan: <plan> <step> -->`.
 - A plan with status `proposed` or `abandoned` mirrors nothing. A `done` plan closes the
   open issues of its steps. An `active` plan never closes or reopens anything: a step's
   issue closes with its pull request.
-- Each item carries the links the sync will mirror once the link facts land:
-  `Desired.parent_issue` is the plan's `issue` (the sub-issue parent) and
-  `Desired.requires_markers` holds the markers of the steps it waits on (the blocked-by
-  targets). `plan()` resolves a marker to an issue number through the same marker index it
-  uses to find an item's issues. No fact reads these fields yet; the blocked-by and
-  sub-issue facts (#121, #122) each add one function to `FACTS` and one handler.
+- Each step's issue becomes a sub-issue of the plan's issue. The step's
+  `requires_markers` identify the other steps it waits on.
 - A step's `priority` is optional. A step without one takes the plan's (see
   [Priority inheritance](#priority-inheritance)).
+
+## Feature records
+
+A `kind: feature` entry mirrors [feature records](features.md) (`src/ubiq/features/*.md`),
+one issue per feature, with the same actions as goals.
+
+- A `planned` feature that has no `issue` and no issue marked
+  `<!-- ubiq-feature: <name> -->` gets a new issue (a `create`), titled
+  `<name>: <summary>`, with its `priority` label if it sets one.
+- A feature with `issue: N` tracks that issue. Set `issue` to link work that already
+  has one; leave it out to let the sync create one, then add the number if you want it listed.
+- A `shipped` feature closes its open tracked issues with a comment (a `close`). A
+  record with no `status` is shipped, so adopting the kind creates nothing for existing
+  records and closes only issues they name.
+- Nothing is reopened: setting a shipped feature back to `planned` leaves a closed
+  issue closed.
 
 ## What the sync writes
 
