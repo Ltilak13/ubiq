@@ -31,10 +31,11 @@ from .globs import Glob
 from .records import Glossary, InvalidRecord, Term, parse_frontmatter
 from .scan import (
     Ref,
-    _blank_fences,
     _doc_link_path,
     _interpret_markdown,
     _line_index,
+    _slugs,
+    field_fragment,
 )
 
 KINDS = ("invoke", "include", "route", "reference")
@@ -120,8 +121,8 @@ def build_edges(glossary: Glossary, refs: list[Ref], edges: EdgeConfig, root: Pa
         source = owner(r.file)
         if source is None or (source is target and kind != "include"):
             continue
-        key = (kind, id(source), id(target), r.file, r.line)
         name = r.raw.split(":", 1)[0] if r.kind == "field" else ""
+        key = (kind, id(source), id(target), r.file, r.line, name)
         found.setdefault(key, Edge(kind, source, target, r.file, r.line, name))
     return list(found.values())
 
@@ -397,21 +398,6 @@ class Layout:
         return (target.joinpath(*parts[3:]) if target else None), target
 
 
-def _slugs(path: Path) -> set[str]:
-    """GitHub-style anchors for the ATX headings of a Markdown file."""
-    seen: Counter[str] = Counter()
-    slugs = set()
-    for line in _blank_fences(path.read_text(encoding="utf-8")).splitlines():
-        m = re.match(r" {0,3}#{1,6}\s+(.*?)\s*#*\s*$", line)
-        if not m:
-            continue
-        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", m.group(1)).strip().lower()
-        slug = re.sub(r"[^\w\- ]", "", text).replace(" ", "-")
-        slugs.add(f"{slug}-{seen[slug]}" if seen[slug] else slug)
-        seen[slug] += 1
-    return slugs
-
-
 class _Link(NamedTuple):
     """A Markdown link that leaves an installed directory."""
     doc: Path
@@ -441,7 +427,8 @@ def _leaving(docs: list[Path], layout: Layout) -> Iterator[_Link]:
 def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
     """W004: a link that leaves an installed directory must land on a file in both
     layouts, or, for another repository's directory, in the installed one. A
-    `#fragment` must name a heading in the file the agent reads once installed.
+    `#fragment` must name a heading or frontmatter field in the file the agent
+    reads once installed.
     """
     diags = list(layout.problems)
     for link in _leaving(docs, layout):
@@ -461,7 +448,8 @@ def _install_layout(docs: list[Path], layout: Layout) -> list[Diagnostic]:
             continue
         fragment = unquote(urlsplit(link.spec.strip().strip("<>")).fragment)
         if (fragment and in_install and landed is not None and target is not None
-                and fragment.lower() not in _slugs(landed)):
+                and fragment.lower() not in _slugs(landed)
+                and not field_fragment(link.source, fragment)):
             diags.append(Diagnostic("W004", f"link {link.spec} names no heading in "
                                     f"{target.name}/{landed.relative_to(target).as_posix()}",
                                     link.doc, link.line))

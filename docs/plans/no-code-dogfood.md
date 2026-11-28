@@ -17,6 +17,9 @@ steps:
     branch: claude/ecstatic-mendel-nkgz6t-issue-70
     base: main
     pr: 116
+  release-adoption-smoke-test:
+    issue: 163
+    requires: [feature-records]
   mermaid-drift:
     issue: 59
     requires: [feature-records]
@@ -25,6 +28,12 @@ steps:
     pr: 117
   readme-membership:
     issue: 65
+    requires: [feature-records]
+  readme-generation:
+    issue: 173
+    requires: [readme-membership]
+  relationship-navigation:
+    issue: 174
     requires: [feature-records]
   cli-spec-slice:
     requires: [readme-membership]
@@ -57,9 +66,16 @@ to create issues for the steps that have none (`cli-spec-slice`,
 - `plan-record`: add this plan and link it from the goal and #113 (#124).
 - `feature-records`: model one real ubiq feature and its prerequisite as records, and
   link a goal criterion to the feature, a test, and an issue (#70).
+- `release-adoption-smoke-test`: install the built wheel and verify that `ubiq plan --next`
+  advances after one adoption step (#163).
 - `mermaid-drift` and `readme-membership`: generated Mermaid drift check (#59) and the
   README membership check (#65). Both need the feature relationships, and they can
   proceed independently.
+- `readme-generation`: generate the managed feature list from checked frontmatter after
+  the membership checks ship (#173).
+- `relationship-navigation`: use fixture feature and release records to check both ways
+  through one declared relationship. Check lookup behavior separately from diagram or list
+  drift. This follow-up supports AC10 of the [composable knowledge goal](../goals/composable-knowledge-goal.md#acceptance-evidence) (#174).
 - `cli-spec-slice`: convert one real CLI behavior and its acceptance scenarios into a
   Markdown spec, with the README membership check as the first slice. Reuse a test
   binding that builds a small repository, runs `ubiq check`, and asserts the diagnostic
@@ -83,3 +99,50 @@ to create issues for the steps that have none (`cli-spec-slice`,
 implements the step, once it is open. Workflow status is not stored here: an open pull
 request means the step is in review, and a merged one means it is done. Record the current
 blocker, next action, and evidence for a step in the pull request that changes them.
+
+<details>
+<summary>Dependency diagram</summary>
+
+Arrows point from prerequisites to the steps they unlock. Ticketed steps link
+to their GitHub issues. Refresh this view with
+`python scripts/dogfood_diagrams.py --write`.
+
+<!-- ubiq:dogfood-diagram -->
+```mermaid
+flowchart LR
+  step_1["cli-spec-slice"]
+  step_2["feature-records (#35;70)"]
+  click step_2 "https://github.com/Ltilak13/ubiq/issues/70"
+  step_3["mermaid-drift (#35;59)"]
+  click step_3 "https://github.com/Ltilak13/ubiq/issues/59"
+  step_4["no-code-authoring-proof"]
+  step_5["plan-record (#35;124)"]
+  click step_5 "https://github.com/Ltilak13/ubiq/issues/124"
+  step_6["readme-generation (#35;173)"]
+  click step_6 "https://github.com/Ltilak13/ubiq/issues/173"
+  step_7["readme-membership (#35;65)"]
+  click step_7 "https://github.com/Ltilak13/ubiq/issues/65"
+  step_8["relationship-navigation (#35;174)"]
+  click step_8 "https://github.com/Ltilak13/ubiq/issues/174"
+  step_9["release-adoption-smoke-test (#35;163)"]
+  click step_9 "https://github.com/Ltilak13/ubiq/issues/163"
+  step_10["reusable-issue-sync (#35;112)"]
+  click step_10 "https://github.com/Ltilak13/ubiq/issues/112"
+  step_11["starter (#35;111)"]
+  click step_11 "https://github.com/Ltilak13/ubiq/issues/111"
+  step_12["tracking-proof"]
+  step_7 --> step_1
+  step_2 --> step_3
+  step_1 --> step_4
+  step_7 --> step_6
+  step_2 --> step_7
+  step_2 --> step_8
+  step_2 --> step_9
+  step_12 --> step_10
+  step_12 --> step_11
+  step_1 --> step_12
+  step_3 --> step_12
+```
+<!-- /ubiq:dogfood-diagram -->
+
+</details>
