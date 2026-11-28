@@ -188,10 +188,10 @@ Use discovery during maintenance to find new files that have no record yet.
 
 - Inline Markdown links to registered records or paths matching configured
   glossary globs must resolve. The destination selects the record, so the label
-  can be natural prose. Fragments and link titles are allowed. Other relative
+  can be natural prose. Link titles are allowed, and so are fragments; in a file with frontmatter a fragment must name a heading, an HTML anchor, or a field (`E013`). Other relative
   links must land on an existing file or directory; a missing one is `W007`, a
   warning that `references.link.severity` can raise or silence. URLs,
-  anchor-only links (`#x`), root-relative paths (`/x`), and code are not
+  anchor-only links (`#x`) in files without frontmatter, root-relative paths (`/x`), and code are not
   checked. `W004` handles Markdown links that leave an `edges.install`
   directory and resolve only after installation, or target an external installed
   directory. Other missing destinations still report `W007`. Path-shaped wiki-links (`[[MISSION.md]]`) are not checked. Full `[label][id]`, collapsed `[id][]`,
@@ -203,6 +203,18 @@ Use discovery during maintenance to find new files that have no record yet.
   `only_known: true`, unknown names, including typos, are ignored.
 - Configured ID patterns and frontmatter reference fields must resolve too.
   Plain mentions are indexed for search and never fail the check.
+- A link whose fragment names a frontmatter field of its target is a field
+  value reference: the label must equal that field's value, or the check reports
+  `E013`. Write the value once in frontmatter and link it from prose as
+  `[10](#pct)` (this file) or `[10](glossary/discount.md#pct)` (another record).
+  A heading with the same slug wins, so rename the heading to value-link that field.
+
+**Upgrade note:** links into any file with frontmatter now check their
+fragment. An anchor link such as `[x](skills/a/SKILL.md#setup)` should name a
+heading or an HTML `id`/`name` anchor of that file, or a frontmatter field.
+A mistyped fragment and a stale label on a field link both fail (`E013`), and so
+do line anchors such as `#L10`. Fix the fragment or label. If ubiq cannot slug a
+repository's anchors, set `references.value.severity: warn` (or `off`).
 
 Each kind has a policy you can tune per repository: how severe its failures are
 and which regions it scans besides plain prose (`inline_code`, `address`,
@@ -250,6 +262,7 @@ ubiq candidates --json --min-files 3
 ubiq graph skill:ship                  # invoke, include, and route edges from a record
 ubiq graph part:checkout --callers     # who reuses a shared part
 ubiq overlap --unit line               # prose that several records repeat
+ubiq plan --next                       # ubiq features to adopt next (docs/features.md)
 ubiq impact --since main              # changed records and the callers they affect
 ubiq compare --since main --markdown  # new and resolved findings for a PR comment
 ubiq coverage                          # how many selected files have typed metadata
@@ -257,7 +270,7 @@ ubiq coverage --since main --markdown  # coverage change and policies for a PR c
 ```
 
 `--kind` is repeatable: results include any selected kind (`explicit`, `id`,
-`field`, `mention`, `catalog`, or `markdown`) or policy (`wiki` or `delimiter`,
+`field`, `mention`, `catalog`, `markdown`, `value`, or `link`) or policy (`wiki` or `delimiter`,
 the two halves of `explicit`). Without filters, `refs` includes all kinds. Its JSON output contains `query`, `definitions`, `references`, and
 `count`; an unknown query returns an empty result with `error` and exits 1.
 Paths inside the repository are relative to its root; external paths are absolute.
@@ -290,8 +303,9 @@ The [no-code checks recipe](no-code-checks.md) combines `ubiq check` with `cue v
 `coverage` measures typed metadata over the files a `coverage:` section
 selects. List the asset families you own, give every exclusion a reason, and
 add `min_typed_percent` or `no_regression` to gate CI. A file counts as typed
-when a schema binding selects it or an `x-ubiq` record names it as source;
-registering it as vocabulary is not enough. When the report shows a gap, add a
+when a schema binding selects it or a record checked through
+[`x-ubiq`](../glossary/x-ubiq.md) names it as source. A vocabulary entry alone
+does not provide typed coverage. When the report shows a gap, add a
 schema rather than an exclusion. Run it in CI with full history
 (`fetch-depth: 0`) and `--since` the pull request base, next to `ubiq check`,
 which stays the validation gate. This repository's `ubiq.yaml` and CI workflow

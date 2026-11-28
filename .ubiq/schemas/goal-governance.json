@@ -33,7 +33,15 @@
       "glossary": true,
       "exclude": [
         {
+          "source": "skills/references/domain-review.md",
+          "reason": "Shared skill procedure outside the policy/domain-schema-goal example."
+        },
+        {
           "source": "skills/references/schema-workflow.md",
+          "reason": "Shared skill procedure outside the policy/domain-schema-goal example."
+        },
+        {
+          "source": "skills/references/validate-changes.md",
           "reason": "Shared skill procedure outside the policy/domain-schema-goal example."
         },
         {
@@ -129,6 +137,10 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "glossary/x-ubiq.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "skills/apply-ubiq/SKILL.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
@@ -138,6 +150,86 @@
         },
         {
           "source": "skills/upgrade-ubiq/SKILL.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/catalogs.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/change-review.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/composition-edges.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/cross-repository-composition.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/field-refs.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/frontmatter-schemas.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/github-sync.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/glossary.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/id-references.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/markdown-references.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/overlays.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/query.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/record-graphs.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/typed-coverage.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/tracking-field.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "glossary/x-ubiq-ref.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/tracking-fields.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/plans/frontmatter-tracking.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/plans/no-code-dogfood.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/plan-records.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         }
       ]
