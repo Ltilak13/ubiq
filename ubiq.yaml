@@ -18,6 +18,9 @@ glossary:
   - glob: "docs/plans/*.md"
     term_field: name
     ns: plan
+  - glob: "docs/decisions/[0-9]*.md"
+    term_field: name
+    ns: decision
 docs:
   - "README.md"
   - "docs/**/*.md"
@@ -43,6 +46,8 @@ sync:
       kind: goal
     - glob: "docs/plans/*.md"
       kind: plan
+    - glob: "docs/decisions/[0-9]*.md"
+      kind: decision
 
 ignore:
   - ".git/**"
@@ -71,6 +76,9 @@ schemas:
     format: frontmatter
   - schema: ".ubiq/schemas/plan.json"
     files: ["docs/plans/*.md"]
+    format: frontmatter
+  - schema: ".ubiq/schemas/decision.json"
+    files: ["docs/decisions/[0-9]*.md"]
     format: frontmatter
   - schema: ".ubiq/schemas/skill.json"
     files: ["skills/*/SKILL.md"]
@@ -105,6 +113,7 @@ coverage:
     - "glossary/*.md"
     - "src/ubiq/features/*.md"
     - "docs/plans/*.md"
+    - "docs/decisions/[0-9]*.md"
     - ".ubiq/glossary/*.md"
     - ".ubiq/overlays/*.md"
     - ".ubiq/catalogs/*.json"

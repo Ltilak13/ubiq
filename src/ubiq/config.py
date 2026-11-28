@@ -148,7 +148,7 @@ class CoverageSpec:
     no_regression: bool
 
 
-SYNC_KINDS = ("goal", "plan")
+SYNC_KINDS = ("goal", "plan", "decision")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 

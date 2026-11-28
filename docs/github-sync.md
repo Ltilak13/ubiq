@@ -10,7 +10,7 @@ sync:
   label_prefix: "priority: " # the sync owns labels that start with this; never empty
   records:
     - glob: "docs/goals/*-goal.md"
-      kind: goal             # goal or plan
+      kind: goal             # goal, plan, or decision
     - glob: "docs/plans/*.md"
       kind: plan
 ```
@@ -37,6 +37,8 @@ pure function that returns actions:
 | --- | --- |
 | `create` | A record that is not done has no issue; open one (with its priority label). |
 | `label` | An open issue's priority label differs from the record; add and remove labels. |
+| `comment` | A decision's question issue has no generated comment; post one. |
+| `comment-update` | The generated comment differs from the record; PATCH it. |
 | `close` | A record that is done still has an open issue; close it with a comment. |
 | `warn` | A record lists a number that is not an issue (a pull request, a typo). |
 | `noop` | The issue already matches. |
@@ -101,11 +103,39 @@ item, with the marker `<!-- ubiq-plan: <plan> <step> -->`.
   sub-issue facts (#121, #122) each add one function to `FACTS` and one handler.
 - A step has no priority, so no label is managed.
 
+## Decision behavior
+
+A `decision` record (see [decision records](spec.md#decision-records)) is mirrored as one
+comment on the issue its `question` names, and closes that issue.
+
+- An `accepted` or `superseded` decision gets exactly one generated comment, which starts
+  with `<!-- ubiq-decision: <name> -->` and ends with `<!-- /ubiq-decision: <name> -->`
+  (`fact_comment` in `FACTS`; the `comment` and `comment-update` handlers).
+  Editing the record changes the comment in place with
+  `PATCH /repos/{owner}/{repo}/issues/comments/{id}`, so `--check` reports an edited record
+  or an edited comment as drift.
+- Only a comment written by `github-actions[bot]` that starts with the marker is read or
+  edited. A person's comment, even one that copies the marker, is never touched and does not
+  count; the sync then posts its own. A second generated comment is a `warn`. A comment made
+  with a personal token has no bot author, so run `--apply` from the workflow.
+- A `superseded` decision's comment says `superseded by <name>` with the replacement's
+  question and date, taken from the record whose `supersedes` names it.
+- An `accepted` or `superseded` decision closes its question issue if it is open. The sync
+  never reopens an issue, and a `proposed` decision mirrors nothing.
+- A `question` that is not an issue (a pull request, a typo) is a `warn`, so
+  `--check` fails.
+- The sync reads the comments of the question issues only.
+
+The map's "Decisions so far" list is generated as Markdown in `docs/decisions/README.md`
+(`ubiq decisions --write`) and kept current by `ubiq check`. Mirroring that block into the
+wayfinder map issue body is follow-up work: the sync has no fact for an issue body yet, and
+the map issue is not a record.
+
 ## What the sync writes
 
 The sync never writes to git: no commits, no branches, no pull requests. It
 reads records (from the working tree, or from a revision with `--ref`, through a
-read-only `git archive`) and writes only to GitHub issues, and only with
+read-only `git archive`) and writes only to GitHub issues and their generated comments, and only with
 `--apply`. Changing a fact means a pull request that edits the record.
 
 ## Drift and pending changes

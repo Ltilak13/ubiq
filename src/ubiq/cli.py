@@ -35,6 +35,7 @@ from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, at, run_checks
 from .config import Config, InvalidConfig, load_config
+from .decisions import cmd_decisions
 from .dependencies import Snapshots, validate_checkout
 from .discovery import discover, init_assets
 from .globs import Glob, GlobError, first_match
@@ -246,6 +247,8 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
         refs.extend(xref_refs(cfg))
         from .step_refs import within_diagnostics
         extra.extend(within_diagnostics(cfg))
+        from .decisions import decision_diagnostics
+        extra.extend(decision_diagnostics(cfg))
     result.refs.extend(refs)
     result.diagnostics.extend(extra)
     result.docs.extend(doc_files)
@@ -1149,6 +1152,11 @@ def main(argv: list[str] | None = None) -> int:
     gh.add_argument("--repo", metavar="OWNER/NAME",
                     help="issue repository (default: sync.repo, then $GITHUB_REPOSITORY)")
     gh.set_defaults(fn=cmd_sync)
+
+    dc = sub.add_parser("decisions", help="print or write the generated list of decision records")
+    dc.add_argument("--root", default=".")
+    dc.add_argument("--write", action="store_true", help="rewrite the block in the decisions README")
+    dc.set_defaults(fn=cmd_decisions)
 
     im = sub.add_parser("impact", help="records a change touches and the callers it affects")
     im.add_argument("--since", required=True, metavar="REV",
