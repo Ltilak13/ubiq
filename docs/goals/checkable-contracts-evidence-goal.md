@@ -15,17 +15,31 @@ criteria:
     support: []
     gap: Criterion needs implementation evidence and a recorded review.
   AC4:
-    assessment: unassessed
-    support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    assessment: partial
+    support:
+    - feature: criterion-scenarios
+      implementation:
+        path: src/ubiq/sync.py
+        anchor: def criterion_met(
+      check:
+        path: tests/test_criterion_scenarios.py
+        anchor: def test_a_failing_scenario_after_its_issue_closed_opens_a_regression(
+    gap: Scenario criteria are reassessed on every run of main, and a failure opens a regression issue. Judged criteria rely on the advisory review freshness report, and conflicting evidence is not modeled.
   AC5:
     assessment: unassessed
     support: []
     gap: Criterion needs implementation evidence and a recorded review.
   AC6:
-    assessment: unassessed
-    support: []
-    gap: Criterion needs implementation evidence and a recorded review.
+    assessment: partial
+    support:
+    - feature: criterion-scenarios
+      implementation:
+        path: src/ubiq/sync.py
+        anchor: def goal_issue_desired(
+      check:
+        path: tests/test_criterion_scenarios.py
+        anchor: def test_the_goal_issue_closes_when_every_criterion_holds(
+    gap: A goal issue closes only when every criterion holds, including assessed_in criteria. Subgoal decomposition through part_of is not aggregated yet.
 ---
 
 # Goal: checkable contracts and evidence
