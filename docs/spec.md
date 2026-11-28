@@ -220,6 +220,14 @@ membership. `ubiq check` reports discrepancies without editing the README.
   `coverage.exclude` glob matches no selected file. Only `ubiq coverage` reports it.
 - `W007` broken link — a relative Markdown link to a missing file or directory that
   is not a [[record]] (see the `link` kind). `references.link.severity` tunes it.
+- `W008` restated value — a [[record]]'s prose repeats the value of one of its own
+  frontmatter fields listed in `restated_values` (`pct: 10` and "10% off"). Each
+  value lives in frontmatter only. Fenced and inline code, links, wiki-links, URLs,
+  HTML, and comments are not prose. Lists, booleans, one-character values, and
+  values that spell the record's own term are not checked. A number inside a longer
+  number (`10` in `100`, `10.5`, `10,000`, `2026-10-01`, or `10:30`) is not a match.
+  Text matches ignore case, and a multi-word value may wrap across lines. Reported
+  once per field, at the first restatement. Off unless `restated_values` lists fields.
 - `W009` graph block — a `<!-- ubiq:graph -->` block (see Mermaid blocks) differs from
   the `ubiq graph --format mermaid` output for its selection, or cannot be read: an
   unknown attribute or kind, a target that names no single record, a missing closing
@@ -235,7 +243,10 @@ membership. `ubiq check` reports discrepancies without editing the README.
   The message names the loop (`requires cycle: a -> b -> a`) at the first record's
   field. Only a top-level annotated field of a frontmatter-bound record is a node,
   because a nested field (a goal criterion's `requires`) has a source that is not a
-  record of the namespace.
+  record of the namespace. A `within` annotation (plan step `requires`) is checked per
+  file and the message gives each step's line.
+- `E017` support drift — a view disagrees with the support records (see Support matrix).
+- `W010` support end of life — a support record is `supported` after its end-of-life date.
 - `W003` blocked invoke — an invoke edge targets a record whose
   `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
 - `W004` install layout — a link that leaves an `edges.install` directory resolves
@@ -741,8 +752,10 @@ pull request number or a list. The schema annotates `requires` with
 keys of a mapping, not records, so `within` makes each value resolve against the keys
 of the file's top-level `steps` mapping instead of the glossary; a qualified name
 resolves against the `steps` of the other file, bound to the same schema, whose `name`
-is `<plan>`. A name that is no step is E006 at the line of the field. These links make no composition edge. `acyclic` is not
-yet enforced here either.
+is `<plan>`. A name that is no step is E006 at the line of the field. These links make no composition edge. `acyclic` is enforced per plan file: a loop
+between steps is E014 (`requires cycle: a (line 9) -> b (line 12) -> a`) at the first
+step. Qualified names to another plan's steps make no edge for this check, so steps of
+different plans never join a loop.
 
 `ubiq sync github` mirrors steps with `sync.records` entries of kind `plan`; see
 [plan behavior](github-sync.md#plan-behavior).
@@ -863,3 +876,40 @@ is skipped; 1 when an enabled policy fails; 2 when the configuration, the
 baseline, or a required measurement is unavailable, or a policy is
 `unavailable`. Diagnostics never change the exit code: `ubiq check` remains the
 validation gate.
+
+## Support matrix
+
+A repository can make what it supports a set of records, so restrictions are data
+instead of prose. `ubiq.yaml` binds them:
+
+```yaml
+support:
+  records: ".ubiq/support/*.md"      # required: one frontmatter record per runtime version
+  pyproject: pyproject.toml          # default
+  workflow: .github/workflows/ci.yml # default
+  job: test                          # the job whose matrix lists Python versions
+  matrix: python-version             # the matrix key
+  table: docs/guide.md               # optional: holds the generated table block
+  features: ["src/ubiq/features/*.md"]  # optional: feature records to check
+```
+
+A record has `name` (`<runtime>-<version>`), `runtime` (`python`), `version`
+(quoted, `"3.10"`), `status` (`supported`, `deprecated`, or `unsupported`), `eol`
+(`YYYY-MM-DD`), and `reason`. Bind `.ubiq/schemas/support.json` to validate them.
+`ubiq check` then reports `E017` when:
+
+- `requires-python` has no `>=` bound equal to the lowest supported or deprecated
+  version, or excludes one of them;
+- an unsupported version sits between supported ones;
+- a supported or deprecated version is missing from the CI matrix (including
+  `include` entries), a matrix version has no record or is unsupported, or any job
+  pins a `python-version` that is unsupported or has no record;
+- the marked block between `<!-- ubiq:support-table -->` and
+  `<!-- /ubiq:support-table -->` in `support.table` differs from the records;
+- a feature record's `runtime.python` is not a specifier of `>=`, `>`, `<=`, `<`,
+  `==`, `!=` clauses, or its `extra` is not in `[project.optional-dependencies]`.
+
+`W010` reports a `supported` record whose `eol` has passed. `ubiq support` prints the
+table and `ubiq support --write` refreshes the block. `ubiq.support.require`
+raises `RuntimeUnmet` (an `ImportError`) with an actionable message when a feature's
+declared `python` or `extra` is not met, and `unmet` returns the message instead.
