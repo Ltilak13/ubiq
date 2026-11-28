@@ -74,7 +74,7 @@ A criterion's `issue` number, like each number in `issues`, names an issue the s
 
 A record's `pr` (one of the [[tracking field]]s) lists its implementing pull requests.
 Each sync reads the open pull requests (`GET repos/{o}/{r}/pulls?state=open`): head
-ref, base ref, and the issues each closes. REST has no closing-issues field, so the
+ref, base ref, and closing references from each PR body. REST has no closing-issues field, so the
 sync reads the body for `Closes #n`, `Fixes #n`, or `Resolves #n` (also `closed`,
 `fixed`, `resolved`, and `owner/repo#n` for this repository). The token needs
 `pull-requests: read`.
@@ -124,10 +124,17 @@ With those records, #145 must target `claude/..-tracking-fields`, the head of #1
 
 ### Derived status: in review
 
-An issue that an open pull request targeting the default branch closes carries the label `status: in review`. The
-label is removed when no open pull request closes the issue (the pull request merged or
-closed, or its `Closes` line was removed), including on a closed issue. It is derived
-on every sync and is the one tracking state not stored in frontmatter.
+An open issue carries `status: in review` when an open pull request implements it.
+Sync recognizes three kinds of evidence:
+
+- A closing reference on a pull request that targets the default branch.
+- A closing reference on a stacked pull request that targets the branch of another
+  open pull request in the repository. GitHub enables automatic closing by keyword
+  when the pull request targets the default branch.
+- A record whose tracked issue and `pr` link it to an open implementing pull request.
+
+Sync removes the label when the issue closes or the last evidence of an open
+implementing pull request disappears. It derives the label on every sync.
 
 - Adding it removes `status: in progress` in the same `label` action. Every other
   `status: ` label (`blocked`, `ready`, and so on) is left alone.
@@ -186,7 +193,10 @@ Drift is GitHub disagreeing with the records on the base branch. On a pull
 request, CI therefore runs `--check --ref origin/<base>` and fails only on that.
 What the pull request itself changes (a criterion set to `met` whose issue is
 still open) is not drift; CI prints the head's plan as "Pending on merge" in the
-step summary, read-only, and never fails on it.
+step summary, read-only, and never fails on it. Both plans read the current
+state of GitHub pull requests. Opening, editing, retargeting, or closing a pull
+request can change review labels between pushes to `main`. Use the manual
+`github-sync` workflow to apply those changes between pushes.
 
 ## Workflow
 

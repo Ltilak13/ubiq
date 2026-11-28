@@ -8,6 +8,7 @@ from ubiq.config import load_config
 from ubiq.sync import (
     GitHub,
     Stack,
+    Tracked,
     closing_numbers,
     cmd_sync,
     desired_from_config,
@@ -38,16 +39,17 @@ STACK = [pull(132, "sync-github", base="main"), pull(135, "tracking-fields", bas
          pull(145, "requires-links", base="tracking-fields")]
 PULLS = {"tracking fields": (135,)}
 EXISTING = [issue(7, marker="AC1")]
+IN_REVIEW = [labelled(7, "status: in review")]
 
 
 def test_a_pr_that_targets_the_required_records_branch_is_noop():
-    found = run_plan(unmet(pr=[145], requires=["tracking-fields"]), EXISTING, STACK, PULLS)
+    found = run_plan(unmet(pr=[145], requires=["tracking-fields"]), IN_REVIEW, STACK, PULLS)
     assert [a["action"] for a in found] == ["noop"]
 
 
 def test_a_wrong_base_is_a_stack_finding_and_drift():
     pulls = [*STACK[:2], pull(145, "requires-links", base="main")]
-    [finding] = run_plan(unmet(pr=[145], requires=["tracking-fields"]), EXISTING, pulls, PULLS)
+    [finding] = run_plan(unmet(pr=[145], requires=["tracking-fields"]), IN_REVIEW, pulls, PULLS)
     assert finding["action"] == "stack"
     assert (finding["pr"], finding["base"], finding["expected"], finding["requires"]) == (
         145, "main", ["tracking-fields"], ["tracking fields"])
@@ -56,7 +58,7 @@ def test_a_wrong_base_is_a_stack_finding_and_drift():
 
 def test_no_claim_when_the_required_record_has_no_open_pr_or_the_pr_is_not_open():
     merged = [pull(145, "requires-links", base="main")]
-    assert [a["action"] for a in run_plan(unmet(pr=[145], requires=["tracking-fields"]), EXISTING, merged, PULLS)] == ["noop"]
+    assert [a["action"] for a in run_plan(unmet(pr=[145], requires=["tracking-fields"]), IN_REVIEW, merged, PULLS)] == ["noop"]
     assert [a["action"] for a in run_plan(unmet(pr=[145], requires=["tracking-fields"]), EXISTING, [], PULLS)] == ["noop"]
 
 
@@ -127,10 +129,18 @@ def test_closing_keywords_in_the_body():
     assert closing_numbers(examples) == (5,)
 
 
-def test_pulls_reads_open_pull_requests_with_head_base_and_closed_issues():
-    page = [{"number": 5, "head": {"ref": "h"}, "base": {"ref": "b"}, "body": "Closes #7"},
-            {"number": 6, "head": {"ref": "i"},
-             "base": {"ref": "h", "repo": {"default_branch": "main"}}, "body": "Closes #8"}]
+def test_pulls_separates_default_branch_closures_from_stacked_review_intent():
+    repo = {"full_name": "o/r", "default_branch": "main"}
+    page = [
+        {"number": 5, "head": {"ref": "h", "repo": repo},
+         "base": {"ref": "main", "repo": repo}, "body": "Closes #7"},
+        {"number": 6, "head": {"ref": "i", "repo": repo},
+         "base": {"ref": "h", "repo": repo}, "body": "Closes #8"},
+        {"number": 7, "head": {"ref": "j", "repo": {"full_name": "fork/r"}},
+         "base": {"ref": "old", "repo": repo}, "body": "Closes #9"},
+        {"number": 8, "head": {"ref": "k", "repo": repo},
+         "base": {"ref": "j", "repo": repo}, "body": "Closes #10"},
+    ]
     seen = []
 
     def transport(method, url, token, payload=None):
@@ -138,9 +148,25 @@ def test_pulls_reads_open_pull_requests_with_head_base_and_closed_issues():
         return page
 
     found = GitHub("o/r", "t", transport, 0).pulls()
-    assert found == [{"number": 5, "head": "h", "base": "b", "closes": (7,)},
-                     {"number": 6, "head": "i", "base": "h", "closes": ()}]
+    assert found == [pull(5, "h", closes=[7]), {**pull(6, "i", base="h"), "closing_intent": (8,)},
+                     pull(7, "j", base="old"), pull(8, "k", base="j")]
     assert seen == [("GET", "https://api.github.com/repos/o/r/pulls?state=open&per_page=100&page=1")]
+    existing = [{**issue(8), "labels": ["status: in review"]}, issue(10)]
+    assert plan([], existing, found) == []
+    [addition] = plan([], [issue(8)], found)
+    assert addition["add"] == ["status: in review"]
+    [removal] = plan([], existing, [found[0]])
+    assert removal["remove"] == ["status: in review"]
+
+
+def test_an_explicit_implementing_pr_counts_without_a_closing_reference():
+    pulls = [pull(30, "child", base="parent")]
+    [criterion_label] = run_plan(unmet(pr=[30]), EXISTING, pulls)
+    assert criterion_label["add"] == ["status: in review"]
+    record = Tracked(8, (30,), ())
+    [record_label] = plan([], [issue(8)], pulls, records=[record])
+    assert record_label["add"] == ["status: in review"]
+    assert plan([], [issue(8)], [], records=[record]) == []
 
 
 def test_apply_has_no_handler_for_a_stack_finding():

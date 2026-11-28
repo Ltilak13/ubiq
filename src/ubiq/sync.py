@@ -12,8 +12,8 @@ issues that track it, return the actions that make GitHub match. A later fact
 (blocked-by link, sub-issue) adds one function there and one handler in
 `GitHub.handlers`; the matching, drift, and CLI code do not change. `fact_priority`
 is the model: it mirrors `priority` as one `<sync.label_prefix>Pn` label. Facts that
-need the open pull requests are in `PR_FACTS`: `fact_in_review` derives the
-`status: in review` label and `fact_stack` reports a pull request whose base is not its
+need the open pull requests include `fact_in_review`, which derives the
+`status: in review` label, and `fact_stack`, which reports a pull request whose base is not its
 required record's branch (a `stack` action; the sync reports and never retargets).
 
 Current behavior, from the goal-issue script this generalizes: the sync creates
@@ -427,8 +427,8 @@ def stack_findings(stack: Stack, pulls: Mapping[int, Pull]) -> list[Action]:
 
 
 def fact_in_review(ident: Mapping[str, str], tracked: Sequence[int], issues: Mapping[int, Issue],
-                   pulls: Mapping[int, Pull]) -> list[Action]:
-    """An issue carries `status: in review` exactly while an open pull request closes it.
+                   in_review: set[int]) -> list[Action]:
+    """An open issue carries `status: in review` while an implementing pull request is open.
 
     The label is derived, so it is stored nowhere in the record. Adding it removes
     `status: in progress`; every other `status: ` label is left alone. A closed issue
@@ -441,7 +441,7 @@ def fact_in_review(ident: Mapping[str, str], tracked: Sequence[int], issues: Map
             continue
         names = _label_names(issue)
         has = any(x.casefold() == IN_REVIEW for x in names)
-        reviewing = issue.get('state') == 'open' and any(n in p['closes'] for p in pulls.values())
+        reviewing = issue.get('state') == 'open' and n in in_review
         if reviewing and not has:
             remove = [x for x in names if x.casefold() == IN_PROGRESS]
             actions.append({'action': 'label', **ident, 'issue': n, 'add': [IN_REVIEW], 'remove': remove})
@@ -466,12 +466,14 @@ FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action
 
 
 def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
-         pulls: Sequence[Pull] = (), stacks: Iterable[Stack] = ()) -> list[Action]:
+         pulls: Sequence[Pull] = (), stacks: Iterable[Stack] = (),
+         records: Iterable[Tracked] = ()) -> list[Action]:
     """Return create, close, label, stack, noop, and warn actions for every desired item.
 
     `snapshot` holds dicts with `number`, `state`, `body`, and `user.login`. `pulls`
-    holds the open pull requests (`number`, `head`, `base`, `closes`); `stacks` are
-    further records whose pull requests are checked, though they mirror no issue.
+    holds the open pull requests (`number`, `head`, `base`, `closes`, optional
+    `closing_intent` for stacked pull requests). `stacks` are further records whose
+    pull requests are checked. `records` supplies explicit issue/PR pairings.
     Markers count only in issues opened by `BOT`. Issues that are neither listed
     by a record nor marked by `BOT` only receive derived status updates. A listed number that is not an
     existing issue (a pull request, a typo) gets a `warn`. Applying the result
@@ -480,16 +482,25 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
     by_number = {i['number']: i for i in snapshot}
     by_marker = _marked(snapshot)
     open_pulls = {p['number']: p for p in pulls}
-    actions: list[Action] = []
-    tracked_issues: set[int] = set()
+    in_review = {n for pull in open_pulls.values()
+                 for source in ('closes', 'closing_intent') for n in pull.get(source, ())}
+    in_review.update(record.issue for record in records
+                     if record.issue is not None and any(pr in open_pulls for pr in record.prs))
+    items = []
     for item in desired:
         marked = [i['number'] for i in by_marker.get(item.marker, [])]
         tracked = list(dict.fromkeys([*item.listed, *marked]))
+        items.append((item, tracked))
+        if any(pr in open_pulls for pr in item.prs):
+            in_review.update(tracked)
+    actions: list[Action] = []
+    tracked_issues: set[int] = set()
+    for item, tracked in items:
         tracked_issues.update(tracked)
         actions += [{'action': 'warn', **item.ident, 'issue': n, 'reason': 'listed number is not an issue'}
                     for n in item.listed if n not in by_number]
         found = [a for fact in FACTS for a in fact(item, tracked, by_number)]
-        found += fact_in_review(item.ident, tracked, by_number, open_pulls)
+        found += fact_in_review(item.ident, tracked, by_number, in_review)
         found += [a for pr_fact in PR_FACTS for a in pr_fact(item, tracked, by_number, open_pulls)]
         actions += found
         if not found:
@@ -497,7 +508,7 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
             actions.append({'action': 'noop', **item.ident, 'reason': reason, 'issues': tracked})
     untracked = [n for n in by_number if n not in tracked_issues]
     if untracked:
-        actions += fact_in_review({}, untracked, by_number, open_pulls)
+        actions += fact_in_review({}, untracked, by_number, in_review)
     for stack in stacks:
         actions += stack_findings(stack, open_pulls)
     return actions
@@ -549,21 +560,34 @@ class GitHub:
             page += 1
 
     def pulls(self) -> list[Pull]:
-        """Every open pull request: number, head branch, base branch, and the issues it closes."""
+        """Every open pull request, with separate closing and stacked-review references."""
         found: list[Pull] = []
+        same_repo_heads: set[str] = set()
+        pending_intent: list[tuple[dict[str, Any], tuple[int, ...]]] = []
         page = 1
         while True:
             batch = self._call('GET', f'https://api.github.com/repos/{self.repo}/pulls'
                                       f'?state=open&per_page=100&page={page}')
             for pull in batch:
+                head = pull['head']['ref']
                 base = pull['base']['ref']
+                head_repo = (pull['head'].get('repo') or {}).get('full_name', '')
+                if head_repo.casefold() == self.repo.casefold():
+                    same_repo_heads.add(head)
                 default = (pull['base'].get('repo') or {}).get('default_branch', base)
-                closes = closing_numbers(pull.get('body'), self.repo) if base == default else ()
-                found.append({'number': pull['number'], 'head': pull['head']['ref'],
-                              'base': base, 'closes': closes})
+                references = closing_numbers(pull.get('body'), self.repo)
+                entry: dict[str, Any] = {'number': pull['number'], 'head': head, 'base': base,
+                                         'closes': references if base == default else ()}
+                found.append(entry)
+                if base != default and references:
+                    pending_intent.append((entry, references))
             if len(batch) < 100:
-                return found
+                break
             page += 1
+        for entry, references in pending_intent:
+            if entry['base'] in same_repo_heads:
+                entry['closing_intent'] = references
+        return found
 
     def _with_links(self, issue: dict) -> dict:
         """`issue` plus `blocked_by`: the issues that block it, read only when it has any."""
@@ -734,7 +758,7 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
     try:
         records = tracked_records(cfg)
         desired = desired_from_config(cfg, _head(root, getattr(args, 'ref', None)), records)
-        actions = plan(desired, github.snapshot(), github.pulls(), record_stacks(records))
+        actions = plan(desired, github.snapshot(), github.pulls(), record_stacks(records), records.values())
     except SyncError as exc:
         print(f'error: {exc}', file=sys.stderr)
         return 2
