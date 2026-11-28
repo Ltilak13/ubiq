@@ -76,6 +76,9 @@ DEFAULT_CONFIG: dict = {
     # Terms whose plain mentions are ordinary words here (`pr` vs "PR"), by name
     # or qualified name. Explicit references to them are still checked.
     "unlinked_except": [],
+    # W008: frontmatter fields whose values a record's own prose must not repeat
+    # (`pct: 10` with "10%" in the body). Off (empty) by default.
+    "restated_values": [],
     # Markup that `ubiq candidates` reads as possible vocabulary: `code` spans
     # that are hyphenated identifiers, and `bold` names for repos that bold
     # their terms. Bold is off by default because most bold is emphasis.
@@ -113,6 +116,12 @@ DEFAULT_CONFIG: dict = {
     # create: which open goal criteria get a new issue: `always` (default), or
     # `prioritized`, only those whose criterion or goal sets a `priority`.
     "sync": None,
+    # Support matrix as records (E017, W010, `ubiq support`). `records` globs one
+    # record per runtime version; `pyproject` and `workflow` (with its test `job`
+    # and matrix key `matrix`) are the views checked against them; `table` is the
+    # document holding the generated support table; `features` optionally globs
+    # feature records whose `runtime` and `extra` fields are checked.
+    "support": None,
 }
 
 
@@ -176,6 +185,17 @@ SYNC_CREATE = ("always", "prioritized")
 
 
 @dataclass(frozen=True)
+class SupportSpec:
+    records: Glob
+    pyproject: str
+    workflow: str
+    job: str
+    matrix: str
+    table: str | None
+    features: tuple[Glob, ...]
+
+
+@dataclass(frozen=True)
 class Config:
     root: Path
     glossary: tuple[GlossaryRule, ...]
@@ -193,12 +213,14 @@ class Config:
     schemas: tuple[SchemaSpec, ...]
     policies: Policies
     unlinked_except: tuple[str, ...]
+    restated_values: tuple[str, ...]
     candidate_shapes: Shape
     edges: EdgeConfig
     coverage: CoverageSpec | None = None
     readme_field: str = "readme"
     sync: SyncSpec | None = None
     symbol_coverage: tuple[Glob, ...] = ()
+    support: SupportSpec | None = None
 
     @property
     def part_rules(self) -> tuple[GlossaryRule, ...]:
@@ -388,6 +410,31 @@ def _coverage(raw, root: Path) -> CoverageSpec | None:
                         tuple(exclusions), floor, no_regression)
 
 
+def _support(raw, root: Path) -> SupportSpec | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise InvalidConfig("support: expected a mapping")
+    _known(raw, "support", ("records", "pyproject", "workflow", "job", "matrix", "table",
+                            "features"))
+    if "records" not in raw:
+        raise InvalidConfig("support.records: give the glob of support records")
+    table = raw.get("table")
+    if table is not None:
+        table = _relative(_string(table, "support.table"), "support.table")
+    features = _strings(raw.get("features", []), "support.features", scalar=True)
+    return SupportSpec(
+        Glob.parse(_relative(_string(raw["records"], "support.records"), "support.records"), root),
+        _relative(_string(raw.get("pyproject", "pyproject.toml"), "support.pyproject"),
+                  "support.pyproject"),
+        _relative(_string(raw.get("workflow", ".github/workflows/ci.yml"), "support.workflow"),
+                  "support.workflow"),
+        _string(raw.get("job", "test"), "support.job"),
+        _string(raw.get("matrix", "python-version"), "support.matrix"),
+        table,
+        tuple(Glob.parse(_relative(f, "support.features"), root) for f in features))
+
+
 def _strings(value, field: str, scalar: bool = False) -> list[str]:
     values = [value] if scalar and isinstance(value, str) else value
     if not isinstance(values, list) or any(
@@ -479,7 +526,7 @@ def load_config(root: Path) -> Config:
         cfg.update({k: v for k, v in user.items() if v is not None})
 
     for key in ("docs", "ignore", "id_patterns", "ref_fields", "external_id_patterns",
-                "unlinked_except"):
+                "unlinked_except", "restated_values"):
         cfg[key] = _strings(cfg[key], key)
     for key in ("term_field", "overlays", "historical", "candidate_shapes"):
         cfg[key] = _strings(cfg[key], key, scalar=True)
@@ -593,12 +640,14 @@ def load_config(root: Path) -> Config:
         schemas=tuple(schemas),
         policies=_policies(cfg["references"], cfg["unlinked_mentions"]),
         unlinked_except=tuple(cfg["unlinked_except"]),
+        restated_values=tuple(cfg["restated_values"]),
         candidate_shapes=shapes,
         edges=_edges(cfg["edges"], tuple(cfg["ref_fields"]), root),
         coverage=_coverage(cfg["coverage"], root),
         readme_field=_string(cfg["readme_field"], "readme_field"),
         sync=_sync(cfg["sync"], root),
         symbol_coverage=globs(symbol_coverage),
+        support=_support(cfg["support"], root),
     )
     broken = broken_guarantees(config)
     if broken:

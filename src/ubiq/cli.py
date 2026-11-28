@@ -33,7 +33,7 @@ import yaml
 from . import __version__, coverage, mermaid, query, readmes, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
-from .check import Diagnostic, at, run_checks
+from .check import Diagnostic, at, restated_values, run_checks
 from .config import Config, InvalidConfig, load_config
 from .dependencies import Snapshots, validate_checkout
 from .discovery import discover, init_assets
@@ -344,6 +344,7 @@ overlays:
 #     except: [plugin]
 # unlinked_mentions: warn     # W002: a section mentions a term but never links it
 # unlinked_except: [pr]       # terms that are ordinary words in this repo
+# restated_values: [pct]      # W008: record prose repeats one of these frontmatter values
 # references:                 # per-kind overrides: severity error|warn|off, scans
 #   id: {severity: warn}      # report unknown ids without failing the check
 #   wiki: {scans: [comment]}  # regions: inline_code, address, comment
@@ -505,6 +506,7 @@ def _check_build(result: Build) -> list[Diagnostic]:
     diags = result.diagnostics + run_checks(
         glossary, refs, cfg.external_id_patterns,
         skip_unlinked=skip_mentions, unlinked_except=cfg.unlinked_except, lenient=cfg.lenient)
+    diags.extend(restated_values(glossary, cfg.restated_values, cfg.lenient))
     if cfg.schemas:
         from .schemas import check_schemas
         diags.extend(check_schemas(cfg, glossary))
@@ -513,6 +515,9 @@ def _check_build(result: Build) -> list[Diagnostic]:
     if cfg.symbol_coverage:
         from .symbols import load_symbols
         diags.extend(load_symbols(cfg).diagnostics)
+    if cfg.support:
+        from .support_check import check_support
+        diags.extend(check_support(cfg))
     live = [path for path in result.docs if path not in result.historical]
     diags.extend(check_edges(glossary, refs, cfg.edges, root, live, layout))
     return diags
@@ -585,6 +590,38 @@ def _resolve_one(glossary, query: str, others: Sequence[Repository] = ()):
         found = ", ".join(t.qualified for t in matches) or "no record"
         raise LookupError(f"{query!r} must name one record ({found})")
     return matches[0]
+
+
+def cmd_support(args) -> int:
+    from .support_check import load_entries, render_table, write_table
+    root = Path(args.root).resolve()
+    try:
+        cfg = load_config(root)
+    except InvalidConfig as exc:
+        print(f"E008 invalid configuration: {exc}", file=sys.stderr)
+        return 1
+    if cfg.support is None:
+        print("no `support:` section in ubiq.yaml; see docs/spec.md#support-matrix",
+              file=sys.stderr)
+        return 2
+    entries, problems = load_entries(cfg, cfg.support)
+    if problems:
+        for d in problems:
+            print(d.render(), file=sys.stderr)
+        return 1
+    if not args.write:
+        print(render_table(entries))
+        return 0
+    if cfg.support.table is None:
+        print("support.table is not set; nothing to write", file=sys.stderr)
+        return 2
+    try:
+        changed = write_table(root / cfg.support.table, entries)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"{'updated' if changed else 'unchanged'}: {cfg.support.table}")
+    return 0
 
 
 def _select_edges(built: Build, target, kinds, callers: bool, depth):
@@ -1225,6 +1262,11 @@ def main(argv: list[str] | None = None) -> int:
     out.add_argument("--json", action="store_true")
     out.add_argument("--markdown", action="store_true", help="a PR-ready summary")
     cp.set_defaults(fn=cmd_compare)
+
+    sp = sub.add_parser("support", help="print or refresh the support table generated from support records")
+    sp.add_argument("--root", default=".")
+    sp.add_argument("--write", action="store_true", help="rewrite the marked table in support.table")
+    sp.set_defaults(fn=cmd_support)
 
     cv = sub.add_parser("coverage", help="how much selected repository content has typed metadata")
     cv.add_argument("--root", default=".")
