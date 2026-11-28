@@ -21,26 +21,21 @@ jobs:
       issues: read
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: python -m pip install -e .
-      - name: Plan issue changes for the changed goals
+      - name: Plan issue changes for every goal
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
           FENCE: "```"
-          BASE: origin/${{ github.base_ref }}
         run: |
-          mapfile -t goals < <(git diff --name-only --diff-filter=d "$BASE...HEAD" -- 'docs/goals/*-goal.md')
-          [ ${#goals[@]} -gt 0 ] || exit 0
-          python scripts/goal_issues.py --dry-run "${goals[@]}" > "$RUNNER_TEMP/plan.json"
+          python scripts/goal_issues.py --dry-run > "$RUNNER_TEMP/plan.json"
           { echo "${FENCE}json"; cat "$RUNNER_TEMP/plan.json"; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
 
   apply:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency: goal-issues
@@ -49,27 +44,19 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: python -m pip install -e .
-      # A push syncs the goals it changed. A manual run syncs every goal.
+      # Every run syncs every goal. The sync is idempotent, so a run that the
+      # concurrency group cancels loses nothing: the next run covers it.
       - name: Create and close goal issues
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
           FENCE: "```"
-          BEFORE: ${{ github.event.before }}
-          EVENT: ${{ github.event_name }}
         run: |
-          goals=()
-          if [ "$EVENT" = push ]; then
-            # A force-push can leave the previous main commit unreachable.
-            git cat-file -e "$BEFORE^{commit}" 2>/dev/null || BEFORE=HEAD~1
-            mapfile -t goals < <(git diff --name-only --diff-filter=d "$BEFORE" HEAD -- 'docs/goals/*-goal.md')
-            [ ${#goals[@]} -gt 0 ] || exit 0
-          fi
-          python scripts/goal_issues.py --apply "${goals[@]}" > "$RUNNER_TEMP/plan.json"
+          status=0
+          python scripts/goal_issues.py --apply > "$RUNNER_TEMP/plan.json" || status=$?
           { echo "${FENCE}json"; cat "$RUNNER_TEMP/plan.json"; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"
