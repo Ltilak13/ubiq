@@ -52,6 +52,7 @@ from .graph import (
 )
 from .kinds import KINDS
 from .overlap import find_overlap
+from .plan import cmd_plan
 from .records import (
     ConflictingGlossary,
     Glossary,
@@ -1113,6 +1114,16 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--depth", type=_positive, default=None,
                    help="stop after this many hops from the target (default: no limit)")
     g.set_defaults(fn=cmd_graph)
+
+    pl = sub.add_parser("plan", help="list ubiq's features in adoption order, or the next ones to adopt")
+    pl.add_argument("--root", default=".")
+    pl.add_argument("--json", action="store_true")
+    pl.add_argument("--next", action="store_true",
+                    help="only features not yet used whose requirements are met")
+    pl.add_argument("--used", action="append", metavar="FEATURE",
+                    help="count this feature as used (repeat); ubiq.yaml is read as well")
+    pl.add_argument("--features", metavar="DIR", help="feature records (default: ubiq's own)")
+    pl.set_defaults(fn=cmd_plan)
 
     im = sub.add_parser("impact", help="records a change touches and the callers it affects")
     im.add_argument("--since", required=True, metavar="REV",

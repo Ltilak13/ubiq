@@ -262,6 +262,7 @@ ubiq candidates --json --min-files 3
 ubiq graph skill:ship                  # invoke, include, and route edges from a record
 ubiq graph part:checkout --callers     # who reuses a shared part
 ubiq overlap --unit line               # prose that several records repeat
+ubiq plan --next                       # ubiq features to adopt next (docs/features.md)
 ubiq impact --since main              # changed records and the callers they affect
 ubiq compare --since main --markdown  # new and resolved findings for a PR comment
 ubiq coverage                          # how many selected files have typed metadata
