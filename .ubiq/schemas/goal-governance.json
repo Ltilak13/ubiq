@@ -267,6 +267,30 @@
         {
           "source": "src/ubiq/features/criterion-scenarios.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/decisions/0001-rule-language.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/decisions/0002-gherkin-binding.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/decisions/0003-symbol-records.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/decisions/0004-feature-interactions.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "docs/decisions/0005-jsonpath-selection.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/decision-records.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         }
       ]
     },

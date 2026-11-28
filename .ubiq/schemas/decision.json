@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Decision frontmatter",
+  "description": "A decision record. `question` is the number of the issue the decision answers; `ubiq sync github` checks that the issue exists.",
+  "type": "object",
+  "required": ["name", "question", "status", "decided", "by", "options", "outcome"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "question": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["proposed", "accepted", "superseded"]},
+    "decided": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "by": {"type": "string", "pattern": "\\S"},
+    "options": {"type": "array", "minItems": 1, "uniqueItems": true,
+                "items": {"type": "string", "pattern": "\\S"}},
+    "outcome": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "\\S"}},
+    "closes": {"type": "boolean"},
+    "supersedes": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                   "x-ubiq-ref": {"ns": "decision", "edge": "supersedes", "single": true}}
+  },
+  "additionalProperties": false
+}

@@ -105,6 +105,8 @@ to files bound with `format: frontmatter`. `ref_fields` keeps working; a top-lev
 field that `ref_fields` already names is resolved once, by `ref_fields`.
 With `"within": "steps"` the values are instead keys of the file's top-level `steps`
 mapping (plan step `requires`); no edge is made.
+Decision records (`docs/decisions/[0-9]*.md`, `.ubiq/schemas/decision.json`) use it for
+`supersedes`; `ubiq decisions --write` regenerates the index list that `ubiq check` verifies.
 
 ## Errors and maintenance
 
