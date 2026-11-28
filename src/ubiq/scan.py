@@ -10,6 +10,7 @@ each kind's policy which document regions it may match in.
   id        — matches of configured id_patterns             (E004)
   field     — values of configured ref_fields in frontmatter (E006)
   catalog   — values from a JSON/YAML inventory (catalog.py) (E006)
+  value     — link whose #fragment names a frontmatter field   (E013)
   mention   — plain-prose occurrence of a known name        (never an error; W002)
   link      — relative link to a missing file, not a record  (W007)
 
@@ -22,7 +23,9 @@ from __future__ import annotations
 import os
 import re
 from bisect import bisect_left, bisect_right
+from collections import Counter
 from dataclasses import dataclass
+from functools import lru_cache
 from html import unescape
 from html.entities import html5
 from pathlib import Path
@@ -36,10 +39,13 @@ from .kinds import Context, Policy
 from .records import (
     FRONTMATTER_RE,
     Glossary,
+    InvalidRecord,
     Term,
     _parse_lenient,
     load_vocabulary_yaml,
     normalize,
+    shared_fields,
+    stamp,
 )
 
 if TYPE_CHECKING:
@@ -221,13 +227,15 @@ class Ref:
     ns: str | None
     file: Path
     line: int
-    target: str = ""  # the target as written: a name, an id, or a field value
+    target: str = ""  # as written: a name, an id, a field value, or a value link's label
     historical: bool = False  # historical docs: unresolved refs do not fail
     destination: Path | None = None  # Markdown links resolve by file, not label
     section: int = 0  # ATX headings seen at or before this line (0 = before the first)
     heading: bool = False  # the reference sits on a heading line
     linked: bool = False  # mention inside a non-vocabulary link label (author linked it)
     edge: str = ""  # edge name from an `x-ubiq-ref` schema annotation; empty for other refs
+    field: str = ""  # value refs: the frontmatter field the fragment names
+    readme_entry: bool = False  # value refs inside a managed README section
 
     @property
     def kind(self) -> str:
@@ -236,6 +244,59 @@ class Ref:
     def resolve(self, glossary: Glossary) -> list[Term]:
         """Resolve consistently for checks, usage tracking, and refs queries."""
         return self.policy.resolve(glossary, self)
+
+
+def field_fragment(file: Path, fragment: str, glossary: Glossary | None = None,
+                   lenient: bool = False) -> bool:
+    """Whether a link fragment into `file` names a frontmatter field: the file has
+    frontmatter and the fragment names none of its headings or HTML anchors.
+    A heading wins over a same-named field; a fragment naming neither is a
+    misspelled field."""
+    try:
+        fields = shared_fields(file, glossary, lenient)
+    except InvalidRecord:
+        return False
+    return bool(fields) and fragment.lower() not in _slugs(file)
+
+
+def value_of(glossary: Glossary, ref: Ref, lenient: bool = False) -> str:
+    """The text of the frontmatter field a `value` ref names, for checks and renderers.
+
+    A list of strings reads as its items joined by ", ". Raises LookupError with
+    the reason when the field is absent, null, or not text. Another repository's record
+    reads that repository's overlays.
+    """
+    path = ref.destination
+    assert path is not None, "value refs always have a destination"
+    owner = next((g for g in glossary.external.values() if path in g.by_file), glossary)
+    where = Path(os.path.relpath(path, ref.file.resolve().parent)).as_posix()
+    try:
+        fields = shared_fields(path, owner, lenient)
+    except InvalidRecord as exc:
+        raise LookupError(f"{where}: {exc}") from None
+    if ref.field not in fields:
+        raise LookupError(f"no field or heading '{ref.field}' in {where}")
+    value = fields[ref.field]
+    if value is None:
+        raise LookupError(f"{where} has no value for field '{ref.field}'")
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return ", ".join(value)
+    raise LookupError(f"field '{ref.field}' in {where} is not text or a list of "
+                      "text; link a scalar field")
+
+
+def label_text(label: str) -> str:
+    """A link label as plain text: one enclosing code span is literal, one
+    enclosing emphasis is dropped, other backslash escapes are undone, and
+    whitespace runs read as one space."""
+    text = label.strip()
+    emphasis = re.fullmatch(r"(\*{1,3}|_{1,3})(?=\S)(.+?)(?<=\S)\1", text, re.DOTALL)
+    text = emphasis[2] if emphasis else text
+    code = re.fullmatch(r"(`+)(.*?)\1", text, re.DOTALL)
+    text = code[2] if code else MD_ESCAPE_RE.sub(r"\1", text)
+    return " ".join(text.split())
 
 
 def _blank(text: str) -> str:
@@ -411,6 +472,82 @@ def _interpret_markdown(text: str) -> _Markdown:
     return _Markdown(prose, delimiters, links, addresses, comments)
 
 
+def _readme_sections(text: str, comments: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Pairs of standalone README markers, outside frontmatter, code, and other comments."""
+    sections: list[tuple[int, int]] = []
+    opened: int | None = None
+    for start, end in comments:
+        marker = text[start:end]
+        if marker not in ("<!-- ubiq:readme:start -->", "<!-- ubiq:readme:end -->"):
+            continue
+        before = text[text.rfind("\n", 0, start) + 1:start]
+        line_end = text.find("\n", end)
+        after = text[end:line_end if line_end != -1 else len(text)]
+        if before.strip() or after.strip() or len(before) > 3 or "\t" in before:
+            continue
+        if marker == "<!-- ubiq:readme:start -->":
+            opened = end
+        elif opened is not None:
+            sections.append((opened, start))
+            opened = None
+    return sections
+
+
+# `<a id="x">` and `<a name="x">` anchors, which a fragment may name like a heading.
+HTML_ANCHOR_RE = re.compile(r"<[A-Za-z][^>]*?\s(?:id|name)\s*=\s*[\"']?([^\"'\s>]+)")
+SETEXT_RE = re.compile(r" {0,3}(?:=+|-+)[ \t]*$")
+# Block quote and list markers may open the line before an ATX heading.
+BLOCK_PREFIX = r" {0,3}(?:(?:>|[-+*]|\d{1,9}[.)])[ \t]+ {0,3})*"
+ATX_RE = re.compile(BLOCK_PREFIX + r"#{1,6}(?:[ \t]+(.*?))?[ \t]*#*[ \t]*$")
+CONTAINER_RE = re.compile(r" {0,3}(?:>|[-+*][ \t]|\d{1,9}[.)][ \t])")
+EMPHASIS_RE = re.compile(r"(?<![\w*])(\*{1,3}|_{1,3})(?=\S)(.+?)(?<=\S)\1(?![\w*])")
+
+
+def _slugs(path: Path) -> frozenset[str]:
+    """GitHub-style anchors for the ATX and setext headings of a Markdown file,
+    plus the HTML `id`/`name` anchors in its prose. Cached per file version."""
+    return _cached_slugs(path, stamp(path))
+
+
+def _slug(heading: str) -> str:
+    """The GitHub anchor for heading text, without the duplicate suffix."""
+    text = re.sub(r"<[^>]*>", "", unescape(heading))
+    text = re.sub(r"!?\[([^\]]*)\](?:\([^)]*\)|\[[^\]]*\])?", r"\1", text)
+    text = EMPHASIS_RE.sub(r"\2", text).strip().lower()
+    return re.sub(r"[^\w\- ]", "", text).replace(" ", "-")
+
+
+@lru_cache(maxsize=4096)
+def _cached_slugs(path: Path, version) -> frozenset[str]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return frozenset()
+    document = _interpret_markdown(text)
+    # Comments and code are not rendered as anchors.
+    slugs = {a.lower() for a in HTML_ANCHOR_RE.findall(_mask(document.prose, document.comments))}
+    fm = FRONTMATTER_RE.match(text)
+    if fm:
+        text = _blank(fm.group()) + text[fm.end():]
+    seen: Counter[str] = Counter()
+    paragraph: list[str] = []
+    for line in _blank_fences(text).splitlines():
+        m = ATX_RE.match(line)
+        heading = (m.group(1) or "") if m else None
+        if heading is None and paragraph and SETEXT_RE.match(line):
+            heading = " ".join(paragraph)
+        if heading is not None or not line.strip() or CONTAINER_RE.match(line):
+            paragraph = []
+        else:
+            paragraph.append(line.strip())
+        if heading is None:
+            continue
+        slug = _slug(heading)
+        slugs.add(f"{slug}-{seen[slug]}" if seen[slug] else slug)
+        seen[slug] += 1
+    return frozenset(slugs)
+
+
 def _line_index(text: str):
     """Return pos -> one-based line number. Masked copies keep every newline."""
     newlines = [m.start() for m in re.finditer("\n", text)]
@@ -504,8 +641,28 @@ def scan_file(path: Path, glossary: Glossary, cfg: Config,
     markdown, link = policies["markdown"], policies["link"]
     _, admits = view(markdown, [])
     _, link_admits = view(link, [])
+    value = policies["value"]
+    _, value_admits = view(value, [])
+    readme_entry = _covers(_readme_sections(text, document.comments))
+    in_comment = _covers(document.comments)
     link_spans: list[tuple[int, int]] = []
     for start, end, spec in document.links:
+        try:
+            url = urlsplit(spec)
+        except ValueError:  # `http://[oops`: not a local link, so not a value ref
+            url = urlsplit("")
+        fragment = unquote(url.fragment)
+        if fragment and value_admits(start) and not (url.scheme or url.netloc or url.query):
+            # A heading wins over a same-named field; in a file with
+            # frontmatter, a fragment naming neither is a misspelled field.
+            file = path if not url.path else _doc_link_path(path, spec, cfg.root)
+            if (file is not None and file.is_file()
+                    and field_fragment(file, fragment, glossary, cfg.lenient)):
+                found = MD_LINK_RE.match(document.delimiters, start)
+                label = label_text(found["label"]) if found else ""
+                refs.append(Ref(value, text[start:end], "", None, path, line_of(start),
+                                target=label, field=fragment, destination=file.resolve(),
+                                readme_entry=readme_entry(start) and not in_comment(start)))
         destination = _doc_link_path(path, spec, cfg.root)
         if destination is not None and (
                 destination.resolve() in glossary.by_file

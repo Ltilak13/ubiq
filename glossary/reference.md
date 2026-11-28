@@ -8,7 +8,9 @@ id: UB-4
 
 A use of a [[term]] in a document. Explicit references (`[[term]]`, `[[ns:term]]`,
 configured [[delimiter]]s), id references, `ref_fields`, and [[catalog]] entries
-must resolve to a [[glossary record]] or the check fails. Wiki-links that look
+must resolve to a [[glossary record]] or the check fails. A link whose fragment
+names a frontmatter field is a field value reference: its label must equal the
+field's value. Wiki-links that look
 like file paths (`[[GLOSSARY.md]]`, `[[dir/x]]`) are not term references unless
 that name is a defined term. If the target exists in-repo as markdown, it is
 pulled into the scan (`docs:` globs are roots; links are followed). A missing

@@ -90,10 +90,39 @@ jobs:
           git cat-file -e "$BASE^{commit}" 2>/dev/null || BASE=HEAD~1
           ubiq coverage --since "$BASE" --markdown | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # Read-only: compares the records with GitHub's issues and writes nothing.
-  # Drift is GitHub disagreeing with the base branch, so the check reads the
-  # records at the base. What this pull request changes is only previewed.
-  # Without a token (some fork pull requests) the command skips and says so.
+  # Use the pull request head to show pending changes in its own runner.
+  sync-preview:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Preview what merging will change
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FENCE: "```"
+        run: |
+          {
+            echo "Pending on merge:"
+            echo "${FENCE}json"
+            GITHUB_SHA="$HEAD_SHA" python -m ubiq.cli sync github --dry-run || true
+            echo "$FENCE"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Compare GitHub's issues with the base revision's code and records.
   sync-check:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -104,24 +133,50 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # the check reads the records at the base revision
+          fetch-depth: 0  # the PR merge commit includes the event's base revision
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -e .
-      - name: Preview what merging will change
+      - name: Prepare the base worktree
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          FENCE: "```"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          # Read-only and never fails: a pending change is not drift.
-          { echo "Pending on merge:"; echo "${FENCE}json"; ubiq sync github --dry-run || true; echo "$FENCE"; } | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Check that GitHub issues match the base branch
+          BASE_TREE="$RUNNER_TEMP/ubiq-sync-base"
+          git worktree add --detach "$BASE_TREE" "$BASE_SHA"
+          cd "$BASE_TREE"
+          if [[ -f src/ubiq/sync.py || -f scripts/goal_issues.py ]]; then
+            python -m pip install -e .
+          fi
+      - name: Check that GitHub issues match the base revision
+        shell: bash
+        working-directory: ${{ runner.temp }}/ubiq-sync-base
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          BASE: origin/${{ github.base_ref }}
-        run: ubiq sync github --check --ref "$BASE"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [[ ! -f src/ubiq/sync.py && ! -f scripts/goal_issues.py ]]; then
+            echo "skipped: the base revision does not mirror GitHub issues"
+            exit 0
+          fi
+          if [[ -z "$GITHUB_TOKEN" ]]; then
+            echo "skipped: the drift check needs GITHUB_TOKEN to read issues"
+            exit 0
+          fi
+          export GITHUB_SHA="$BASE_SHA"
+          export PYTHONPATH="$PWD/src"
+          if [[ -f src/ubiq/sync.py ]]; then
+            # HEAD is the base checkout. It can also have no configured mirror.
+            python -m ubiq.cli sync github --check --ref HEAD
+          else
+            DRIFT=$(python scripts/goal_issues.py --dry-run | jq -e 'map(select(.action != "noop"))')
+            printf '%s\n' "$DRIFT"
+            if [[ "$DRIFT" != "[]" ]]; then
+              echo "drift: GitHub issues differ from the base revision" >&2
+              exit 1
+            fi
+          fi
 
   package:
     runs-on: ubuntu-latest

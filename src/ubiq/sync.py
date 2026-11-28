@@ -437,10 +437,9 @@ def revision_root(root: Path, rev: str) -> Iterator[Path]:
 def cmd_sync(args, transport: Transport = urllib_transport, pause: float = 1.0) -> int:
     """`ubiq sync github`: print the plan (default), `--apply` it, or `--check` for drift.
 
-    `--ref REV` reads the records and `ubiq.yaml` as they are at REV instead of the
-    working tree. A pull request checks drift against its base this way: drift is
-    GitHub disagreeing with the base, and what the pull request itself changes is
-    pending on merge, not drift.
+    `--ref REV` reads the records and `ubiq.yaml` at REV using the running
+    version of ubiq. Pull request CI runs the base revision's version of ubiq
+    from a worktree at that revision.
     """
     root = Path(args.root).resolve()
     ref = getattr(args, 'ref', None)
