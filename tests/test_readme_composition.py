@@ -99,3 +99,25 @@ def test_historical_readmes_are_exempt_from_membership(tmp_path, capsys):
     status, diags = check(tmp_path, capsys)
     assert status == 0, diags
     assert membership(diags) == []
+
+
+def test_collapsed_readme_section_uses_the_same_checks(tmp_path, capsys):
+    record = "---\nterm: feature\nreadme: root\nsummary: A feature.\n---\n"
+    collapsed = "<details>\n<summary>Feature index</summary>\n\n" + START
+    links = "- [A feature.](glossary/feature.md#summary)\n"
+    after = END + "\n</details>\n"
+    make_repo(tmp_path, {"feature.md": record}, {"README.md": collapsed + links + after}, "")
+    status, diags = check(tmp_path, capsys)
+    assert status == 0, diags
+
+    readme = tmp_path / "README.md"
+    readme.write_text(collapsed + links.replace("A feature.", "Stale text.") + after)
+    status, diags = check(tmp_path, capsys)
+    assert status == 1
+    assert [(d["code"], d["line"]) for d in diags if d["code"] in {"E013", "E015"}] == [("E013", 5)]
+
+    readme.write_text(collapsed + after)
+    status, diags = check(tmp_path, capsys)
+    assert status == 1
+    [diag] = membership(diags)
+    assert (diag["file"], diag["line"]) == ("glossary/feature.md", 3)
