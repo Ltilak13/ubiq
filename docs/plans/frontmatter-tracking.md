@@ -71,6 +71,7 @@ steps:
     pr: 162
   schema-edge-diagrams:
     issue: 126
+    priority: P2
     requires: [tracking-fields, mermaid-blocks]
     branch: claude/ecstatic-mendel-nkgz6t-schema-edge-diagrams
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
@@ -82,16 +83,19 @@ steps:
     pr: 117
   workflow-records:
     issue: 133
+    priority: P2
     requires: [tracking-fields, schema-edge-diagrams]
     branch: claude/ecstatic-mendel-nkgz6t-workflow-records
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
   view-sync:
     issue: 134
+    priority: P3
     requires: [tracking-fields, schema-edge-diagrams]
     branch: claude/ecstatic-mendel-nkgz6t-view-sync
     base: claude/ecstatic-mendel-nkgz6t-tracking-fields
   backfill:
     issue: 127
+    priority: P1
     requires: [feature-lifecycle, plan-records, pr-stacks, part-of-sub-issues]
     branch: claude/loving-planck-3uzfaq-backed-issues
     base: claude/loving-planck-3uzfaq-criteria-backfill

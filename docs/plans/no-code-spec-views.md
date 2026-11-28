@@ -15,6 +15,7 @@ steps:
     requires: []
   diagnostic-table:
     issue: 144
+    priority: P3
     requires: []
   runtime-support-matrix:
     issue: 153
