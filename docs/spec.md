@@ -137,8 +137,8 @@ include link that resolves nowhere always fails it (see Composition edges).
 - `E012` part input — an include names no value, or an undeclared value, for an
   input its part declares; or a part's `edges.include.inputs` field is not a
   mapping of input names to lists of values.
-- `E013` support drift — a view disagrees with the support records (see Support matrix).
-- `W008` support end of life — a support record is `supported` after its end-of-life date.
+- `E015` support drift — a view disagrees with the support records (see Support matrix).
+- `W010` support end of life — a support record is `supported` after its end-of-life date.
 - `W003` blocked invoke — an invoke edge targets a record whose
   `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
 - `W004` install layout — a link that leaves an `edges.install` directory resolves
@@ -621,7 +621,7 @@ support:
 A record has `name` (`<runtime>-<version>`), `runtime` (`python`), `version`
 (quoted, `"3.10"`), `status` (`supported`, `deprecated`, or `unsupported`), `eol`
 (`YYYY-MM-DD`), and `reason`. Bind `.ubiq/schemas/support.json` to validate them.
-`ubiq check` then reports `E013` when:
+`ubiq check` then reports `E015` when:
 
 - `requires-python` has no `>=` bound equal to the lowest supported or deprecated
   version, or excludes one of them;
@@ -634,7 +634,7 @@ A record has `name` (`<runtime>-<version>`), `runtime` (`python`), `version`
 - a feature record's `runtime.python` is not a specifier of `>=`, `>`, `<=`, `<`,
   `==`, `!=` clauses, or its `extra` is not in `[project.optional-dependencies]`.
 
-`W008` reports a `supported` record whose `eol` has passed. `ubiq support` prints the
+`W010` reports a `supported` record whose `eol` has passed. `ubiq support` prints the
 table and `ubiq support --write` refreshes the block. `ubiq.support.require`
 raises `RuntimeUnmet` (an `ImportError`) with an actionable message when a feature's
 declared `python` or `extra` is not met, and `unmet` returns the message instead.

@@ -342,9 +342,9 @@ What Ubiq supports is data. One record per runtime version lives in
 (`supported`, `deprecated`, or `unsupported`), an end-of-life date, and the
 reason. `ubiq check` treats `requires-python` in `pyproject.toml`, the Python
 test matrix in the CI workflow, and the table below as views of those
-records and reports drift as `E013`: the lowest supported version must equal
+records and reports drift as `E015`: the lowest supported version must equal
 `requires-python`, every supported or deprecated version must be in the matrix,
-and no unsupported one may be. `W008` flags a `supported` record whose end of life
+and no unsupported one may be. `W010` flags a `supported` record whose end of life
 has passed. Refresh the table with `ubiq support --write`.
 
 <!-- ubiq:support-table -->

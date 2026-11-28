@@ -95,7 +95,7 @@ coverage:
   no_regression: true
 
 # Support matrix as records: requires-python, the CI test matrix, and the support
-# table in the guide are views checked against .ubiq/support/*.md (E013).
+# table in the guide are views checked against .ubiq/support/*.md (E015).
 support:
   records: ".ubiq/support/*.md"
   pyproject: "pyproject.toml"

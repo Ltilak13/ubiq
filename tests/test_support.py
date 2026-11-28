@@ -278,7 +278,7 @@ def test_expired_supported_record_warns(tmp_path):
     record(root, "3.11", "supported", eol="2026-10-31")
     assert cli.main(["support", "--root", str(root), "--write"]) == 0
     found = drift(root)
-    assert [(d.code, d.is_error) for d in found] == [("W008", False)]
+    assert [(d.code, d.is_error) for d in found] == [("W010", False)]
 
 
 # --- table ------------------------------------------------------------------
@@ -322,7 +322,7 @@ def test_ubiq_check_reports_drift_as_e013(tmp_path, capsys):
     root = repo(tmp_path)
     (root / "pyproject.toml").write_text(PYPROJECT.replace(">=3.10", ">=3.11"))
     assert cli.main(["check", "--root", str(root)]) == 1
-    assert "E013" in capsys.readouterr().out
+    assert "E015" in capsys.readouterr().out
 
 
 # --- feature declarations ---------------------------------------------------

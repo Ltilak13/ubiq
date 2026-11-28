@@ -101,7 +101,7 @@ DEFAULT_CONFIG: dict = {
     # setup guidance and exits 2. `files` selects the denominator; each
     # `exclude` entry needs a `reason`.
     "coverage": None,
-    # Support matrix as records (E013, W008, `ubiq support`). `records` globs one
+    # Support matrix as records (E015, W010, `ubiq support`). `records` globs one
     # record per runtime version; `pyproject` and `workflow` (with its test `job`
     # and matrix key `matrix`) are the views checked against them; `table` is the
     # document holding the generated support table; `features` optionally globs
