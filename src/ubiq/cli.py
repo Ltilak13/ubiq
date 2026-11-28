@@ -30,7 +30,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, coverage, query, review
+from . import __version__, coverage, query, readmes, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, at, run_checks
@@ -207,7 +207,12 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
         for source, overlay in glossary.overlay_sources.items():
             trace.record(source, "overlay-source", source=overlay)
 
+    memberships, extra = readmes.declarations(cfg, glossary)
     doc_files = _expand(cfg.docs, cfg.ignore, trace, "docs")
+    for membership in memberships:
+        doc_files.append(membership.readme)
+        if trace is not None:
+            trace.record(membership.readme, "readme", source=membership.source)
     hist_files = _expand(cfg.historical, cfg.ignore, trace, "historical")
     hist_set = {p.resolve() for p in hist_files}
     # Sidecars are docs too, so their ref_fields (uses: [...]) participate.
@@ -220,7 +225,7 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
             trace.files[_display_path(path, root)]["scanned"] = True
     refs = scan_docs(doc_files, glossary, cfg, historical=hist_set, invalid=glossary.invalid)
 
-    extra: list[Diagnostic] = []
+    extra.extend(readmes.check_membership(cfg, glossary, memberships, refs))
     catalog = cfg.policies["catalog"]
     for spec in cfg.catalogs:
         if trace is not None:
@@ -502,10 +507,12 @@ def _layout(cfg: Config, load: Callable[[Config, str], Glossary] | None = None,
                 raise InvalidConfig(f"dependency {dependency.name!r}: {glossary.invalid}")
             files = _installed(other)
             if dependency.revision:
-                docs = _close_docs(other.root, _expand(other.docs, other.ignore, None, "docs"),
-                                   other.ignore, None)
+                memberships, _ = readmes.declarations(other, glossary)
+                readme_files = [membership.readme for membership in memberships]
+                docs = _close_docs(other.root, [*_expand(other.docs, other.ignore), *readme_files],
+                                   other.ignore)
                 validate_checkout(dependency, other,
-                                  [*docs, *files, *(t.file for t in glossary.terms),
+                                  [*docs, *readme_files, *files, *(t.file for t in glossary.terms),
                                    *glossary.overlay_sources, *glossary.overlay_sources.values()])
         except GlobError as exc:
             if dependency.name is not None:
