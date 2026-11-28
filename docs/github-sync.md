@@ -229,7 +229,7 @@ only be an issue"), so it becomes text.
 
 ## Goal behavior
 
-- A criterion that is not `met`, lists no `issues`, and has no issue with the
+- A criterion that is neither `met` nor `deferred`, lists no `issues`, and has no issue with the
   marker `<!-- ubiq-goal: <name> <AC> -->` gets a new issue. With
   `create: prioritized`, it gets one only when the criterion or its goal sets a
   `priority`; a criterion without one is still tracked through listed and marked issues.
@@ -237,6 +237,11 @@ only be an issue"), so it becomes text.
   mirrored at all.
 - A criterion that is `met` closes its listed and marked issues that are open,
   with a "met at `<commit>`" comment that names the scenarios or the review.
+- A criterion with `assessment: deferred` closes its listed and marked issues that are open
+  as not planned, with a comment that quotes its `gap`, and never gets a new issue. An issue
+  that was already closed gets no comment. A goal criterion's issue closed as not planned on
+  GitHub while the record is not `deferred` is a `warn` (drift): set the criterion `deferred`,
+  or reopen the issue.
 - An issue that closed before the sync could (a closing keyword on merge, or by hand)
   still gets that comment, once. The sync reads the bot's comments only for the closed
   issues of met criteria.

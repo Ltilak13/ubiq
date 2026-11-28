@@ -101,6 +101,10 @@ class Desired:
     parent_issue: int = 0
     parent: str = ''
     creates: bool = True
+    # How `fact_state` closes the issues: `completed`, or `not_planned` for a deferred
+    # criterion (`deferred`, which also makes a not-planned issue expected, not drift).
+    close_reason: str = 'completed'
+    deferred: bool = False
     # A scenario-bound criterion whose scenario failed on this revision: when every
     # tracked issue is closed, open a new one instead of reopening (the sync never reopens).
     regression: bool = False
@@ -266,7 +270,11 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
         met = criterion_met(goal, ac, results) is True
         failed = bound and results is not None and results.get((_feature_path(goal), ac)) == 'failed'
         comment = ''
-        if met and bound:
+        deferred = criterion.get('assessment') == 'deferred'
+        if deferred:
+            comment = (f"Goal `{goal['name']}` {ac} is `deferred` at {sha or 'the merged commit'}: "
+                       f"{criterion['gap']}\n\n" + CLOSED_MARKER.format(name=goal['name'], ac=ac))
+        elif met and bound:
             comment = (f"Goal `{goal['name']}` {ac} is `met` at {sha or 'the merged commit'}: every "
                        f"scenario tagged `@{ac}` in `{_feature_path(goal)}` passed.\n\n"
                        + CLOSED_MARKER.format(name=goal['name'], ac=ac))
@@ -281,7 +289,10 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             title=textwrap.shorten(f"{goal['name']} {ac}: {title}", 200),
             body=(_scenario_body(goal, ac, _feature_path(goal), marker, failed) if bound
                   else _goal_body(goal, ac, criterion, marker)),
-            state='closed' if met else 'open', regression=failed, confirm_closed=True,
+            state='closed' if met or deferred else 'open', regression=failed,
+            # A deferred issue the owner already closed keeps its own words: no comment is added.
+            confirm_closed=not deferred, deferred=deferred,
+            close_reason='not_planned' if deferred else 'completed',
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
             close_comment=comment, priority=resolve_priority(criterion, goal),
@@ -591,11 +602,29 @@ def fact_exists(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issu
 
 
 def fact_state(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
-    """A done record closes its open issues. Never reopen: an open record leaves state alone."""
+    """A done record closes its open issues. Never reopen: an open record leaves state alone.
+
+    A deferred criterion closes them with `reason: not_planned`.
+    """
     if item.state != 'closed':
         return []
-    return [{'action': 'close', **item.ident, 'issue': n, 'comment': item.close_comment}
+    extra = {} if item.close_reason == 'completed' else {'reason': item.close_reason}
+    return [{'action': 'close', **item.ident, 'issue': n, 'comment': item.close_comment, **extra}
             for n in tracked if issues.get(n, {}).get('state') == 'open']
+
+
+def fact_not_planned(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
+    """A goal criterion's issue closed as not planned on GitHub while the record is not `deferred` is drift.
+
+    The sync never reopens, so it only warns: defer the criterion in frontmatter, or reopen the issue.
+    """
+    if item.kind != 'goal' or 'criterion' not in item.ident or item.deferred:
+        return []
+    return [{'action': 'warn', **item.ident, 'issue': n,
+             'reason': 'issue is closed as not planned but the criterion is not deferred; '
+                       'set `assessment: deferred` with the reason in `gap`, or reopen the issue'}
+            for n in tracked if issues.get(n, {}).get('state') == 'closed'
+            and issues[n].get('state_reason') == 'not_planned']
 
 
 def _closed_marker(comment: str) -> str:
@@ -922,7 +951,7 @@ def fact_comment(item: Desired, tracked: Sequence[int], issues: Mapping[int, Iss
 
 # Each mirrored fact: (item, tracked issue numbers, issues by number) -> actions.
 FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action]], ...] = (
-    fact_exists, fact_state, fact_confirm, fact_priority, fact_part_of, fact_requires, fact_blocked_line,
+    fact_exists, fact_state, fact_not_planned, fact_confirm, fact_priority, fact_part_of, fact_requires, fact_blocked_line,
     fact_comment)
 
 
@@ -965,7 +994,7 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
         found += [a for pr_fact in PR_FACTS for a in pr_fact(item, tracked, by_number, open_pulls)]
         actions += found
         if not found:
-            reason = 'met; no open issue' if item.state == 'closed' else 'tracked'
+            reason = ('deferred' if item.deferred else 'met') + '; no open issue' if item.state == 'closed' else 'tracked'
             actions.append({'action': 'noop', **item.ident, 'reason': reason, 'issues': tracked})
     actions += keyword_warnings((item for item, _ in items), by_marker, open_pulls)
     actions += unexpected_sub_issues(items, by_number)
@@ -1200,7 +1229,7 @@ class GitHub:
 
     def _close(self, action: Action) -> None:
         url = f"{self.base}/{action['issue']}"
-        self._call('PATCH', url, {'state': 'closed', 'state_reason': 'completed'})
+        self._call('PATCH', url, {'state': 'closed', 'state_reason': action.get('reason', 'completed')})
         if not action['comment']:  # a decision's own comment says why; nothing more to post
             return
         marker = action['comment'].rsplit('\n', 1)[-1]

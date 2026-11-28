@@ -38,6 +38,8 @@ symbols:
         parent_issue: {"x-python-kind": "positional-or-keyword", "type": "integer", "x-python-type": "int", "x-python-default": "0"}
         parent: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "''"}
         creates: {"x-python-kind": "positional-or-keyword", "type": "boolean", "x-python-type": "bool", "x-python-default": "True"}
+        close_reason: {"x-python-kind": "positional-or-keyword", "type": "string", "x-python-type": "str", "x-python-default": "'completed'"}
+        deferred: {"x-python-kind": "positional-or-keyword", "type": "boolean", "x-python-type": "bool", "x-python-default": "False"}
         regression: {"x-python-kind": "positional-or-keyword", "type": "boolean", "x-python-type": "bool", "x-python-default": "False"}
         confirm_closed: {"x-python-kind": "positional-or-keyword", "type": "boolean", "x-python-type": "bool", "x-python-default": "False"}
         prs: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "tuple[int, ...]", "x-python-default": "()"}
@@ -334,6 +336,22 @@ symbols:
     term: fact state
     form: bound
     scenarios: [tests/test_sync.py::test_met_criterion_closes_open_listed_and_marked_issues_only]
+    params:
+      type: object
+      additionalProperties: false
+      properties:
+        item: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Desired"}
+        tracked: {"x-python-kind": "positional-or-keyword", "type": "array", "x-python-type": "Sequence[int]"}
+        issues: {"x-python-kind": "positional-or-keyword", "type": "object", "x-python-type": "Mapping[int, Issue]"}
+      required: ["item", "tracked", "issues"]
+    result: {"type": "array", "x-python-type": "list[Action]"}
+    errors: false
+  fact_not_planned:
+    id: symbol:ubiq.sync.fact_not_planned
+    feature: github-sync
+    term: fact not planned
+    form: bound
+    scenarios: [tests/test_sync.py::test_issue_closed_not_planned_while_its_criterion_is_not_deferred_is_drift]
     params:
       type: object
       additionalProperties: false
@@ -871,6 +889,10 @@ Plan creation for an open item without a tracked issue.
 ## `fact_state`
 
 Plan closure for open issues tracking a completed item.
+
+## `fact_not_planned`
+
+Warn about a criterion issue closed as not planned while its record is not deferred.
 
 ## `fact_priority`
 

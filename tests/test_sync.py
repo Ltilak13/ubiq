@@ -42,9 +42,10 @@ def met(**extra):
     return {'assessment': 'met', 'support': SUPPORT, 'gap': 'None.', 'review': REVIEW, **extra}
 
 
-def issue(number, state='open', marker=None, goal_name='demo-goal', login='github-actions[bot]'):
+def issue(number, state='open', marker=None, goal_name='demo-goal', login='github-actions[bot]', reason=None):
     body = 'text' if marker is None else f'text\n<!-- ubiq-goal: {goal_name} {marker} -->'
-    return {'number': number, 'state': state, 'body': body, 'user': {'login': login}}
+    return {'number': number, 'state': state, 'body': body, 'user': {'login': login},
+            **({'state_reason': reason} if reason else {})}
 
 
 def run(goals, existing, sha=''):
@@ -140,6 +141,52 @@ def test_hand_closed_issue_of_an_unmet_criterion_is_not_drift():
     assert drift(run([goal(AC1=unmet(issues=[5]))], [issue(5, 'closed')])) == []
 
 
+def deferred(**extra):
+    return {'assessment': 'deferred', 'support': [], 'gap': 'Not scheduled until #111 is tried.', **extra}
+
+
+def test_deferred_criterion_closes_its_open_issues_as_not_planned_with_its_reason():
+    existing = [issue(5), issue(6, 'closed'), issue(7, marker='AC1')]
+    actions = run([goal(AC1=deferred(issues=[5, 6]))], existing, sha='abc123')
+    assert [(a['action'], a['issue'], a['reason']) for a in actions] == [
+        ('close', 5, 'not_planned'), ('close', 7, 'not_planned')]
+    for text in ('demo-goal', 'AC1', 'deferred', 'Not scheduled until #111 is tried.'):
+        assert text in actions[0]['comment']
+    assert 'met' not in actions[0]['comment']
+
+
+def test_deferred_criterion_never_creates_or_reopens_and_is_noop_once_closed():
+    assert [a['action'] for a in run([goal(AC1=deferred())], [])] == ['noop']
+    closed = [issue(5, 'closed', reason='not_planned')]
+    [action] = run([goal(AC1=deferred(issues=[5]))], closed)
+    assert (action['action'], action['issues']) == ('noop', [5])
+    # No second "deferred" comment on an issue the owner already closed.
+    done = {**closed[0], 'bot_markers': set()}
+    assert drift(plan(goal_desired(goal(AC1=deferred(issues=[5]))), [done])) == []
+
+
+def test_apply_closes_a_deferred_issue_as_not_planned():
+    [close] = run([goal(AC1=deferred(issues=[5]))], [issue(5)])
+    fake = Fake({('GET', '/5/comments?per_page=100'): []})
+    GitHub('o/r', 't', fake, 0).apply([close], [])
+    assert fake.calls[0][3] == {'state': 'closed', 'state_reason': 'not_planned'}
+    [met_close] = run([goal(AC1=met(issues=[5]))], [issue(5)])
+    fake = Fake({('GET', '/5/comments?per_page=100'): []})
+    GitHub('o/r', 't', fake, 0).apply([met_close], [])
+    assert fake.calls[0][3] == {'state': 'closed', 'state_reason': 'completed'}
+
+
+def test_issue_closed_not_planned_while_its_criterion_is_not_deferred_is_drift():
+    for criterion in (unmet(issues=[5]), met(issues=[5])):
+        [warn] = drift(run([goal(AC1=criterion)], [issue(5, 'closed', reason='not_planned')]))
+        assert (warn['action'], warn['issue'], warn['criterion']) == ('warn', 5, 'AC1')
+        assert 'deferred' in warn['reason']
+    # The owner's marked issue counts too, and a completed or open issue does not.
+    assert [a['action'] for a in drift(run([goal(AC1=unmet())], [issue(7, 'closed', 'AC1', reason='not_planned')]))] == ['warn']
+    assert drift(run([goal(AC1=unmet(issues=[5]))], [issue(5, 'closed', reason='completed')])) == []
+    assert drift(run([goal(AC1=unmet(issues=[5]))], [issue(5)])) == []
+
+
 def test_wrapped_criterion_is_read_whole(tmp_path):
     path = tmp_path / 'demo-goal.md'
     path.write_text('---\nname: demo-goal\nstatus: proposed\ncriteria:\n  AC1:\n'
@@ -160,7 +207,7 @@ def test_this_repository_creates_only_for_untracked_criteria():
     created = {(a['goal'], a['criterion']) for a in actions if a['action'] == 'create' and 'goal' in a}
     loaded = [load_goal(p, ROOT) for p in sorted((ROOT / 'docs/goals').glob('*-goal.md'))]
     untracked = {(g['name'], ac) for g in loaded for ac, c in g['criteria'].items()
-                 if c.get('assessment') != 'met' and not c.get('issues') and 'assessed_in' not in c
+                 if c.get('assessment') not in ('met', 'deferred') and not c.get('issues') and 'assessed_in' not in c
                  and (c.get('priority') or g['priority'])}
     assert created == untracked
     assert not [a for a in actions if a['action'] == 'close' and 'goal' in a]
