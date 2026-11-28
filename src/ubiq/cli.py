@@ -252,6 +252,19 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
         from .step_refs import within_diagnostics
         extra.extend(within_diagnostics(cfg))
         extra.extend(single_diagnostics(cfg))
+    if cfg.sync is not None:
+        from .scenarios import diagnostics as scenario_diagnostics
+        from .schemas import load_data as _load
+        goals = []
+        for record in cfg.sync.records:
+            if record.kind != "goal":
+                continue
+            for path in sorted(record.glob.walk(cfg.ignore)):
+                try:
+                    goals.append((path, _load(path, frontmatter=True)))
+                except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError, RecursionError):
+                    continue  # E009 reports it
+        extra.extend(scenario_diagnostics(goals))
     result.refs.extend(refs)
     result.diagnostics.extend(extra)
     result.docs.extend(doc_files)
@@ -1158,6 +1171,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="read the records and ubiq.yaml as they are at REV (a pull request's base)")
     gh.add_argument("--repo", metavar="OWNER/NAME",
                     help="issue repository (default: sync.repo, then $GITHUB_REPOSITORY)")
+    gh.add_argument("--results", metavar="FILE",
+                    help="scenario outcomes from `pytest --ubiq-results FILE`; a criterion with "
+                         "`scenario: true` is met when its tagged scenarios passed")
     gh.set_defaults(fn=cmd_sync)
 
     im = sub.add_parser("impact", help="records a change touches and the callers it affects")

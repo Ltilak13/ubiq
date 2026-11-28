@@ -250,7 +250,8 @@ def test_config_reads_the_goal_issue_and_part_of(tmp_path):
     (root / "goals/elsewhere-goal.md").write_text(
         "---\nname: elsewhere\nstatus: proposed\nissue: 12\ncriteria:\n  AC1:\n    assessment: unassessed\n"
         "    support: []\n    gap: g\n---\n\n1. AC1: Second.\n")
-    items = {(d.ident["goal"], d.ident["criterion"]): d for d in desired_from_config(load_config(root))}
+    items = {(d.ident["goal"], d.ident["criterion"]): d for d in desired_from_config(load_config(root))
+             if "criterion" in d.ident}
     assert items[("demo-goal", "AC1")].parent_issue == 12
     assert items[("elsewhere", "AC1")].parent_issue == 12
 

@@ -259,6 +259,10 @@
         {
           "source": "src/ubiq/features/no-code-checks.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/criterion-scenarios.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         }
       ]
     },

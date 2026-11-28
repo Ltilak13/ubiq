@@ -231,6 +231,38 @@ Limits: deleting
 a record leaves its issues open. An issue created with a personal token has no
 bot author, so list its number in `issues:` to track it.
 
+## Criterion scenarios
+
+A goal criterion can be accepted by Gherkin scenarios instead of a recorded review.
+Its frontmatter sets `scenario: true` and stores nothing else about its state: no
+`assessment`, `support`, `gap`, or `review`. The scenarios sit in the feature file
+beside the goal, `<goal>.feature`, each tagged with the criterion's label:
+
+```gherkin
+@AC1
+Scenario: A part registered by configuration alone is a checked reference
+  Given the part "checkout" in "skills/_shared/checkout.md"
+  ...
+```
+
+- `ubiq check` reports E016 when a `scenario: true` criterion has no tagged scenario,
+  and when a tag names no such criterion. A tag on `Feature:` applies to every scenario.
+- `pytest --ubiq-results FILE` writes each scenario's outcome. The ubiq pytest plugin
+  ships with the package and does nothing without the option; scenarios run with
+  pytest-bdd ([decision 0002](decisions/0002-gherkin-binding.md)).
+- `ubiq sync github --results FILE` treats the criterion as met exactly when every
+  scenario tagged with it passed, and closes its issues with a comment naming the
+  commit. Without `--results`, or when a scenario did not run, the criterion stays open.
+- A scenario that fails after its criterion's issues closed opens a new
+  `Regression:` issue. The sync still never reopens an issue.
+- A goal's own `issue` closes when every criterion holds: a scenario criterion passed,
+  any other criterion is `met`, and an `assessed_in` criterion holds when the one it
+  names does. Nothing creates the goal issue.
+
+The `github-sync` workflow runs `tests/scenarios` on each push to `main` and passes the
+results to `--apply`, so a criterion is met only by a passing run of `main`. The approval
+that matters is the review of the scenario text in the pull request that adds it.
+
 ## Plan behavior
 
 A `plan` record (see [plan records](spec.md#plan-records)) syncs each of its steps as one
