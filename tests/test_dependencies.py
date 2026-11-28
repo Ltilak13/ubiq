@@ -1,12 +1,14 @@
 """Named dependency declarations and read-only checkout validation."""
 
 import subprocess
+from pathlib import Path
 
 import pytest
 import yaml
 
 from ubiq.cli import _layout
 from ubiq.config import InvalidConfig, load_config
+from ubiq.globs import first_match
 
 
 def git(root, *args):
@@ -123,3 +125,10 @@ def test_pinned_installed_inputs_cannot_leave_checkout(tmp_path):
              "revision": git(other, "rev-parse", "HEAD")}
     with pytest.raises(InvalidConfig, match="leave checkout"):
         _layout(configure(tmp_path, [entry]))
+
+
+def test_repository_ignores_build_output_as_a_pinned_dependency():
+    """`pip install <checkout>` leaves build/lib copies of every module; they are not inputs."""
+    root = Path(__file__).resolve().parents[1]
+    cfg = load_config(root)
+    assert first_match(cfg.ignore, root / "build/lib/ubiq/cli.py")
