@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Feature frontmatter",
+  "type": "object",
+  "required": ["name", "requires", "codes", "config", "docs", "summary"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "requires": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"}
+    },
+    "codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[EW][0-9]{3}$"}
+    },
+    "config": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z_]+(\\.[a-z_]+)*$"}
+    },
+    "docs": {"type": "string", "pattern": "^docs/[A-Za-z0-9_./-]+\\.md(#[a-z0-9-]+)?$"},
+    "summary": {"type": "string", "pattern": "\\S"}
+  },
+  "additionalProperties": false
+}

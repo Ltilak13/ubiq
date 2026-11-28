@@ -12,15 +12,19 @@ glossary:
     ns: skill
   - glob: ".ubiq/glossary/*.md"
     ns: skill
+  - glob: "src/ubiq/features/*.md"
+    term_field: name
+    ns: feature
 docs:
   - "README.md"
   - "docs/**/*.md"
   - "glossary/**/*.md"
   - "skills/**/*.md"
   - ".ubiq/**/*.md"
+  - "src/ubiq/features/*.md"
 overlays:
   - ".ubiq/overlays/*.md"
-ref_fields: [uses]
+ref_fields: [uses, requires]
 catalogs:
   - file: ".ubiq/catalogs/skills.json"
     items: skills
@@ -47,6 +51,9 @@ schemas:
     format: frontmatter
   - schema: ".ubiq/schemas/glossary-record.json"
     files: ["skills/references/*.md", "glossary/*.md", ".ubiq/glossary/*.md", "docs/policies/*.md"]
+    format: frontmatter
+  - schema: ".ubiq/schemas/feature.json"
+    files: ["src/ubiq/features/*.md"]
     format: frontmatter
   - schema: ".ubiq/schemas/skill.json"
     files: ["skills/*/SKILL.md"]
@@ -79,6 +86,7 @@ coverage:
     - "skills/references/*.md"
     - "skills/*/agents/*.yaml"
     - "glossary/*.md"
+    - "src/ubiq/features/*.md"
     - ".ubiq/glossary/*.md"
     - ".ubiq/overlays/*.md"
     - ".ubiq/catalogs/*.json"
