@@ -234,14 +234,14 @@ def test_bad_status_is_a_plan_error(tmp_path):
 
 def test_bundled_feature_status_matches_implementation():
     by_name = {f.name: f for f in load_features(BUNDLED)}
-    assert by_name["restated-values"].status == "planned" and by_name["restated-values"].codes == ("W008",)
+    assert by_name["restated-values"].status == "shipped" and by_name["restated-values"].codes == ("W008",)
     assert by_name["field-links"].status == "shipped" and by_name["field-links"].codes == ("E013",)
     shipped = {f.name for f in order(by_name.values())}
-    assert "restated-values" not in shipped
-    assert "field-links" in shipped
+    assert "met-at-backfill" not in shipped
+    assert {"restated-values", "field-links"} <= shipped
 
 
 def test_every_shipped_record_is_synced_as_a_feature():
     desired = desired_from_config(load_config(ROOT))
     open_ = {d.ident["feature"] for d in desired if d.kind == "feature" and d.state == "open"}
-    assert open_ == {"restated-values"}
+    assert open_ == {"met-at-backfill", "step-pr-drift"}

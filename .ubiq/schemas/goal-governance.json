@@ -257,6 +257,14 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "src/ubiq/features/step-pr-drift.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
+          "source": "src/ubiq/features/met-at-backfill.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "src/ubiq/features/field-links.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },

@@ -1,6 +1,6 @@
 ---
 name: restated-values
-status: planned
+status: shipped
 requires: [glossary]
 codes: [W008]
 config: [restated_values]
