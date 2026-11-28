@@ -335,6 +335,50 @@ This command replaces branch protection settings. Review any existing protection
 before applying it; the file does not require review approvals or restrict pushes
 to particular users or teams.
 
+## Supported runtimes
+
+What Ubiq supports is data. One record per runtime version lives in
+`.ubiq/support/` (`python-3.10.md` through `python-3.14.md`) with a `status`
+(`supported`, `deprecated`, or `unsupported`), an end-of-life date, and the
+reason. `ubiq check` treats `requires-python` in `pyproject.toml`, the Python
+test matrix in the CI workflow, and the table below as views of those
+records and reports drift as `E013`: the lowest supported version must equal
+`requires-python`, every supported or deprecated version must be in the matrix,
+and no unsupported one may be. `W008` flags a `supported` record whose end of life
+has passed. Refresh the table with `ubiq support --write`.
+
+<!-- ubiq:support-table -->
+| Runtime | Version | Status | End of life | Reason |
+| --- | --- | --- | --- | --- |
+| Python | 3.14 | supported | 2030-10-31 | Upstream security support continues until October 2030. CI also tests it on macOS. |
+| Python | 3.13 | supported | 2029-10-31 | Upstream security support continues until October 2029. |
+| Python | 3.12 | supported | 2028-10-31 | Upstream security support continues until October 2028. CI runs the quality, coverage, and packaging jobs on this version. |
+| Python | 3.11 | supported | 2027-10-31 | Upstream security support continues until October 2027. |
+| Python | 3.10 | deprecated | 2026-10-31 | Python 3.10 reached upstream end of life in October 2026. Ubiq keeps it working and will drop it in a later minor release; a feature that needs a newer interpreter declares its own minimum. |
+<!-- /ubiq:support-table -->
+
+A feature can need more than the package floor, such as a newer interpreter or a pip extra.
+No feature needs that today; when one does, it declares it once, and the
+helper in `ubiq.support` turns an unmet declaration into an actionable message
+instead of an import failure:
+
+```python
+from ubiq.support import require
+
+require(python=">=3.11", extra="jsonpath", module="jsonpath_ng",
+        feature="JSONPath selection")
+# RuntimeUnmet (an ImportError): JSONPath selection needs Python >=3.11
+# (install ubiq[jsonpath]); this is Python 3.10.14. ...
+```
+
+Tests of such a feature carry `@pytest.mark.runtime(python=">=3.11", extra="jsonpath",
+module="jsonpath_ng")`; `tests/conftest.py` skips them with the same message when the
+interpreter or extra is missing. Feature records will declare the same data as
+`runtime: {python: ">=3.11"}` and `extra: jsonpath` frontmatter; set
+`support.features` to their glob and `ubiq check` verifies each `extra` exists in
+`[project.optional-dependencies]` and each specifier parses. The [spec](spec.md#support-matrix)
+defines the contract.
+
 ## Roadmap
 
 The current focus is deterministic checks: readable Markdown, consistent

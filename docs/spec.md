@@ -137,6 +137,8 @@ include link that resolves nowhere always fails it (see Composition edges).
 - `E012` part input — an include names no value, or an undeclared value, for an
   input its part declares; or a part's `edges.include.inputs` field is not a
   mapping of input names to lists of values.
+- `E013` support drift — a view disagrees with the support records (see Support matrix).
+- `W008` support end of life — a support record is `supported` after its end-of-life date.
 - `W003` blocked invoke — an invoke edge targets a record whose
   `edges.invoke.blocked_by` field is true, so the model cannot invoke it.
 - `W004` install layout — a link that leaves an `edges.install` directory resolves
@@ -599,3 +601,40 @@ is skipped; 1 when an enabled policy fails; 2 when the configuration, the
 baseline, or a required measurement is unavailable, or a policy is
 `unavailable`. Diagnostics never change the exit code: `ubiq check` remains the
 validation gate.
+
+## Support matrix
+
+A repository can make what it supports a set of records, so restrictions are data
+instead of prose. `ubiq.yaml` binds them:
+
+```yaml
+support:
+  records: ".ubiq/support/*.md"      # required: one frontmatter record per runtime version
+  pyproject: pyproject.toml          # default
+  workflow: .github/workflows/ci.yml # default
+  job: test                          # the job whose matrix lists Python versions
+  matrix: python-version             # the matrix key
+  table: docs/guide.md               # optional: holds the generated table block
+  features: ["src/ubiq/features/*.md"]  # optional: feature records to check
+```
+
+A record has `name` (`<runtime>-<version>`), `runtime` (`python`), `version`
+(quoted, `"3.10"`), `status` (`supported`, `deprecated`, or `unsupported`), `eol`
+(`YYYY-MM-DD`), and `reason`. Bind `.ubiq/schemas/support.json` to validate them.
+`ubiq check` then reports `E013` when:
+
+- `requires-python` has no `>=` bound equal to the lowest supported or deprecated
+  version, or excludes one of them;
+- an unsupported version sits between supported ones;
+- a supported or deprecated version is missing from the CI matrix (including
+  `include` entries), a matrix version has no record or is unsupported, or any job
+  pins a `python-version` that is unsupported or has no record;
+- the marked block between `<!-- ubiq:support-table -->` and
+  `<!-- /ubiq:support-table -->` in `support.table` differs from the records;
+- a feature record's `runtime.python` is not a specifier of `>=`, `>`, `<=`, `<`,
+  `==`, `!=` clauses, or its `extra` is not in `[project.optional-dependencies]`.
+
+`W008` reports a `supported` record whose `eol` has passed. `ubiq support` prints the
+table and `ubiq support --write` refreshes the block. `ubiq.support.require`
+raises `RuntimeUnmet` (an `ImportError`) with an actionable message when a feature's
+declared `python` or `extra` is not met, and `unmet` returns the message instead.
