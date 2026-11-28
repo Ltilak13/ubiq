@@ -33,9 +33,22 @@ docs:
 overlays:
   - ".ubiq/overlays/*.md"
 ref_fields: [uses, requires, routes]
-# A broken relative link fails the build (W007 is a warning by default).
+# A broken relative link fails the build (W007 is a warning by default), and so does a
+# field link whose label drifts from the field (E013, already an error; set so `ubiq plan`
+# sees the feature in use).
 references:
   link: {severity: error}
+  value: {severity: error}
+# Glossary records carry `id: UB-n`, and docs/spec.md cites them; a mistyped id fails (E004).
+id_patterns: ["UB-[0-9]+"]
+# Slash-commands that name a glossary record (`/validate-change`) are references.
+delimiters:
+  - pattern: "/"
+    only_known: true
+# Prose must not repeat these frontmatter values of its own record (W008). Not yet listed:
+# `summary`, `status`, and `issue`, which a few records still restate (see
+# .ubiq/knowledge/feature-adoption.md).
+restated_values: [description, question, decided, by, docs]
 catalogs:
   - file: ".ubiq/catalogs/skills.json"
     items: skills
