@@ -73,6 +73,10 @@
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },
         {
+          "source": "docs/goals/work-tracking-goal.md",
+          "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
+        },
+        {
           "source": "glossary/contract.md",
           "reason": "Outside the policy/domain-schema-goal example; no domain classification claimed."
         },

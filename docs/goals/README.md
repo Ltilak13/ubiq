@@ -11,6 +11,7 @@ Ubiq helps repositories make their knowledge explicit, connected, and checkable.
 | [Safe adoption and evolution](safe-adoption-evolution-goal.md) | Setup, migration, maintenance, and recovery |
 | [No-code specs](no-code-spec-goal.md) | Records that are the spec, docs, and tests, checked with no agent |
 | [Code as records](code-records-goal.md) | One rule defined as data (AC4) and change impact derived from records (AC9) |
+| [Work tracking](work-tracking-goal.md) | Issues, priority, order, and pull requests as frontmatter facts that GitHub mirrors |
 
 ## Adding goals and limiting work in progress
 
@@ -24,6 +25,9 @@ and the goal or feature starter (#111) has been tried outside this repository. U
   days, with a comment that says which.
 - Move a speculative outcome to the goal's Exploration section and the wayfinder map,
   not to its criteria.
+
+The one exception is [work tracking](work-tracking-goal.md), which #127 requires so that
+the tracking spec (#118) tracks itself. It stays `proposed` and sets no priority.
 
 ## Organization and dependencies
 
