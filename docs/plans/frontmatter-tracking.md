@@ -86,14 +86,20 @@ steps:
     base: claude/ecstatic-mendel-nkgz6t-plan-records
   priority-inheritance:
     issue: 150
-    requires: [plan-records]
+    requires: [plan-records, base-code-drift]
     branch: claude/ecstatic-mendel-nkgz6t-priority-inheritance
     base: claude/ecstatic-mendel-nkgz6t-plan-records
+    pr: 166
   decision-records:
     issue: 152
     requires: [sync-github, plan-records]
     branch: claude/ecstatic-mendel-nkgz6t-decision-records
     base: claude/ecstatic-mendel-nkgz6t-plan-records
+  base-code-drift:
+    issue: 171
+    requires: [sync-github]
+    branch: claude/ecstatic-mendel-nkgz6t-base-code-drift
+    base: claude/ecstatic-mendel-nkgz6t-sync-github
   backfill:
     issue: 127
     requires: [feature-lifecycle, plan-records, pr-stacks, part-of-sub-issues, plan-step-cycles, priority-inheritance]
