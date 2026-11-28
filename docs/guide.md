@@ -342,6 +342,11 @@ allowed types are feat, fix, docs, test, ci, chore, refactor, perf, build, style
 and revert. The required `pr-title` check enforces this; run
 `python scripts/check_pr_title.py "<title>"` to check a title locally.
 
+Name the issues a change works on with `Refs #n` in a commit message or `issue-<n>` in
+the branch name. Use a closing keyword (`Closes #n`) only for an issue the change
+finishes by itself; a goal criterion's issue closes when its scenarios pass on `main`
+(see [GitHub sync](github-sync.md#derived-status-in-review)).
+
 The required checks for `main` are recorded in
 [branch-protection.json](../.github/branch-protection.json). They require successful
 GitHub Actions results on a branch that is up to date with `main`, including for

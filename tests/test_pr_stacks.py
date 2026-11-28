@@ -145,12 +145,16 @@ def test_pulls_separates_default_branch_closures_from_stacked_review_intent():
 
     def transport(method, url, token, payload=None):
         seen.append((method, url))
-        return page
+        return [] if url.endswith("/commits?per_page=100") else page
 
+    keys = ("number", "head", "base", "closes", "closing_intent")
     found = GitHub("o/r", "t", transport, 0).pulls()
-    assert found == [pull(5, "h", closes=[7]), {**pull(6, "i", base="h"), "closing_intent": (8,)},
-                     pull(7, "j", base="old"), pull(8, "k", base="j")]
-    assert seen == [("GET", "https://api.github.com/repos/o/r/pulls?state=open&per_page=100&page=1")]
+    assert [{k: p[k] for k in keys if k in p} for p in found] == [
+        pull(5, "h", closes=[7]), {**pull(6, "i", base="h"), "closing_intent": (8,)},
+        pull(7, "j", base="old"), pull(8, "k", base="j")]
+    assert [p["keyword_closes"] for p in found] == [(7,), (8,), (9,), (10,)]
+    assert [u for _, u in seen if "/commits" not in u] == [
+        "https://api.github.com/repos/o/r/pulls?state=open&per_page=100&page=1"]
     existing = [{**issue(8), "labels": ["status: in review"]}, issue(10)]
     assert plan([], existing, found) == []
     [addition] = plan([], [issue(8)], found)
