@@ -198,6 +198,10 @@ membership. `ubiq check` reports discrepancies without editing the README.
   a record is missing its field link in a declared README, or a managed field
   link points to a record that does not declare that README. The report points
   to the declaration field or the unexpected link.
+- `E016` criterion scenario — a goal criterion with `scenario: true` has no scenario
+  tagged with its label (`@AC1`) in the feature file beside the goal (`<goal>.feature`),
+  or a scenario there is tagged with a label that names no such criterion. See
+  [criterion scenarios](github-sync.md#criterion-scenarios).
 - `W001` orphan term — a [[term]] defined but never used outside its own record. Warning,
   not error: new terms are born orphaned.
 - `W002` unlinked mention — a section mentions a [[term]] but no wiki-link, delimiter,
@@ -611,7 +615,7 @@ names:
 
 ```json
 "requires": {
-  "$ref": "#/$defs/tracking/properties/requires",
+  "$ref": "tracking.json#/properties/requires",
   "x-ubiq-ref": {"ns": "feature", "edge": "requires", "acyclic": true}
 }
 ```
@@ -626,7 +630,7 @@ names:
 
 `x-ubiq-ref` sits on a property whose value is a string or a list of strings, anywhere
 a schema reaches (nested properties, `patternProperties`, `items`, `allOf`, `$ref`
-within the document). `ubiq check` reads each file a frontmatter binding selects, and
+within the document or to another schema file of the repository, which is inlined first). `ubiq check` reads each file a frontmatter binding selects, and
 each value must name a record in `ns` by name or id: otherwise E006, at the line of the
 field. A bad annotation (an unknown member, a missing `ns`, a reserved `edge`) is E008. Each
 value makes an edge from the record that owns the file to its target, and the edge's kind
@@ -659,18 +663,21 @@ frontmatter is the source for the order, branches, and pull requests of each ste
 | Field | Value |
 | --- | --- |
 | `name` | the plan's name (lowercase words joined by `-`) |
-| `status` | `proposed`, `active`, `done`, or `abandoned` |
+| `status` | `proposed`, `active`, `done`, or `abandoned` (the shared lifecycle in `tracking.json`, which goals use too) |
 | `issue` | the issue the plan coordinates; each step's issue is a sub-issue of it |
 | `priority` | optional `P1`, `P2`, or `P3`; the default for steps without their own |
 | `trunk` | the branch the work lands on |
 | `steps` | a mapping from step name to `requires` (required), `issue`, `priority`, `branch`, `base`, `pr` |
 
-A step's `requires` lists other step names of the same plan. The schema annotates it with
+A step's `requires` lists other step names of the same plan, or `<plan>/<step>` for a
+step of another plan, so a step shared by two plans is defined once. A step's `pr` is one
+pull request number or a list. The schema annotates `requires` with
 `x-ubiq-ref` and the `within` member:
 `{"ns": "plan-step", "edge": "requires", "acyclic": true, "within": "steps"}`. Steps are
 keys of a mapping, not records, so `within` makes each value resolve against the keys
-of the file's top-level `steps` mapping instead of the glossary. A name that is no step
-is E006 at the line of the field. These links make no composition edge. `acyclic` is not
+of the file's top-level `steps` mapping instead of the glossary; a qualified name
+resolves against the `steps` of the other file, bound to the same schema, whose `name`
+is `<plan>`. A name that is no step is E006 at the line of the field. These links make no composition edge. `acyclic` is not
 yet enforced here either.
 
 `ubiq sync github` mirrors steps with `sync.records` entries of kind `plan`; see

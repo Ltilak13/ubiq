@@ -8,6 +8,7 @@ repository chooses which records sync and where in `ubiq.yaml`.
 sync:
   repo: owner/name          # default: $GITHUB_REPOSITORY
   label_prefix: "priority: " # the sync owns labels that start with this; never empty
+  create: always            # or `prioritized`: open goal-criterion issues only for priorities
   records:
     - glob: "docs/goals/*-goal.md"
       kind: goal             # goal, plan, or feature
@@ -215,7 +216,11 @@ only be an issue"), so it becomes text.
 ## Goal behavior
 
 - A criterion that is not `met`, lists no `issues`, and has no issue with the
-  marker `<!-- ubiq-goal: <name> <AC> -->` gets a new issue.
+  marker `<!-- ubiq-goal: <name> <AC> -->` gets a new issue. With
+  `create: prioritized`, it gets one only when the criterion or its goal sets a
+  `priority`; a criterion without one is still tracked through listed and marked issues.
+- A criterion with `assessed_in` is assessed by the criterion it names, so it is not
+  mirrored at all.
 - A criterion that is `met` closes its listed and marked issues that are open,
   with a comment that names the review and the commit.
 - Only markers in issues opened by `github-actions[bot]` count, because anyone
@@ -225,6 +230,39 @@ only be an issue"), so it becomes text.
 Limits: deleting
 a record leaves its issues open. An issue created with a personal token has no
 bot author, so list its number in `issues:` to track it.
+
+## Criterion scenarios
+
+A goal criterion can be accepted by Gherkin scenarios instead of a recorded review.
+Its frontmatter sets `scenario: true` and stores nothing else about its state: no
+`assessment`, `support`, `gap`, or `review`. The scenarios sit in the feature file
+beside the goal, `<goal>.feature`, each tagged with the criterion's label:
+
+```gherkin
+@AC1
+Scenario: A part registered by configuration alone is a checked reference
+  Given the part "checkout" in "skills/_shared/checkout.md"
+  ...
+```
+
+- `ubiq check` reports E016 when a `scenario: true` criterion has no tagged scenario,
+  and when a tag names no such criterion. A tag on `Feature:` applies to every scenario.
+- `pytest -p ubiq.pytest_plugin --ubiq-results FILE` writes each scenario's outcome.
+  The plugin ships with the package but loads only when named with `-p`, so other
+  test suites never see it; scenarios run with pytest-bdd
+  ([decision 0002](decisions/0002-gherkin-binding.md)).
+- `ubiq sync github --results FILE` treats the criterion as met exactly when every
+  scenario tagged with it passed, and closes its issues with a comment naming the
+  commit. Without `--results`, or when a scenario did not run, the criterion stays open.
+- A scenario that fails after its criterion's issues closed opens a new
+  `Regression:` issue. The sync still never reopens an issue.
+- A goal's own `issue` closes when every criterion holds: a scenario criterion passed,
+  any other criterion is `met`, and an `assessed_in` criterion holds when the one it
+  names does. Nothing creates the goal issue.
+
+The `github-sync` workflow runs `tests/scenarios` on each push to `main` and passes the
+results to `--apply`, so a criterion is met only by a passing run of `main`. The approval
+that matters is the review of the scenario text in the pull request that adds it.
 
 ## Plan behavior
 

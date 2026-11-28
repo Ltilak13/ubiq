@@ -24,10 +24,15 @@ PLAN_SCHEMA = (ROOT / ".ubiq/schemas/plan.json").read_text()
 # -- the schema and the two repository plans ---------------------------------------
 
 
-def test_plan_schema_carries_an_exact_copy_of_the_tracking_fragment():
-    fragment = json.loads((ROOT / ".ubiq/schemas/tracking.json").read_text())
+TRACKING = (ROOT / ".ubiq/schemas/tracking.json").read_text()
+
+
+def test_plan_schema_references_the_tracking_fields_instead_of_copying_them():
     schema = json.loads(PLAN_SCHEMA)
-    assert schema["$defs"]["tracking"]["properties"] == fragment["properties"]
+    step = schema["properties"]["steps"]["patternProperties"]["^[a-z0-9]+(-[a-z0-9]+)*$"]
+    assert schema["properties"]["status"] == {"$ref": "tracking.json#/properties/status"}
+    assert step["properties"]["pr"] == {"$ref": "tracking.json#/properties/pr"}
+    assert "$defs" not in schema
 
 
 def test_step_requires_is_annotated_within_steps():
@@ -72,10 +77,13 @@ Demo.
 """
 
 
-def repo(root, text, schema=PLAN_SCHEMA):
+def repo(root, text, schema=PLAN_SCHEMA, others=()):
     (root / "schema.json").write_text(schema)
+    (root / "tracking.json").write_text(TRACKING)
     (root / "plans").mkdir()
     (root / "plans/demo.md").write_text(text)
+    for index, other in enumerate(others):
+        (root / f"plans/other-{index}.md").write_text(other)
     (root / "ubiq.yaml").write_text(
         'glossary:\n  - {glob: "plans/*.md", term_field: name, ns: plan}\ndocs: ["plans/*.md"]\n'
         'schemas:\n  - schema: schema.json\n    files: ["plans/*.md"]\n    format: frontmatter\n')
@@ -103,6 +111,28 @@ def test_requires_does_not_resolve_to_another_plans_step_or_plan_name(tmp_path, 
     repo(tmp_path, PLAN.replace("[first]", "[demo]"))
     _status, found = check(tmp_path, capsys)
     assert [d["code"] for d in found if d["severity"] == "error"] == ["E006"]
+
+
+OTHER = "---\nname: shared\nstatus: proposed\nissue: 20\ntrunk: main\nsteps:\n  base-step:\n    requires: []\n---\n"
+
+
+def test_requires_resolves_a_step_of_another_plan_by_its_qualified_name(tmp_path, capsys):
+    repo(tmp_path, PLAN.replace("[first]", "[shared/base-step]"), others=[OTHER])
+    status, found = check(tmp_path, capsys)
+    assert status == 0, found
+
+
+@pytest.mark.parametrize("value", ["shared/missing", "missing/base-step", "demo/first"])
+def test_a_qualified_name_must_name_a_step_of_another_plan(tmp_path, capsys, value):
+    repo(tmp_path, PLAN.replace("[first]", f"[{value}]"), others=[OTHER])
+    _status, found = check(tmp_path, capsys)
+    assert [d["code"] for d in found if d["severity"] == "error"] == ["E006"]
+
+
+def test_a_step_pr_may_be_one_number_or_a_list(tmp_path, capsys):
+    repo(tmp_path, PLAN.replace("    requires: [first]", "    requires: [first]\n    pr: [3, 4]"))
+    status, found = check(tmp_path, capsys)
+    assert status == 0, found
 
 
 @pytest.mark.parametrize("old, new", [("status: active", "status: wip"), ("trunk: main\n", ""),

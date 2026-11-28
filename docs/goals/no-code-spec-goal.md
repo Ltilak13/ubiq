@@ -10,7 +10,7 @@ criteria:
   AC2:
     assessment: partial
     support:
-    - feature: No-code checks recipe
+    - feature: no-code-checks
       implementation:
         path: docs/no-code-checks.md
         anchor: '## Pre-commit'
@@ -24,9 +24,16 @@ criteria:
     gap: Restated-value warnings (PR #60) and checked field links (PR #61) are open, unmerged pull requests. Prose-first values (#63) and READMEs composed from record fields (#65) depend on #61.
     issues: [63, 65]
   AC4:
-    assessment: unassessed
-    support: []
-    gap: Names inside fenced blocks are not checked (#66), and test results do not verify criteria (#67).
+    assessment: partial
+    support:
+    - feature: criterion-scenarios
+      implementation:
+        path: src/ubiq/scenarios.py
+        anchor: def load_results(
+      check:
+        path: tests/test_criterion_scenarios.py
+        anchor: def test_a_passing_scenario_closes_the_criterion_issue(
+    gap: Goal criteria link to tagged scenarios, and passing results on main meet them (#67). Spec records other than goals have no scenario binding, and names inside fenced blocks are not checked (#66).
     issues: [66, 67]
   AC5:
     assessment: unassessed
