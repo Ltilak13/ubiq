@@ -89,6 +89,9 @@ jobs:
           # A force-push can leave the previous main commit unreachable.
           git cat-file -e "$BASE^{commit}" 2>/dev/null || BASE=HEAD~1
           ubiq coverage --since "$BASE" --markdown | tee -a "$GITHUB_STEP_SUMMARY"
+      # Advisory: a met criterion whose cited files changed after its review needs reassessment.
+      - name: Review freshness
+        run: python scripts/review_freshness.py | tee -a "$GITHUB_STEP_SUMMARY"
 
   # Use the pull request head to show pending changes in its own runner.
   sync-preview:
