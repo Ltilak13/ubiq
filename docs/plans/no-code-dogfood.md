@@ -29,6 +29,9 @@ steps:
   readme-membership:
     issue: 65
     requires: [feature-records]
+  readme-generation:
+    issue: 173
+    requires: [readme-membership]
   cli-spec-slice:
     requires: [readme-membership]
   no-code-authoring-proof:
@@ -65,6 +68,8 @@ to create issues for the steps that have none (`cli-spec-slice`,
 - `mermaid-drift` and `readme-membership`: generated Mermaid drift check (#59) and the
   README membership check (#65). Both need the feature relationships, and they can
   proceed independently.
+- `readme-generation`: generate the managed feature list from checked frontmatter after
+  the membership checks ship (#173).
 - `cli-spec-slice`: convert one real CLI behavior and its acceptance scenarios into a
   Markdown spec, with the README membership check as the first slice. Reuse a test
   binding that builds a small repository, runs `ubiq check`, and asserts the diagnostic
