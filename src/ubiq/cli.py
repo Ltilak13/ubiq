@@ -30,7 +30,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, coverage, query, readmes, review
+from . import __version__, coverage, mermaid, query, readmes, review
 from .candidates import find_candidates
 from .catalog import CatalogError, catalog_cover_gaps, catalog_refs
 from .check import Diagnostic, at, run_checks
@@ -249,8 +249,9 @@ def build(root: Path, trace: ScanTrace | None = None, cfg: Config | None = None,
     if cfg.schemas:
         from .schemas import single_diagnostics, xref_refs
         refs.extend(xref_refs(cfg))
-        from .step_refs import within_diagnostics
+        from .step_refs import step_cycle_diagnostics, within_diagnostics
         extra.extend(within_diagnostics(cfg))
+        extra.extend(step_cycle_diagnostics(cfg))
         extra.extend(single_diagnostics(cfg))
     if cfg.sync is not None:
         from .scenarios import diagnostics as scenario_diagnostics
@@ -473,9 +474,20 @@ def _check(root: Path, cfg: Config | None = None,
     cycles = _include_cycles(_composition_edges(result))
     cycles = [diag for item in composition for diag in at(item.config.edges.severity.get("include"),
               [d for d in cycles if d.file in item.docs])]
+    diags.extend(_graph_blocks(result))
     existing = {(d.code, d.message, d.file, d.line) for d in diags}
     diags.extend(d for d in cycles if (d.code, d.message, d.file, d.line) not in existing)
     return diags, len(result.glossary.terms), len(result.refs)
+
+
+def _graph_blocks(built: Build) -> list[Diagnostic]:
+    """W009: marked mermaid blocks in this repository's live docs that differ from its graph."""
+    def select(attrs: dict[str, str]) -> list:
+        kinds = [k for k in attrs.get("kind", "").split(",") if k]
+        return _select_edges(built, attrs.get("target"), kinds, "callers" in attrs,
+                             int(attrs["depth"]) if "depth" in attrs else None)[1]
+    live = [p for p in built.docs if p not in built.historical and p.is_relative_to(built.config.root)]
+    return mermaid.check(live, select)
 
 
 def _check_build(result: Build) -> list[Diagnostic]:
@@ -607,16 +619,26 @@ def cmd_support(args) -> int:
     return 0
 
 
+def _select_edges(built: Build, target, kinds, callers: bool, depth):
+    """The walk's start record and the composition edges it shows."""
+    edges = _composition_edges(built)
+    if kinds:
+        # A kind selects its edges, and a field name selects the edges that field declares.
+        edges = [e for e in edges if e.kind in kinds
+                 or (e.name in kinds and e.name not in GRAPH_KINDS)]
+    start = _resolve_one(built.glossary, target, built.layout.repositories) if target else None
+    return start, walk(edges, start, callers, depth)
+
+
 def cmd_graph(args) -> int:
     root = Path(args.root).resolve()
     built = build(root)
     errors = _assembly_errors(built.glossary, built.diagnostics)
     if errors:
         return _report(errors, root, args.json)
-    layout = built.layout
-    edges = _composition_edges(built)
     if args.kind:
         from .schemas import edge_names
+        edges = _composition_edges(built)
         known = {*GRAPH_KINDS, *built.config.ref_fields, *edge_names(built.config),
                  *(e.kind for e in edges), *(e.name for e in edges if e.name)}
         unknown = sorted(set(args.kind) - known)
@@ -624,16 +646,17 @@ def cmd_graph(args) -> int:
             print(f"error: unknown edge kind {', '.join(unknown)}; expected one of "
                   f"{', '.join(sorted(known))}", file=sys.stderr)
             return 2
-        # A kind selects its edges, and a field name selects the edges that field declares.
-        edges = [e for e in edges if e.kind in args.kind
-                 or (e.name in args.kind and e.name not in GRAPH_KINDS)]
     try:
-        start = (_resolve_one(built.glossary, args.target, layout.repositories)
-                 if args.target else None)
+        start, shown = _select_edges(built, args.target, args.kind, args.callers, args.depth)
     except LookupError as exc:
         print(json.dumps({"error": str(exc)}) if args.json else f"error: {exc}")
         return 1
-    shown = walk(edges, start, args.callers, args.depth)
+    if args.format == "mermaid":
+        if args.json:
+            print("error: --format mermaid cannot be combined with --json", file=sys.stderr)
+            return 2
+        print("\n".join(mermaid.render(shown)))
+        return 0
     if args.json:
         print(json.dumps({"target": start.qualified if start else None,
                           "view": "callers" if args.callers else "dependencies",
@@ -1181,6 +1204,8 @@ def main(argv: list[str] | None = None) -> int:
                         "(repeat to select several)")
     g.add_argument("--depth", type=_positive, default=None,
                    help="stop after this many hops from the target (default: no limit)")
+    g.add_argument("--format", choices=["text", "mermaid"], default="text",
+                   help="mermaid prints a flowchart for `<!-- ubiq:graph -->` blocks")
     g.set_defaults(fn=cmd_graph)
 
     pl = sub.add_parser("plan", help="list ubiq's features in adoption order, or the next ones to adopt")
