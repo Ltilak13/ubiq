@@ -23,6 +23,11 @@
     },
     "docs": {"type": "string", "pattern": "^docs/[A-Za-z0-9_./-]+\\.md(#[a-z0-9-]+)?$"},
     "summary": {"type": "string", "pattern": "\\S"},
+    "status": {
+      "enum": ["planned", "shipped"],
+      "default": "shipped",
+      "description": "planned: work in flight, not yet adoptable; shipped (the default when absent): released. A planned feature's codes need not be documented in the spec until it ships."
+    },
     "issue": {"$ref": "#/$defs/tracking/properties/issue"},
     "priority": {"$ref": "#/$defs/tracking/properties/priority"},
     "part_of": {

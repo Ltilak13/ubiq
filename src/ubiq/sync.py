@@ -44,6 +44,7 @@ import yaml
 
 from . import xref
 from .config import Config, load_config
+from .plan import PlanError, feature_status
 from .records import DEFAULT_NS, normalize
 from .scan import HTML_COMMENT_RE, _blank_fences, _blank_inline
 from .schemas import _annotations, load_data
@@ -300,6 +301,48 @@ def record_stacks(records: Mapping[str, Tracked]) -> list[Stack]:
             for name, t in records.items() if t.prs]
 
 
+def load_feature(path: Path, root: Path) -> dict[str, Any]:
+    """Read a feature record into its frontmatter plus its repository path."""
+    path = Path(path).resolve()
+    try:
+        data = dict(load_data(path, frontmatter=True))
+        missing = [k for k in ('name', 'summary') if not isinstance(data.get(k), str)]
+        if missing:
+            raise KeyError(', '.join(missing))
+        data['path'] = path.relative_to(Path(root).resolve()).as_posix()
+        return data
+    except (ValueError, KeyError, OSError) as exc:
+        raise SyncError(f"{path}: not a readable feature ({exc})") from exc
+
+
+def feature_desired(feature: Mapping[str, Any], sha: str = '',
+                    label_prefix: str = DEFAULT_LABEL_PREFIX) -> list[Desired]:
+    """One `Desired` for a feature record: open while `planned`, closed once `shipped`.
+
+    A record with no `status` is shipped. `issue` is tracked like a goal criterion's.
+    """
+    name = feature['name']
+    marker = f"ubiq-feature: {name}"
+    try:
+        shipped = feature_status(feature) == 'shipped'
+    except PlanError as exc:
+        raise SyncError(f"{feature['path']}: {exc}") from exc
+    requires = ', '.join(f"`{r}`" for r in feature.get('requires') or []) or 'none'
+    body = (f"Feature `{name}`, planned in `{feature['path']}`.\n\n{feature['summary']}\n\n"
+            f"Specified in `{feature.get('docs', '')}`. Requires: {requires}.\n\n"
+            "When the feature ships, set `status: shipped` in the record. The merge closes "
+            f"this issue.\n\n<!-- {marker} -->\n")
+    comment = (f"Feature `{name}` is `shipped` at {sha or 'the merged commit'}.\n\n"
+               f"<!-- ubiq-feature-closed: {name} -->")
+    return [Desired(
+        kind='feature', ident={'feature': name}, marker=marker,
+        title=textwrap.shorten(f"{name}: {feature['summary']}", 200), body=body,
+        state='closed' if shipped else 'open',
+        listed=(feature['issue'],) if 'issue' in feature else (),
+        close_comment=comment if shipped else '', priority=feature.get('priority', ''),
+        label_prefix=label_prefix)]
+
+
 def desired_from_config(cfg: Config, sha: str = '',
                         records: Mapping[str, Tracked] | None = None) -> list[Desired]:
     """Desired state for every record file that `sync.records` selects."""
@@ -318,6 +361,8 @@ def desired_from_config(cfg: Config, sha: str = '',
         for path in sorted(record.glob.walk(cfg.ignore)):
             if record.kind == 'plan':
                 items += plan_desired(load_plan(path, cfg.root), cfg.sync.label_prefix)
+            elif record.kind == 'feature':
+                items += feature_desired(load_feature(path, cfg.root), sha, cfg.sync.label_prefix)
     return items + _part_of_records(cfg)
 
 

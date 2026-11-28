@@ -43,6 +43,8 @@ sync:
       kind: goal
     - glob: "docs/plans/*.md"
       kind: plan
+    - glob: "src/ubiq/features/*.md"
+      kind: feature
 
 ignore:
   - ".git/**"

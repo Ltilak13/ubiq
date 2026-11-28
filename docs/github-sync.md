@@ -10,9 +10,11 @@ sync:
   label_prefix: "priority: " # the sync owns labels that start with this; never empty
   records:
     - glob: "docs/goals/*-goal.md"
-      kind: goal             # goal or plan
+      kind: goal             # goal, plan, or feature
     - glob: "docs/plans/*.md"
       kind: plan
+    - glob: "src/ubiq/features/*.md"
+      kind: feature
 ```
 
 ```bash
@@ -239,6 +241,22 @@ item, with the marker `<!-- ubiq-plan: <plan> <step> -->`.
   `requires_markers` identify the other steps it waits on.
 - A step's `priority` is optional. A step without one takes the plan's (see
   [Priority inheritance](#priority-inheritance)).
+
+## Feature records
+
+A `kind: feature` entry mirrors [feature records](features.md) (`src/ubiq/features/*.md`),
+one issue per feature, with the same actions as goals.
+
+- A `planned` feature that has no `issue` and no issue marked
+  `<!-- ubiq-feature: <name> -->` gets a new issue (a `create`), titled
+  `<name>: <summary>`, with its `priority` label if it sets one.
+- A feature with `issue: N` tracks that issue. Set `issue` to link work that already
+  has one; leave it out to let the sync create one, then add the number if you want it listed.
+- A `shipped` feature closes its open tracked issues with a comment (a `close`). A
+  record with no `status` is shipped, so adopting the kind creates nothing for existing
+  records and closes only issues they name.
+- Nothing is reopened: setting a shipped feature back to `planned` leaves a closed
+  issue closed.
 
 ## What the sync writes
 
