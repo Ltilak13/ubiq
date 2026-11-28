@@ -542,10 +542,13 @@ def test_ignore_derived_drops_only_the_derived_status_labels():
 def test_check_ignore_derived_passes_when_only_in_review_labels_lag(tmp_path, monkeypatch, capsys):
     root = write_repo(tmp_path, issues='    issues: [7]\n')
     snapshot = [{'number': 7, 'state': 'open', 'body': '', 'labels': [], 'user': {'login': 'x'}}]
-    pulls = [{'number': 9, 'head': {'ref': 'h', 'repo': {'full_name': 'o/r'}},
-              'base': {'ref': 'main', 'repo': {'default_branch': 'main'}}, 'body': 'Closes #7'}]
+    # The branch name ties the pull request to #7 without a closing keyword.
+    pulls = [{'number': 9, 'head': {'ref': 'feature/issue-7-x', 'repo': {'full_name': 'o/r'}},
+              'base': {'ref': 'main', 'repo': {'default_branch': 'main'}}, 'body': ''}]
 
     def transport(method, url, token, payload=None):
+        if url.endswith('/commits?per_page=100'):
+            return []
         if '/pulls' in url:
             return pulls if 'page=1' in url else []
         if '/issues?' in url:
@@ -556,3 +559,59 @@ def test_check_ignore_derived_passes_when_only_in_review_labels_lag(tmp_path, mo
     assert cmd_sync(flags(root, check=True), transport, pause=0) == 1
     capsys.readouterr()
     assert cmd_sync(flags(root, check=True, ignore_derived=True), transport, pause=0) == 0
+
+
+
+# -- issue references and "met at" ---------------------------------------------------
+
+def test_commit_messages_and_branch_names_name_issues():
+    from ubiq.sync import branch_numbers, referenced_numbers
+    assert referenced_numbers("feat: x\n\nRefs #12\nPart of o/r#13, closes #14\nrefs other/r#15", "o/r") == (12, 13, 14)
+    assert referenced_numbers("`Refs #9` in code is not a reference") == ()
+    assert branch_numbers("claude/x-issue-70") == (70,)
+    assert branch_numbers("fix/issue-7-and-issue-8") == (7, 8)
+    assert branch_numbers("tissue-3") == ()
+
+
+def test_refs_mark_an_issue_in_review_without_a_closing_keyword():
+    [item] = goal_desired(goal(AC1=unmet(issues=[7])))
+    pulls = [{'number': 9, 'head': 'b', 'base': 'main', 'closes': (), 'keyword_closes': (), 'refs': (7,)}]
+    [label] = [a for a in plan([item], [{**issue(7), 'labels': []}], pulls) if a['action'] == 'label']
+    assert label['add'] == ['status: in review']
+
+
+def test_a_closing_keyword_on_an_unmet_criterions_own_issue_warns():
+    [item] = goal_desired(goal(AC1=unmet()))
+    pulls = [{'number': 9, 'head': 'b', 'base': 'main', 'closes': (7,), 'keyword_closes': (7,), 'refs': ()}]
+    [warn] = [a for a in plan([item], [issue(7, marker='AC1')], pulls) if a['action'] == 'warn']
+    assert warn['issue'] == 7 and warn['pr'] == 9 and 'Refs #7' in warn['reason']
+    # A listed work item may be closed by its pull request, and a met criterion's issue too.
+    [listed] = goal_desired(goal(AC1=unmet(issues=[7])))
+    assert not [a for a in plan([listed], [issue(7)], pulls) if a['action'] == 'warn']
+    [met_item] = goal_desired(goal(AC1=met()))
+    assert not [a for a in plan([met_item], [issue(7, marker='AC1')], pulls) if a['action'] == 'warn']
+
+
+def test_an_issue_closed_before_the_sync_gets_its_met_at_comment_once():
+    [item] = goal_desired(goal(AC1=met(issues=[7])), 'abc')
+    closed = {**issue(7, state='closed'), 'bot_markers': set()}
+    [comment] = [a for a in plan([item], [closed]) if a['action'] == 'comment']
+    assert comment['issue'] == 7 and 'met` at abc' in comment['comment']
+    done = {**closed, 'bot_markers': {'ubiq-goal-closed: demo-goal AC1'}}
+    assert not [a for a in plan([item], [done]) if a['action'] == 'comment']
+    # Without the markers read, nothing is known and nothing is posted.
+    assert not [a for a in plan([item], [issue(7, state='closed')]) if a['action'] == 'comment']
+    from ubiq.sync import confirmable, drift
+    assert confirmable([item], [issue(7, state='closed')]) == [7]
+    assert drift([comment], ignore_derived=True) == [] and drift([comment]) == [comment]
+
+
+def test_bot_markers_reads_only_the_bots_comments():
+    answers = {'/7/comments?per_page=100': [
+        {'user': {'login': 'github-actions[bot]'}, 'body': 'x <!-- ubiq-goal-closed: g AC1 -->'},
+        {'user': {'login': 'someone'}, 'body': '<!-- ubiq-goal-closed: g AC2 -->'}]}
+
+    def transport(method, url, token, payload=None):
+        return answers.get(url.split('/issues', 1)[-1], [])
+    from ubiq.sync import GitHub
+    assert GitHub('o/r', 't', transport, 0).bot_markers([7]) == {7: {'ubiq-goal-closed: g AC1'}}

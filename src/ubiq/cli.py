@@ -1170,8 +1170,9 @@ def main(argv: list[str] | None = None) -> int:
     gh.add_argument("--ref", metavar="REV",
                     help="read the records and ubiq.yaml as they are at REV (a pull request's base)")
     gh.add_argument("--ignore-derived", action="store_true",
-                    help="with --check, do not count the derived `status: in review` and "
-                         "`status: in progress` labels, which follow open pull requests")
+                    help="with --check, do not count what waits only for the next sync of main: "
+                         "the derived `status: in review`/`status: in progress` labels and "
+                         "\"met at\" comments owed to issues closed by keyword")
     gh.add_argument("--repo", metavar="OWNER/NAME",
                     help="issue repository (default: sync.repo, then $GITHUB_REPOSITORY)")
     gh.add_argument("--results", metavar="FILE",

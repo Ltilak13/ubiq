@@ -173,8 +173,11 @@ With those records, #145 must target `claude/..-tracking-fields`, the head of #1
 ### Derived status: in review
 
 An open issue carries `status: in review` when an open pull request implements it.
-Sync recognizes three kinds of evidence:
+Sync recognizes these kinds of evidence:
 
+- `Refs #n` (or `Part of #n`) in a commit message of the pull request, or `issue-<n>`
+  in its branch name (`claude/records-issue-70`). This is the preferred way to name the
+  issue of a goal criterion, which the sync closes when the criterion is met.
 - A closing reference on a pull request that targets the default branch.
 - A closing reference on a stacked pull request that targets the branch of another
   open pull request in the repository. GitHub enables automatic closing by keyword
@@ -194,7 +197,9 @@ implementing pull request disappears. It derives the label on every sync.
   label follows pull requests without waiting for a push to `main`.
 - Pull request CI runs `--check --ignore-derived`: the label is the one fact that a
   pull request's own opening changes, so it can lag that check by a few seconds.
-  The scheduled drift job still counts it.
+  The flag also skips a "met at" comment still owed to an issue that GitHub closed by
+  keyword, which waits only for the next sync of `main`. The scheduled drift job
+  counts both.
 
 ## Requires
 
@@ -229,7 +234,14 @@ only be an issue"), so it becomes text.
 - A criterion with `assessed_in` is assessed by the criterion it names, so it is not
   mirrored at all.
 - A criterion that is `met` closes its listed and marked issues that are open,
-  with a comment that names the review and the commit.
+  with a "met at `<commit>`" comment that names the scenarios or the review.
+- An issue that closed before the sync could (a closing keyword on merge, or by hand)
+  still gets that comment, once. The sync reads the bot's comments only for the closed
+  issues of met criteria.
+- A pull request that closes an unmet criterion's own issue (the one carrying its
+  marker) by keyword, in its body or a commit message, is a `warn`, and fails
+  `--check`: write `Refs #n` so that the issue closes when the criterion is met. Issues
+  a criterion lists in `issues:` are work items, and their pull requests may close them.
 - Only markers in issues opened by `github-actions[bot]` count, because anyone
   can write a marker into an issue. Listed issues are trusted.
 - The sync never reopens an issue, edits a title, or touches other issues.

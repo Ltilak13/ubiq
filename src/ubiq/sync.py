@@ -54,6 +54,8 @@ CRITERION_RE = re.compile(r'^\d+\. (AC\d+): .+(?:\n[ \t]+\S.*)*', re.MULTILINE)
 # Anyone can write a marker into an issue; only the workflow's own issues count.
 BOT = 'github-actions[bot]'
 MARKER_RE = re.compile(r'<!-- (ubiq-[a-z]+: [^>]+?) -->')
+# The marker that ends a closing comment, such as `ubiq-goal-closed: <goal> <AC>`.
+CLOSED_MARKER_RE = re.compile(r'<!-- (ubiq-[a-z]+-closed: [^>]+?) -->')
 CLOSED_MARKER = '<!-- ubiq-goal-closed: {name} {ac} -->'
 
 DEFAULT_LABEL_PREFIX = 'priority: '
@@ -102,6 +104,9 @@ class Desired:
     # A scenario-bound criterion whose scenario failed on this revision: when every
     # tracked issue is closed, open a new one instead of reopening (the sync never reopens).
     regression: bool = False
+    # Goal items: an issue that closed before the sync could (a closing keyword, or by
+    # hand) still gets the `close_comment` ("met at <sha>"), once (`fact_confirm`).
+    confirm_closed: bool = False
     # `pr`: the record's implementing pull requests, and for each record it `requires`
     # that has a `pr`, that record's name and pull requests (see `Stack`).
     prs: tuple[int, ...] = ()
@@ -198,7 +203,7 @@ def goal_issue_desired(goals: Sequence[Mapping[str, Any]], sha: str = '',
         items.append(Desired(
             kind='goal', ident={'goal': goal['name']}, marker=f"ubiq-goal: {goal['name']}",
             title=goal['name'], body='', state='closed' if done else 'open',
-            listed=(goal['issue'],), creates=False,
+            listed=(goal['issue'],), creates=False, confirm_closed=True,
             close_comment=(f"Every criterion of goal `{goal['name']}` holds at {sha or 'the merged commit'}.\n\n"
                            f"<!-- ubiq-goal-closed: {goal['name']} -->") if done else ''))
     return items
@@ -271,7 +276,7 @@ def goal_desired(goal: Mapping[str, Any], sha: str = '',
             title=textwrap.shorten(f"{goal['name']} {ac}: {title}", 200),
             body=(_scenario_body(goal, ac, _feature_path(goal), marker, failed) if bound
                   else _goal_body(goal, ac, criterion, marker)),
-            state='closed' if met else 'open', regression=failed,
+            state='closed' if met else 'open', regression=failed, confirm_closed=True,
             listed=tuple(dict.fromkeys([*criterion.get('issues', []), *([criterion['issue']]
                                                                        if 'issue' in criterion else [])])),
             close_comment=comment, priority=resolve_priority(criterion, goal),
@@ -549,6 +554,40 @@ def fact_state(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue
             for n in tracked if issues.get(n, {}).get('state') == 'open']
 
 
+def _closed_marker(comment: str) -> str:
+    match = CLOSED_MARKER_RE.search(comment.rsplit('\n', 1)[-1])
+    return match.group(1) if match else ''
+
+
+def fact_confirm(item: Desired, tracked: Sequence[int], issues: Mapping[int, Issue]) -> list[Action]:
+    """A met goal item's issue that closed without the sync's comment gets it now.
+
+    GitHub closes an issue when a pull request that names it with a closing keyword
+    merges, before the sync runs, and a person can close one by hand. The comment records
+    the commit at which the criterion holds. It needs the issue's `bot_markers`, read only
+    for these issues; without them nothing is known, so nothing is done.
+    """
+    if item.state != 'closed' or not item.confirm_closed or not item.close_comment:
+        return []
+    marker = _closed_marker(item.close_comment)
+    return [{'action': 'comment', **item.ident, 'issue': n, 'comment': item.close_comment}
+            for n in tracked
+            if issues.get(n, {}).get('state') == 'closed' and 'bot_markers' in issues[n]
+            and marker not in issues[n]['bot_markers']]
+
+
+def confirmable(desired: Iterable[Desired], snapshot: Sequence[Issue]) -> list[int]:
+    """The closed issues of met goal items, whose bot comments `fact_confirm` must read."""
+    by_marker = _marked(snapshot)
+    state = {i['number']: i.get('state') for i in snapshot}
+    found: list[int] = []
+    for item in desired:
+        if item.state == 'closed' and item.confirm_closed:
+            numbers = [*item.listed, *(i['number'] for i in by_marker.get(item.marker, []))]
+            found += [n for n in numbers if state.get(n) == 'closed']
+    return list(dict.fromkeys(found))
+
+
 def _mirrors_priority(item: Desired) -> bool:
     # An empty prefix would own every label, so it owns none.
     return bool(item.priority and item.label_prefix.strip())
@@ -660,7 +699,22 @@ IN_PROGRESS = STATUS_PREFIX + 'in progress'
 CLOSING_RE = re.compile(r'\b(?:close[sd]?|fix(?:e[sd]?)?|resolve[sd]?)\b:?[ \t]+(?:([\w.-]+/[\w.-]+))?#(\d+)',
                         re.IGNORECASE)
 
+REFS_RE = re.compile(r'\b(?:refs?|references|part[ \t]+of)\b:?[ \t]+(?:([\w.-]+/[\w.-]+))?#(\d+)', re.IGNORECASE)
+BRANCH_ISSUE_RE = re.compile(r'(?:^|[/_-])issue-(\d+)(?=$|[/_-])', re.IGNORECASE)
+
 Pull = Mapping[str, Any]
+
+
+def referenced_numbers(text: str | None, repo: str = '') -> tuple[int, ...]:
+    """Issue numbers a commit message names with `Refs #n` / `Part of #n` or a closing keyword."""
+    prose = _blank_inline(_blank_fences(text or ''))
+    return tuple(dict.fromkeys(int(m.group(2)) for regex in (REFS_RE, CLOSING_RE) for m in regex.finditer(prose)
+                               if not m.group(1) or m.group(1).casefold() == repo.casefold()))
+
+
+def branch_numbers(branch: str) -> tuple[int, ...]:
+    """Issue numbers a branch name carries as `issue-<n>`, e.g. `feature/issue-70-records`."""
+    return tuple(dict.fromkeys(int(n) for n in BRANCH_ISSUE_RE.findall(branch)))
 
 
 def closing_numbers(body: str | None, repo: str = '') -> tuple[int, ...]:
@@ -751,6 +805,23 @@ def fact_part_of(item: Desired, tracked: Sequence[int], issues: Mapping[int, Iss
             for n in tracked if n in issues and n != item.parent_issue and n not in children]
 
 
+def keyword_warnings(items: Iterable[Desired], by_marker: Mapping[str, list[Issue]],
+                     pulls: Mapping[int, Pull]) -> list[Action]:
+    """A `warn` for an open pull request that closes an unmet goal criterion's own issue by keyword.
+
+    The criterion's own issue is the one the sync opened for it (it carries the marker).
+    GitHub would close it on merge whether or not the criterion holds; the sync closes it
+    when the criterion is met. Name it with `Refs #n` instead. Issues a criterion lists in
+    `issues:` are work items that their pull requests may close.
+    """
+    owned = {i['number']: item for item in items if item.confirm_closed and item.state == 'open'
+             for i in by_marker.get(item.marker, []) if i.get('state') == 'open'}
+    return [{'action': 'warn', **owned[n].ident, 'issue': n, 'pr': p,
+             'reason': f'pull request #{p} closes #{n} by keyword; the sync closes it when the '
+                       f'criterion is met, so write `Refs #{n}`'}
+            for p, pull in sorted(pulls.items()) for n in pull.get('keyword_closes', ()) if n in owned]
+
+
 def unexpected_sub_issues(items: Sequence[tuple[Desired, list[int]]], issues: Mapping[int, Issue]) -> list[Action]:
     """Sub-issues on a parent issue that no record puts there: added by hand on GitHub.
 
@@ -769,7 +840,7 @@ def unexpected_sub_issues(items: Sequence[tuple[Desired, list[int]]], issues: Ma
 
 # Each mirrored fact: (item, tracked issue numbers, issues by number) -> actions.
 FACTS: tuple[Callable[[Desired, Sequence[int], Mapping[int, Issue]], list[Action]], ...] = (
-    fact_exists, fact_state, fact_priority, fact_part_of, fact_requires, fact_blocked_line)
+    fact_exists, fact_state, fact_confirm, fact_priority, fact_part_of, fact_requires, fact_blocked_line)
 
 
 def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
@@ -790,7 +861,7 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
     by_marker = _marked(snapshot)
     open_pulls = {p['number']: p for p in pulls}
     in_review = {n for pull in open_pulls.values()
-                 for source in ('closes', 'closing_intent') for n in pull.get(source, ())}
+                 for source in ('closes', 'closing_intent', 'refs') for n in pull.get(source, ())}
     in_review.update(record.issue for record in records
                      if record.issue is not None and any(pr in open_pulls for pr in record.prs))
     items = []
@@ -813,6 +884,7 @@ def plan(desired: Iterable[Desired], snapshot: Sequence[Issue],
         if not found:
             reason = 'met; no open issue' if item.state == 'closed' else 'tracked'
             actions.append({'action': 'noop', **item.ident, 'reason': reason, 'issues': tracked})
+    actions += keyword_warnings((item for item, _ in items), by_marker, open_pulls)
     actions += unexpected_sub_issues(items, by_number)
     untracked = [n for n in by_number if n not in tracked_issues]
     if untracked:
@@ -833,9 +905,11 @@ def derived_status(action: Action) -> bool:
 
 
 def drift(actions: Iterable[Action], ignore_derived: bool = False) -> list[Action]:
-    """The actions that differ from GitHub: everything but `noop`, and with
-    `ignore_derived`, also not the derived status labels (`derived_status`)."""
-    return [a for a in actions if a['action'] != 'noop' and not (ignore_derived and derived_status(a))]
+    """The actions that differ from GitHub: everything but `noop`. With `ignore_derived`,
+    also not the derived status labels (`derived_status`) nor a "met at" comment owed to an
+    issue that GitHub closed by keyword: both wait only for the next sync of `main`."""
+    return [a for a in actions if a['action'] != 'noop'
+            and not (ignore_derived and (derived_status(a) or a['action'] == 'comment'))]
 
 
 # -- GitHub REST adapter -----------------------------------------------------------
@@ -862,7 +936,7 @@ class GitHub:
         self.base = f'https://api.github.com/repos/{repo}/issues'
         self.handlers: dict[str, Callable[[Action], None]] = {
             'create': self._create, 'close': self._close, 'label': self._label,
-            'link': self._link, 'unlink': self._unlink, 'body': self._body}
+            'link': self._link, 'unlink': self._unlink, 'body': self._body, 'comment': self._comment}
 
     def _call(self, method: str, url: str, payload: dict | None = None) -> Any:
         return self.transport(method, url, self.token, payload)
@@ -915,8 +989,19 @@ class GitHub:
                     same_repo_heads.add(head)
                 default = (pull['base'].get('repo') or {}).get('default_branch', base)
                 references = closing_numbers(pull.get('body'), self.repo)
-                entry: dict[str, Any] = {'number': pull['number'], 'head': head, 'base': base,
-                                         'closes': references if base == default else ()}
+                messages = [((c.get('commit') or {}).get('message') or '') for c in self._commits(pull['number'])]
+                entry: dict[str, Any] = {
+                    'number': pull['number'], 'head': head, 'base': base,
+                    'closes': references if base == default else (),
+                    # Issues that GitHub closes by keyword when this merges (body, or commits
+                    # that reach the default branch), for the keyword warning.
+                    'keyword_closes': tuple(dict.fromkeys([*references, *(
+                        n for m in messages for n in closing_numbers(m, self.repo))])),
+                    # Issues it implements without closing them: `Refs #n` in a commit message,
+                    # or `issue-<n>` in the branch name.
+                    'refs': tuple(dict.fromkeys([
+                        *(branch_numbers(head) if head_repo.casefold() == self.repo.casefold() else ()),
+                        *(n for m in messages for n in referenced_numbers(m, self.repo))]))}
                 found.append(entry)
                 if base != default and references:
                     pending_intent.append((entry, references))
@@ -927,6 +1012,27 @@ class GitHub:
             if entry['base'] in same_repo_heads:
                 entry['closing_intent'] = references
         return found
+
+    def _commits(self, number: int) -> list[dict[str, Any]]:
+        batch = self._call('GET', f'https://api.github.com/repos/{self.repo}/pulls/{number}/commits?per_page=100')
+        return [c for c in batch if isinstance(c, dict)] if isinstance(batch, list) else []
+
+    def bot_markers(self, numbers: Iterable[int]) -> dict[int, set[str]]:
+        """For each issue, the markers in comments that the sync's bot wrote."""
+        found: dict[int, set[str]] = {}
+        for n in dict.fromkeys(numbers):
+            comments = self._call('GET', f'{self.base}/{n}/comments?per_page=100')
+            found[n] = {m.group(1) for c in (comments if isinstance(comments, list) else [])
+                        if (c.get('user') or {}).get('login') == BOT
+                        for m in CLOSED_MARKER_RE.finditer(c.get('body') or '')}
+        return found
+
+    def _comment(self, action: Action) -> None:
+        url = f"{self.base}/{action['issue']}"
+        marker = action['comment'].rsplit('\n', 1)[-1]
+        comments = self._call('GET', f'{url}/comments?per_page=100')
+        if not any(marker in (c.get('body') or '') for c in comments):
+            self._call('POST', f'{url}/comments', {'body': action['comment']})
 
     def _with_links(self, issue: dict) -> dict:
         """`issue` plus `blocked_by`: the issues that block it, read only when it has any."""
@@ -1115,6 +1221,9 @@ def _sync(args, root: Path, source: Path, transport: Transport, pause: float) ->
                 return 2
         desired = desired_from_config(cfg, _head(root, getattr(args, 'ref', None)), records, results)
         snapshot = github.snapshot(d.parent_issue for d in desired if d.parent_issue)
+        markers = github.bot_markers(confirmable(desired, snapshot))
+        snapshot = [{**i, 'bot_markers': markers[i['number']]} if i['number'] in markers else i
+                    for i in snapshot]
         actions = plan(desired, snapshot, github.pulls(), record_stacks(records), records.values())
     except SyncError as exc:
         print(f'error: {exc}', file=sys.stderr)
