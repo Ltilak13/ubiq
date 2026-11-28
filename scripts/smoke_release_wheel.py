@@ -29,12 +29,12 @@ WITH_SCHEMAS = [
 ]
 
 
-def check_feature_records(wheel: Path) -> None:
-    expected = {f"ubiq/features/{record.name}" for record in RECORDS.glob("*.md")}
+def check_feature_records(wheel: Path, records: Path) -> None:
+    expected = {f"ubiq/features/{record.name}" for record in records.glob("*.md")}
     with ZipFile(wheel) as archive:
         missing = expected.difference(archive.namelist())
     if not expected:
-        raise SystemExit(f"No feature records at {RECORDS}")
+        raise SystemExit(f"No feature records at {records}")
     if missing:
         raise SystemExit(f"{wheel.name} is missing bundled feature records: {', '.join(sorted(missing))}")
 
@@ -55,8 +55,8 @@ def check_adoption(cli: Path, repo: Path, used: list[str], expected: list[str]) 
     print(f"With {', '.join(used)} adopted, next steps are {', '.join(names)}", flush=True)
 
 
-def main(wheel: Path) -> None:
-    check_feature_records(wheel)
+def main(wheel: Path, records: Path = RECORDS) -> None:
+    check_feature_records(wheel, records)
     # Keep an inherited source checkout off the installed CLI's import path.
     os.environ.pop("PYTHONPATH", None)
     os.environ.pop("PYTHONHOME", None)
@@ -96,4 +96,4 @@ def main(wheel: Path) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]).resolve())
+    main(Path(sys.argv[1]).resolve(), Path(sys.argv[2]) if len(sys.argv) > 2 else RECORDS)
