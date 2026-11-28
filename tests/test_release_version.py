@@ -118,6 +118,18 @@ def test_release_tags_the_version_commit_before_publication(tmp_path):
     ]
 
 
+@pytest.mark.parametrize("draft_state", ["", "true", "false"])
+def test_release_retry_detects_an_already_published_release(tmp_path, draft_state):
+    repo, _, env = _release_repo(tmp_path)
+    env["GH_DRAFT_STATE"] = draft_state
+    result = _release_step(repo, env, "Find an already published release")
+    assert result.returncode == 0, result.stderr
+    output = Path(env["GITHUB_OUTPUT"])
+    assert (output.read_text() if output.exists() else "") == (
+        "exists=true\n" if draft_state == "false" else ""
+    )
+
+
 @pytest.mark.parametrize("draft_state", ["true", "false"])
 def test_release_handles_existing_draft_or_published_release(tmp_path, draft_state):
     repo, _, env = _release_repo(tmp_path)
